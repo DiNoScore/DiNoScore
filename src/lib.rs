@@ -1,10 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::path::Path;
 use std::{
+	cell::RefCell,
 	collections::{BTreeMap, HashMap, HashSet},
 	ops::RangeInclusive,
-	path::PathBuf,
+	path::{Path, PathBuf},
+	rc::Rc,
 };
 
 use futures::prelude::*;
@@ -38,9 +37,7 @@ impl Song {
 		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
 	) -> Self {
 		let path = path.as_ref();
-		let mut song =
-			zip::read::ZipArchive::new(std::fs::File::open(path).unwrap())
-				.unwrap();
+		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
 		// I'm tired, okay?
 		// TODO wtf
 		let (pages, mut song) = {
@@ -65,7 +62,14 @@ impl Song {
 			staves: futures::stream::iter(metadata.staves.iter().enumerate())
 				.then(|(idx, line)| {
 					// TODO song content versioning
-					Staff::new_from_pdf(pages.get_page(line.page.into()).unwrap(), line, idx, image_cache.clone(), path.file_name().unwrap(), 0)
+					Staff::new_from_pdf(
+						pages.get_page(line.page.into()).unwrap(),
+						line,
+						idx,
+						image_cache.clone(),
+						path.file_name().unwrap(),
+						0,
+					)
 				})
 				.collect()
 				.await,
@@ -79,9 +83,7 @@ impl Song {
 		// So that we don't need to parse/load that whole thing twice
 		// (But it will do for now)
 
-		let mut song =
-			zip::read::ZipArchive::new(std::fs::File::open(path).unwrap())
-				.unwrap();
+		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
 		// I'm tired, okay?
 		// TODO wtf
 		let (pages, mut song) = {
@@ -115,7 +117,8 @@ pub struct Library {
 }
 
 impl Library {
-	pub async fn load_song(&self,
+	pub async fn load_song(
+		&self,
 		name: &str,
 		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
 	) -> Song {
@@ -168,11 +171,14 @@ impl Staff {
 		};
 
 		if image_cache.contains_key(&key) {
-			let cached: gdk_pixbuf::Pixbuf = image_cache.get(&key)
+			let cached: gdk_pixbuf::Pixbuf = image_cache
+				.get(&key)
 				.map(gio::ReadInputStream::new_seekable)
 				// TODO make async again
 				// .and_then(|stream| gdk_pixbuf::Pixbuf::from_stream_async_future(&stream).await)
-				.map(|stream| gdk_pixbuf::Pixbuf::from_stream(&stream, None::<&gio::Cancellable>).unwrap())
+				.map(|stream| {
+					gdk_pixbuf::Pixbuf::from_stream(&stream, None::<&gio::Cancellable>).unwrap()
+				})
 				.unwrap();
 			context.set_source_pixbuf(&cached, 0.0, 0.0);
 			context.paint();
@@ -199,10 +205,12 @@ impl Staff {
 			// 	.open(format!("./res/{}/cache/{}.png", name, line_id))
 			// 	.unwrap();
 			dbg!(image_cache.path().join(&key));
-			image_cache.insert_with(&key, |mut file| {
-				stuff.write_to_png(&mut file).unwrap();
-				Ok(())
-			}).unwrap();
+			image_cache
+				.insert_with(&key, |mut file| {
+					stuff.write_to_png(&mut file).unwrap();
+					Ok(())
+				})
+				.unwrap();
 		}
 
 		Staff {

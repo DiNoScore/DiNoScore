@@ -484,10 +484,14 @@ fn build_ui(application: &gtk::Application) {
 			})
 			.collect(),
 	});
-	let image_cache = Rc::new(RefCell::new(lru_disk_cache::LruDiskCache::new(
-			xdg.place_cache_file("staves_small.cache").expect("Could not create cache file"), 
-			100 * 1024 * 1024
-	).unwrap()));
+	let image_cache = Rc::new(RefCell::new(
+		lru_disk_cache::LruDiskCache::new(
+			xdg.place_cache_file("staves_small.cache")
+				.expect("Could not create cache file"),
+			100 * 1024 * 1024,
+		)
+		.unwrap(),
+	));
 
 	let state = Rc::new(RefCell::new(Option::<ViewerState>::None));
 	let carousel = builder.get_object("carousel").unwrap();
