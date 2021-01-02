@@ -484,6 +484,10 @@ fn build_ui(application: &gtk::Application) {
 			})
 			.collect(),
 	});
+	let image_cache = Rc::new(RefCell::new(lru_disk_cache::LruDiskCache::new(
+			xdg.place_cache_file("staves_small.cache").expect("Could not create cache file"), 
+			100 * 1024 * 1024
+	).unwrap()));
 
 	let state = Rc::new(RefCell::new(Option::<ViewerState>::None));
 	let carousel = builder.get_object("carousel").unwrap();
@@ -667,6 +671,7 @@ fn build_ui(application: &gtk::Application) {
 			let library = library.clone();
 			let deck = deck.clone();
 			let part_selection_changed_signal = part_selection_changed_signal.clone();
+			let image_cache = image_cache.clone();
 
 			let text = store_songs.get_value(&store_songs.get_iter(item).unwrap(), 1)
 				.get::<glib::GString>()
@@ -678,7 +683,7 @@ fn build_ui(application: &gtk::Application) {
 				*state.borrow_mut() = Some(
 					async move {
 						ViewerState::new(
-							library.load_song(&text.as_str()).await,
+							library.load_song(&text.as_str(), image_cache).await,
 							columns.get_value() as usize,
 							carousel.get_allocated_width() as f64,
 							carousel.get_allocated_height() as f64

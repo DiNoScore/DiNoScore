@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::path::Path;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
@@ -31,7 +33,11 @@ pub struct Song {
 }
 
 impl Song {
-	pub async fn new(path: impl AsRef<Path>) -> Self {
+	pub async fn new(
+		path: impl AsRef<Path>,
+		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
+	) -> Self {
+		let path = path.as_ref();
 		let mut song =
 			zip::read::ZipArchive::new(std::fs::File::open(path).unwrap())
 				.unwrap();
@@ -58,7 +64,8 @@ impl Song {
 		Song {
 			staves: futures::stream::iter(metadata.staves.iter().enumerate())
 				.then(|(idx, line)| {
-					Staff::new_from_pdf(pages.get_page(line.page.into()).unwrap(), line, idx)
+					// TODO song content versioning
+					Staff::new_from_pdf(pages.get_page(line.page.into()).unwrap(), line, idx, image_cache.clone(), path.file_name().unwrap(), 0)
 				})
 				.collect()
 				.await,
@@ -108,8 +115,11 @@ pub struct Library {
 }
 
 impl Library {
-	pub async fn load_song(&self, name: &str) -> Song {
-		Song::new(self.songs.get(name).unwrap()).await
+	pub async fn load_song(&self,
+		name: &str,
+		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
+	) -> Song {
+		Song::new(self.songs.get(name).unwrap(), image_cache).await
 	}
 }
 
@@ -123,11 +133,16 @@ pub struct Staff {
 }
 
 impl Staff {
-	pub async fn new_from_pdf(
+	pub async fn new_from_pdf<'a>(
 		page: poppler::PopplerPage,
 		line: &Line,
 		line_id: usize,
+		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
+		// image_cache: &Rc<RefCell<lru_disk_cache::LruDiskCache>>,
+		song_id: impl AsRef<std::ffi::OsStr> + 'a,
+		song_version: usize,
 	) -> Self {
+		let image_cache = &mut *image_cache.borrow_mut();
 		// Convert from relative sizes back to pixels
 		let line_width = line.get_width() * page.get_size().0 as f64;
 		let line_height = line.get_height() * page.get_size().1 as f64;
@@ -143,9 +158,22 @@ impl Staff {
 		// 	.and_then(|stream| gdk_pixbuf::Pixbuf::from_stream_async_future(&stream))
 		// 	.await
 		// 	.ok();
-		let cached = None;
 
-		if let Some(cached) = cached {
+		let key = {
+			let mut key = std::ffi::OsString::new();
+			key.push(song_id);
+			key.push(song_version.to_string());
+			key.push(line_id.to_string());
+			key
+		};
+
+		if image_cache.contains_key(&key) {
+			let cached: gdk_pixbuf::Pixbuf = image_cache.get(&key)
+				.map(gio::ReadInputStream::new_seekable)
+				// TODO make async again
+				// .and_then(|stream| gdk_pixbuf::Pixbuf::from_stream_async_future(&stream).await)
+				.map(|stream| gdk_pixbuf::Pixbuf::from_stream(&stream, None::<&gio::Cancellable>).unwrap())
+				.unwrap();
 			context.set_source_pixbuf(&cached, 0.0, 0.0);
 			context.paint();
 			stuff.flush();
@@ -170,7 +198,11 @@ impl Staff {
 			// 	.create(true)
 			// 	.open(format!("./res/{}/cache/{}.png", name, line_id))
 			// 	.unwrap();
-			// stuff.write_to_png(&mut file).unwrap();
+			dbg!(image_cache.path().join(&key));
+			image_cache.insert_with(&key, |mut file| {
+				stuff.write_to_png(&mut file).unwrap();
+				Ok(())
+			}).unwrap();
 		}
 
 		Staff {

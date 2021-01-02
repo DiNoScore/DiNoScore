@@ -61,6 +61,7 @@ xdg = "2.2.0"
 # Editor dependencies
 tensorflow = { version = "0.15.0", optional = true }
 opencv = { version = "0.43", features = ["buildtime-bindgen", "clang-runtime"], optional = true }
+lru-disk-cache = "0.4.1"
 
 [features]
 default = ["viewer", "editor"]
