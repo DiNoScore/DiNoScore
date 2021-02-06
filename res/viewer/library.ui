@@ -1,0 +1,98 @@
+<interface>
+  <template class="LibraryDeckContent" parent="GtkWidget">
+    <child>
+      <object class="GtkBox" id="library_deck">
+        <property name="orientation">vertical</property>
+        <property name="spacing">10</property>
+        <property name="can_focus">False</property>
+        <child>
+          <object class="HdyHeaderBar" id="library_header">
+            <property name="show-close-button">True</property>
+            <property name="title" translatable="yes">DiNoScore</property>
+            <property name="spacing">10</property>
+            <child>
+              <object class="GtkSearchEntry">
+                <property name="width-chars">20</property>
+                <property name="placeholder-text" translatable="yes">Search songs</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="visible" bind-source="fullscreen" bind-property="visible" bind-flags="sync-create" />
+                <property name="action-name">app.enter_fullscreen</property>
+                <property name="tooltip-text" translatable="yes">Fullscreen</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="icon-name" bind-source="fullscreen_image" bind-property="icon-name" bind-flags="sync-create" />
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="pack-type">end</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="no-show-all">True</property>
+                <property name="visible" bind-source="restore" bind-property="visible" bind-flags="sync-create" />
+                <property name="action-name">app.leave_fullscreen</property>
+                <property name="tooltip-text" translatable="yes">Restore</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="icon-name" bind-source="restore_image" bind-property="icon-name" bind-flags="sync-create" />
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="pack-type">end</property>
+              </packing>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="can_focus">True</property>
+            <property name="hscrollbar_policy">never</property>
+            <child>
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">10</property>
+                <!-- <child>
+                    <object class="GtkLabel">
+                      <property name="visible">True</property>
+                      <property name="can_focus">False</property>
+                      <property name="halign">GTK_ALIGN_START</property>
+                      <property name="label" translatable="yes">Recently played:</property>
+                    </object>
+                  </child> -->
+                <child>
+                  <object class="GtkIconView" id="library_grid">
+                    <property name="margin">6</property>
+                    <property name="selection_mode">single</property>
+                    <property name="model">store_songs</property>
+                    <property name="reorderable">False</property>
+                    <property name="activate-on-single-click">False</property>
+                    <property name="column-spacing">1</property>
+                    <property name="item-padding">1</property>
+                    <property name="item-width">300</property>
+                    <!-- <property name="columns">3</property> -->
+                    <property name="pixbuf-column">0</property>
+                    <property name="text-column">1</property>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

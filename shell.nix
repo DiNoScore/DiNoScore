@@ -35,5 +35,7 @@ mkShell rec {
     export LIBCLANG_PATH="${llvmPackages.libclang}/lib"
     export GDK_DPI_SCALE=1.3
     export RUST_BACKTRACE=1
+    export CARGO_TARGET_DIR=./target
+    export RUSTC_WRAPPER=
   '';
  }

@@ -1,3 +1,0 @@
-[submodule "poppler-rs"]
-	path = poppler-rs
-	url = https://github.com/piegamesde/poppler-rs

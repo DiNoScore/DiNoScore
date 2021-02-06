@@ -44,7 +44,8 @@
           <object class="GtkToolbar">
             <property name="can_focus">False</property>
             <child>
-              <object class="GtkToolButton" id="add_pages">
+              <object class="GtkToolButton">
+                <signal name="clicked" handler="AddPages" />
                 <property name="can_focus">False</property>
                 <property name="tooltip_text">Add pages from images or PDF files</property>
                 <property name="label">Add BW images…</property>
@@ -56,6 +57,7 @@
             </child>
             <child>
               <object class="GtkToolButton" id="add_pages2">
+                <signal name="clicked" handler="AddPages2" />
                 <property name="can_focus">False</property>
                 <property name="tooltip_text">Add pages from images that need more processing. PDF files are treated as containing one picture per page.</property>
                 <property name="label">Add colour images…</property>
@@ -76,6 +78,7 @@
             </child>
             <child>
               <object class="GtkToolButton" id="autodetect">
+                <signal name="clicked" handler="Autodetect" />
                 <property name="can_focus">False</property>
                 <property name="label">Autodetect</property>
               </object>
@@ -135,6 +138,10 @@
                 <child>
                   <object class="GtkDrawingArea" id="editor">
                     <property name="can_focus">True</property>
+                    <signal name="key-press-event" handler="EditorKeyPress" />
+                    <signal name="key-release-event" handler="EditorKeyRelease" />
+                    <signal name="button-press-event" handler="EditorButtonPress" />
+                    <signal name="button-release-event" handler="EditorButtonRelease" />
                   </object>
                   <packing>
                     <property name="expand">True</property>
@@ -172,6 +179,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">This staff marks the start of a new piece/movement/variation/…</property>
                                 <property name="draw_indicator">True</property>
+                                <signal name="notify::active" handler="PieceStartToggle" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -186,6 +194,7 @@
                                 <property name="can_focus">True</property>
                                 <property name="tooltip_text">Give that piece a name</property>
                                 <property name="placeholder_text">I. Presto</property>
+                                <signal name="notify::text" handler="PieceNameUpdate" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -230,6 +239,7 @@
                                 <property name="tooltip_text">This staff contains the start of a new section</property>
                                 <property name="sensitive">False</property>
                                 <property name="draw_indicator">True</property>
+                                <signal name="notify::active" handler="SectionStartUpdate" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -245,6 +255,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">Check this if the old section ends and the new sections starts in the same staff</property>
                                 <property name="draw_indicator">True</property>
+                                <signal name="notify::active" handler="SectionEndUpdate" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -260,6 +271,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">This section is a repetition</property>
                                 <property name="draw_indicator">True</property>
+                                <signal name="notify::active" handler="SectionRepetitionUpdate" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>

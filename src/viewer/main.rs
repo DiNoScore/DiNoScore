@@ -1,247 +1,139 @@
-extern crate gdk;
-extern crate gdk_pixbuf;
-extern crate gio;
-extern crate glib;
-extern crate gtk;
+#![allow(unused_imports)]
+#![allow(dead_code)]
 
-#[macro_use]
-extern crate maplit;
-extern crate derive_more;
-
-use futures::prelude::*;
+use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
+use gtk::prelude::*;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
-use gtk::prelude::*;
-extern crate cairo;
-
 use libhandy::prelude::*;
 /* Weird that this is required for it to work */
 use libhandy::prelude::HeaderBarExt;
+use std::sync::mpsc::*;
+use dinoscore::*;
 
-use std::{cell::RefCell, rc::Rc};
-
-extern crate serde_json;
-
-extern crate either;
-
-use noisy_float::prelude::*;
-
-pub const EXPERIMENT_MODE: bool = true;
-
-use dinoscore::{song::*, *};
-
-#[derive(Clone, Debug)]
-struct PageLayout {
-	/// Pages[Columns]
-	pages: Vec<Vec<StaffLayout>>,
+struct SongRenderer {
+	pdf: poppler::PopplerDocument,
+	song: Arc<collection::SongMeta>,
 }
 
-impl PageLayout {
-	fn new(
-		song: &Song,
-		width: f64,
-		height: f64,
-		zoom: f64,
-		column_count: usize,
-		spacing: f64,
-	) -> Self {
-		if EXPERIMENT_MODE {
-			return PageLayout::new_alternate(song, width, height, column_count);
+impl SongRenderer {
+	fn spawn(song: Arc<collection::SongMeta>, pdf: owned::OwnedPopplerDocument, actor: actix::Addr<SongActor>) -> Sender<UpdateLayout> {
+		let (tx, rx) = channel();
+		std::thread::spawn(|| {
+			let pdf = pdf.into_inner();
+			SongRenderer { pdf, song }.run(rx, actor);
+		});
+		tx
+	}
+
+	fn run(mut self, rx: Receiver<UpdateLayout>, actor: actix::Addr<SongActor>) {
+		fn fetch_latest(rx: &Receiver<UpdateLayout>) -> Option<UpdateLayout> {
+			rx.try_iter().last()
 		}
-		let column_width = (width / column_count as f64) * zoom;
-		/* 1. Segment the staves to fit onto columns */
-		let column_starts = {
-			let mut column_starts = Vec::<StaffIndex>::new();
-			let mut y = 0.0;
-			// let mut y_with_spacing = 0.0;
-			for (index, staff) in song.staves.iter().enumerate() {
-				let index = StaffIndex(index);
 
-				let staff_height = column_width * staff.aspect_ratio;
-
-				/*
-				 * Start a new column for a new piece.
-				 * If staff doesn't fit anymore, first try to squeeze it in at the cost of spacing
-				 */
-				if song.piece_starts.contains_key(&index)
-					// || ((y_with_spacing + staff_height > height) && (y + staff_height <= height))
-					|| (y + staff_height > height)
-				{
-					y = 0.0;
-					// y_with_spacing = 0.0;
-					column_starts.push(index);
-				}
-				y += staff_height;
-				// y_with_spacing += staff_height + spacing;
-			}
-			/* Without this the last page will get swallowed */
-			column_starts.push(song.staves.len().into());
-			column_starts
+		let mut update = match rx.recv() {
+			Ok(update) => update,
+			Err(_) => return,
 		};
 
-		/* 2. Calculate the exact position of each staff */
-		let columns: Vec<Vec<StaffLayout>> = column_starts
-			.windows(2)
-			.map(|v| (v[0], v[1]))
-			.map(|(chunk_start, chunk_end)| {
-				let mut column = Vec::new();
-				let staves: &[Staff] = &song.staves[chunk_start.into()..chunk_end.into()];
-				if staves.len() == 1 {
-					let staff = &staves[0];
-					let staff_height = column_width * staff.aspect_ratio;
-					let x;
-					let y;
-					let staff_width;
-
-					if staff_height > height {
-						staff_width = height / staff.aspect_ratio;
-						x = (column_width - staff_width) / 2.0;
-						y = 0.0;
-					} else {
-						staff_width = column_width;
-						x = 0.0;
-						y = (height - staff_height) / 2.0;
-					}
-
-					column.push(StaffLayout {
-						index: chunk_start,
-						x,
-						y,
-						width: staff_width,
-					});
-				} else {
-					let excess_space = height
-						- staves
-							.iter()
-							.map(|staff| column_width * staff.aspect_ratio)
-							.sum::<f64>();
-					let spacing = f64::min(spacing, excess_space / staves.len() as f64);
-					let mut y = (excess_space - spacing * staves.len() as f64) / 2.0;
-					for (index, staff) in staves.iter().enumerate() {
-						column.push(StaffLayout {
-							index: chunk_start + StaffIndex(index),
-							x: 0.0,
-							y,
-							width: column_width,
-						});
-						y += column_width * staff.aspect_ratio + spacing;
-					}
+		'outer: loop {
+			/* Cannot use iterators here because of borrow checking */
+			for num in 0..update.layout.pages.len() {
+				let page = &update.layout.pages[num];
+				/* Short circuit if there is newer data to be processed */
+				if let Some(new_update) = fetch_latest(&rx) {
+					update = new_update;
+					continue 'outer;
 				}
-				column
-			})
-			.collect();
-
-		/* 3. Merge the single columns to pages using iterator magic */
-		let left_margin = (width - width * zoom) / 2.0;
-		let pages = columns
-			.chunks(column_count)
-			.map(|chunk| {
-				chunk
-					.iter()
-					.enumerate()
-					.flat_map(|(i, c)| {
-						c.iter().map(move |staff| StaffLayout {
-							index: staff.index,
-							x: staff.x + column_width * (i % column_count) as f64 + left_margin,
-							y: staff.y,
-							width: staff.width,
-						})
-					})
-					.collect()
-			})
-			.collect();
-		PageLayout { pages }
-	}
-
-	fn new_alternate(song: &Song, width: f64, height: f64, row_count: usize) -> Self {
-		let row_height = height / row_count as f64;
-
-		let column_starts = {
-			let mut column_starts = Vec::<StaffIndex>::new();
-			let mut page_length = 0;
-			for index in 0..song.staves.len() {
-				let index = StaffIndex(index);
-
-				if song.piece_starts.contains_key(&index) || page_length >= row_count {
-					column_starts.push(index);
-					page_length = 0;
-				}
-				page_length += 1;
+				let surface = self.render_page(page, update.width, update.height);
+				actor.try_send(UpdatePage {
+					index: collection::PageIndex(num),
+					surface: unsafe_send_sync::UnsafeSend::new(surface),
+					song: self.song.version_uuid,
+				}).unwrap();
 			}
-			column_starts.push(song.staves.len().into());
-			column_starts
-		};
 
-		let pages = column_starts
-			.windows(2)
-			.map(|v| (v[0], v[1]))
-			.map(|(chunk_start, chunk_end)| {
-				let staves: &[Staff] = &song.staves[chunk_start.into()..chunk_end.into()];
-				let max_width: f64 = staves
-					.iter()
-					.map(|staff| r64(row_height / staff.aspect_ratio))
-					.min() /* min is correct here */
-					.expect("Page cannot be empty")
-					.into();
-				let max_width = max_width.min(width);
-
-				staves
-					.iter()
-					.enumerate()
-					.map(|(in_page_index, staff)| {
-						let mut staff_width = row_height / staff.aspect_ratio;
-						let mut staff_height = row_height;
-
-						if staff_width > max_width {
-							staff_width = max_width;
-							staff_height *= staff_width / max_width;
-						}
-
-						StaffLayout {
-							index: StaffIndex(in_page_index) + chunk_start,
-							x: (width - staff_width) / 2.0,
-							y: in_page_index as f64 * row_height
-								+ (row_height - staff_height) / 2.0,
-							width: staff_width,
-						}
-					})
-					.collect::<Vec<_>>()
-			})
-			.collect::<Vec<_>>();
-
-		PageLayout { pages }
-	}
-
-	/** Get the index of the staff at the center of the page. */
-	fn get_center_staff(&self, page: PageIndex) -> StaffIndex {
-		StaffIndex(
-			self.pages[0..*page].iter().map(Vec::len).sum::<usize>() + self.pages[*page].len() / 2,
-		)
-	}
-
-	fn get_staves_of_page<'a>(&'a self, page: PageIndex) -> impl Iterator<Item = StaffIndex> + 'a {
-		self.pages[*page].iter().map(|page| page.index)
-	}
-
-	fn get_page_of_staff(&self, staff: StaffIndex) -> PageIndex {
-		let mut sum = 0;
-		// dbg!(&self.pages, &staff);
-		for (i, page) in self.pages.iter().enumerate() {
-			sum += page.len();
-			if sum > staff.into() {
-				return i.into();
-			}
+			/* Next update */
+			update = match rx.recv() {
+				Ok(update) => update,
+				Err(_) => return,
+			};
 		}
-		unreachable!()
 	}
+
+	fn render_staff(&mut self, staff: collection::StaffIndex, width: f64) -> cairo::ImageSurface {
+		let staff = &self.song.staves[*staff];
+		let page = &self.pdf.get_page(*staff.page).unwrap();
+
+		let line_width = staff.width();
+		let _line_height = staff.height();
+		let aspect_ratio = staff.aspect_ratio();
+
+		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, width as i32, (width * aspect_ratio) as i32).unwrap();
+		let context = cairo::Context::new(&surface);
+
+		let scale = surface.get_width() as f64 / line_width;
+		context.scale(scale, scale);
+		context.translate( -staff.start.0, -staff.start.1 );
+		context.set_source_rgb(1.0, 1.0, 1.0);
+		context.paint();
+		page.render(&context);
+
+		surface.flush();
+		surface
+	}
+
+	fn render_page(&mut self, page: &Vec<layout::StaffLayout>, width: i32, height: i32) -> cairo::ImageSurface {
+		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, width, height).unwrap();
+		let context = cairo::Context::new(&surface);
+		context.set_source_rgb(0.0, 1.0, 1.0);
+		context.paint();
+
+		page.iter().for_each(|staff_layout| {
+			let img = self.render_staff(staff_layout.index, staff_layout.width);
+			let scale = staff_layout.width / img.get_width() as f64;
+
+			context.save();
+			context.translate(staff_layout.x, staff_layout.y);
+			context.scale(scale, scale);
+
+			/* Staff */
+			context.set_source_surface(&img, 0.0, 0.0);
+			context.paint();
+
+			/* Staff number */
+			context.save();
+			context.set_font_size(20.0);
+			context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+			context.move_to(10.0, 16.0);
+			context.show_text(&staff_layout.index.to_string());
+			context.restore();
+
+			context.restore();
+		});
+
+		surface.flush();
+		// surface.write_to_png(&mut std::fs::File::create("./page.png").unwrap()).unwrap();
+		surface
+	}
+}
+
+struct UpdateLayout {
+	layout: Arc<layout::PageLayout>,
+	current_page: i32,
+	width: i32,
+	height: i32,
 }
 
 #[derive(Debug)]
-struct ViewerState {
-	song: Song,
-	page: PageIndex,
-	layout: PageLayout,
+struct SongState {
+	song: Arc<collection::SongMeta>,
+	page: collection::PageIndex,
+	layout: Arc<layout::PageLayout>,
+	renderer: Sender<UpdateLayout>,
 	/* To keep the current view consistent between layout changes */
 	columns: usize,
 	zoom: f64,
@@ -249,13 +141,14 @@ struct ViewerState {
 	zoom_before_gesture: Option<f64>,
 }
 
-impl ViewerState {
-	fn new(song: Song, columns: usize, width: f64, height: f64) -> Self {
-		let layout = PageLayout::new(&song, width, height, 1.0, columns, 10.0);
-		ViewerState {
+impl SongState {
+	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, columns: usize, width: f64, height: f64) -> Self {
+		let layout = Arc::new(layout::PageLayout::new(&song, width, height, 1.0, columns, 10.0));
+		Self {
 			song,
 			page: 0.into(),
 			layout,
+			renderer,
 			columns,
 			zoom: 1.0,
 			zoom_before_gesture: None,
@@ -266,11 +159,11 @@ impl ViewerState {
 		self.columns = columns;
 		self.zoom = zoom;
 		let layout_staff = self.layout.get_center_staff(self.page);
-		self.layout = PageLayout::new(&self.song, width, height, zoom, self.columns, 10.0);
+		self.layout = Arc::new(layout::PageLayout::new(&self.song, width, height, zoom, self.columns, 10.0));
 		self.page = self.layout.get_page_of_staff(layout_staff);
 	}
 
-	fn get_parts(&self) -> Vec<(StaffIndex, String)> {
+	fn get_parts(&self) -> Vec<(collection::StaffIndex, String)> {
 		self.song
 			.piece_starts
 			.iter()
@@ -279,12 +172,12 @@ impl ViewerState {
 	}
 
 	/* When we're at a given page and want to go back, should we jump to the start of the repetition? */
-	fn go_back(&self, current_page: PageIndex) -> Option<PageIndex> {
+	fn go_back(&self, current_page: collection::PageIndex) -> Option<collection::PageIndex> {
 		/* Find all sections that are repetitions and are visible on the current page.
 		 * Go back to the beginning of the first of them.
 		 */
 		self.song
-			.sections
+			.sections()
 			.iter()
 			.filter(|(_, repetition)| *repetition)
 			.map(|(range, _)| range)
@@ -297,7 +190,7 @@ impl ViewerState {
 	}
 
 	/* When we're at a given position, where did the part we are in start? */
-	fn part_start(&self, current_page: PageIndex) -> StaffIndex {
+	fn part_start(&self, current_page: collection::PageIndex) -> collection::StaffIndex {
 		self.song
 			.piece_starts
 			.iter()
@@ -313,545 +206,606 @@ impl ViewerState {
 	}
 }
 
-struct SheetViewer {
-	carousel: libhandy::Carousel,
-	update_task: ReplaceIdentifier<()>,
-	// Keep a strong reference to this
-	#[allow(dead_code)]
-	zoom_gesture: gtk::GestureZoom,
+struct SongActor {
+	widgets: SongWidgets,
+	application: gtk::Application,
+	/// Always Some once started. Could have used a lazy init cell as well
+	part_selection_changed_signal: Option<glib::SignalHandlerId>,
+	// TODO remove the image surface, and manipulate the draw closure instead
+	pages: Vec<Rc<(RefCell<Option<cairo::ImageSurface>>, gtk::DrawingArea)>>,
+	// layout
+	song: Option<SongState>,
+	next: gio::SimpleAction,
+	previous: gio::SimpleAction,
 }
 
-mod unique_future;
-use unique_future::*;
+#[derive(woab::WidgetsFromBuilder)]
+struct SongWidgets {
+	carousel: libhandy::Carousel,
+	deck: libhandy::Deck,
+	part_selection: gtk::ComboBoxText,
+}
 
-impl SheetViewer {
-	fn new(carousel: &libhandy::Carousel) -> Self {
-		carousel.add_events(
-			gdk::EventMask::STRUCTURE_MASK
-				| gdk::EventMask::BUTTON_PRESS_MASK
-				| gdk::EventMask::KEY_PRESS_MASK,
+impl actix::Actor for SongActor {
+	type Context = actix::Context<Self>;
+
+	fn started(&mut self, ctx: &mut Self::Context) {
+		self.application.add_action(&self.next);
+		self.application.set_accels_for_action("app.next_page", &["<Primary>N", "<Alt>N", "Right"]);
+		woab::connect_signal_handler::<Self, _, _>(&self.next, "activate", "Next", ctx);
+	
+		self.application.add_action(&self.previous);
+		self.application.set_accels_for_action("app.previous_page", &["<Primary>P", "<Alt>P", "Left"]);
+		woab::connect_signal_handler::<Self, _, _>(&self.previous, "activate", "Previous", ctx);
+
+		let go_back_action = gio::SimpleAction::new("go-back", None);
+		woab::connect_signal_handler::<Self, _, _>(&go_back_action, "activate", "GoBack", ctx);
+		self.application.add_action(&go_back_action);
+
+		let signal_handler = woab::make_signal_handler::<Self, _>("SelectPart", ctx);
+		self.part_selection_changed_signal = Some(
+			self.widgets.part_selection.connect_local("changed".as_ref(), false, signal_handler).unwrap()
 		);
-		carousel.connect_button_press_event(move |carousel, _| {
-			carousel.emit_grab_focus();
-			gtk::Inhibit(false)
-		});
-		carousel.set_focus_on_click(true);
-		carousel.set_can_focus(true);
+	}
 
-		let zoom_gesture = gtk::GestureZoom::new(carousel);
+	fn stopped(&mut self, _ctx: &mut Self::Context) {
+		println!("SongActor Quit");
+	}
+}
 
-		SheetViewer {
-			carousel: carousel.clone(),
-			update_task: ReplaceIdentifier::new(),
-			zoom_gesture,
+impl SongActor {
+	fn new(widgets: SongWidgets, application: gtk::Application) -> Self {
+		let next = gio::SimpleAction::new("next_page", None);
+		let previous = gio::SimpleAction::new("previous_page", None);
+		Self { widgets, application, pages: Vec::new(), song: None, next, previous, part_selection_changed_signal: None }
+	}
+
+	fn load_song(&mut self, ctx: &mut actix::Context<Self>, song: collection::SongMeta, pdf: owned::OwnedPopplerDocument) {
+		use actix::AsyncContext;
+
+		let song = Arc::new(song);
+		let renderer = SongRenderer::spawn(song.clone(), pdf, ctx.address());
+		let width = self.widgets.carousel.get_allocated_width();
+		let height = self.widgets.carousel.get_allocated_height();
+
+		let song = SongState::new(renderer, song, 3, width as f64, height as f64);
+
+		let parts = song.get_parts();
+		self.widgets.part_selection.remove_all();
+		for (k, p) in &parts {
+			self.widgets.part_selection.append(Some(&k.to_string()), p);
 		}
+		let relevant = parts.len() > 1;
+		self.widgets.part_selection.set_active(if relevant {Some(0)} else {None});
+		self.widgets.part_selection.set_sensitive(relevant);
+
+		self.song = Some(song);
+		self.on_resize();
 	}
 
-	fn update(this: &Rc<RefCell<Self>>, state: &Rc<RefCell<Option<ViewerState>>>) {
-		let future = {
-			let carousel = &this.borrow().carousel;
-			let width = carousel.get_allocated_width();
-			let height = carousel.get_allocated_height();
-			let carousel = carousel.clone();
-			let state = state.clone();
-			let this = this.clone();
-			async move {
-				let new_images = SheetViewer::update_state(width, height, &*state.borrow()).await;
-				SheetViewer::update_sheet(&this, &carousel, new_images, &state).await;
-			}
+	fn on_resize(&mut self) {
+		let song = match &mut self.song {
+			Some(song) => song,
+			None => return,
 		};
-		let future = this
-			.borrow_mut()
-			.update_task
-			.make_replaceable(future)
-			.map(|_| {});
+		let width = self.widgets.carousel.get_allocated_width();
+		let height = self.widgets.carousel.get_allocated_height();
 
-		glib::MainContext::default()
-			.spawn_local_with_priority(glib::source::PRIORITY_DEFAULT_IDLE, future);
-	}
+		song.change_size(width as f64, height as f64, 3, 1.0);
 
-	// The foreground operation
-	async fn update_sheet(
-		this: &Rc<RefCell<Self>>,
-		carousel: &libhandy::Carousel,
-		pages: Vec<cairo::ImageSurface>,
-		state: &Rc<RefCell<Option<ViewerState>>>,
-	) {
+		let carousel = &self.widgets.carousel;
 		carousel.foreach(|p| carousel.remove(p));
-		futures::stream::iter(pages.into_iter()).enumerate().for_each(|(_index, page)| async move {
+		self.pages.clear();
+
+		for _index in 0..song.layout.pages.len() {
 			let area = gtk::DrawingArea::new();
 			area.set_hexpand(true);
 			area.set_vexpand(true);
+
+			let page = Rc::new((RefCell::new(None), area.clone()));
+			self.pages.push(page.clone());
 			area.connect_draw(move |_area, context| {
-				context.set_source_surface(&page, 0.0, 0.0);
+				context.set_source_rgb(1.0, 0.0, 1.0);
 				context.paint();
+				// println!("(DrawingArea) Render page {}, {}", index, page.0.borrow().as_ref().is_some());
+				if let Some(page) = page.0.borrow().as_ref() {
+					context.set_source_surface(page, 0.0, 0.0);
+					context.paint();
+				}
 				gtk::Inhibit::default()
 			});
-			area.add_events(gdk::EventMask::SCROLL_MASK);
-			area.connect_scroll_event(clone!(@weak carousel, @strong state, @strong this => @default-panic, move |_area, event| {
-				if event.get_state().contains(gdk::ModifierType::CONTROL_MASK) {
-					if let Some(state) = &mut *state.borrow_mut() {
-						let new_zoom = state.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
-						// TODO replace with clamp once stable
-						let new_zoom = f64::max(0.2, f64::min(1.0, new_zoom));
-						state.change_size(carousel.get_allocated_width() as f64, 
-							carousel.get_allocated_height() as f64, state.columns, new_zoom);
-					}
-					SheetViewer::update(&this, &state);
-					gtk::Inhibit(true)
-				} else {
-					gtk::Inhibit(false)
-				}
-			}));
-
 			carousel.add(&area);
 			area.show();
-		}).await;
-		carousel.queue_draw();
-		if let Some(state) = &*state.borrow() {
-			carousel.scroll_to_full(&carousel.get_children()[*state.page], 0);
 		}
+		carousel.queue_draw();
+
+		song.renderer.send(UpdateLayout {
+			layout: song.layout.clone(),
+			current_page: 0,
+			width,
+			height,
+		}).unwrap();
 	}
+}
 
-	// The background operation
-	async fn update_state(
-		width: i32,
-		height: i32,
-		state: &Option<ViewerState>,
-	) -> Vec<cairo::ImageSurface> {
-		if let Some(state) = state {
-			let song = &state.song;
-			futures::stream::iter(state.layout.pages.iter())
-				.then(|page| async move {
-					let surface =
-						cairo::ImageSurface::create(cairo::Format::Rgb24, width, height).unwrap();
-					let context = cairo::Context::new(&surface);
-					context.set_source_rgb(1.0, 1.0, 1.0);
-					context.paint();
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct UpdatePage {
+	index: collection::PageIndex,
+	surface: unsafe_send_sync::UnsafeSend<cairo::ImageSurface>,
+	/// Song identifier to ignore old data
+	song: uuid::Uuid,
+}
 
-					futures::stream::iter(page.iter())
-						.for_each(|staff_layout| {
-							let context = context.clone();
-							async move {
-								song.staves[*staff_layout.index].render(&context, &staff_layout);
-							}
-						})
-						.await;
+impl actix::Handler<UpdatePage> for SongActor {
+	type Result = ();
 
-					surface.flush();
-					surface
-				})
-				.collect()
-				.await
-		} else {
-			Vec::new()
+	fn handle(&mut self, page: UpdatePage, _ctx: &mut Self::Context) -> Self::Result {
+		if let Some(song) = self.song.as_ref() {
+			if page.song != song.song.version_uuid {
+				return;
+			}
+			// println!("Updating page {}", page.index);
+			self.pages[*page.index].0.replace(Some(page.surface.unwrap()));
+			self.pages[*page.index].1.queue_draw();
+			// dbg!(&self.pages);
+			self.widgets.carousel.queue_draw();
 		}
 	}
 }
 
-fn build_ui(application: &gtk::Application) {
-	application.inhibit(
-		Option::<&gtk::Window>::None,
-		gtk::ApplicationInhibitFlags::IDLE,
-		Some("You wouldn't want your screen go blank while playing an instrument"),
-	);
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct LoadSong {
+	meta: collection::SongMeta,
+	pdf: owned::OwnedPopplerDocument,
+}
 
-	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
-	let _ = gio::ThemedIcon::static_type();
+impl actix::Handler<LoadSong> for SongActor {
+	type Result = ();
 
-	let builder = gtk::Builder::from_file("res/viewer.glade");
-	let window: gtk::Window = builder.get_object("window").unwrap();
-	window.set_application(Some(application));
-	window.set_position(gtk::WindowPosition::Center);
-	window.add_events(
-		gdk::EventMask::STRUCTURE_MASK
-			| gdk::EventMask::BUTTON_PRESS_MASK
-			| gdk::EventMask::KEY_PRESS_MASK,
-	);
-	let columns: gtk::SpinButton = builder.get_object("columns").unwrap();
+	fn handle(&mut self, song: LoadSong, ctx: &mut Self::Context) -> Self::Result {
+		self.load_song(ctx, song.meta, song.pdf);
+	}
+}
 
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
-	let library = Rc::new(Library {
-		songs: xdg
-			.list_data_files("library")
-			.into_iter()
-			.filter(|path| path.is_file())
-			.map(|path| {
-				(
-					path.file_stem().unwrap().to_string_lossy().into_owned(),
-					path,
-				)
-			})
-			.collect(),
-	});
-	let image_cache = Rc::new(RefCell::new(
-		lru_disk_cache::LruDiskCache::new(
-			xdg.place_cache_file("staves_small.cache")
-				.expect("Could not create cache file"),
-			100 * 1024 * 1024,
-		)
-		.unwrap(),
-	));
+#[derive(woab::BuilderSignal)]
+enum SongEvent {
+	#[signal(ret = false)]
+	WindowSizeChanged,
+	Next,
+	Previous,
+	GoBack,
+	#[signal(ret = false)]
+	CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
+	#[signal(ret = false)]
+	CarouselButtonPress(libhandy::Carousel, #[signal(event)] gdk::EventButton),
+	CarouselPageChanged(libhandy::Carousel, u32),
+	SelectPart,
+}
 
-	let state = Rc::new(RefCell::new(Option::<ViewerState>::None));
-	let carousel = builder.get_object("carousel").unwrap();
-	let sheet_viewer = Rc::new(RefCell::new(SheetViewer::new(&carousel)));
-
-	let part_selection: gtk::ComboBoxText = builder.get_object("part_selection").unwrap();
-
-	let part_selection_changed_signal = Rc::new(part_selection.connect_changed(
-		clone!(@strong state, @weak carousel => @default-panic, move |part_selection| {
-			let section = part_selection.get_active_id().unwrap();
-
-			if let Some(state) = &*state.borrow() {
-				carousel.scroll_to(&carousel.get_children()[
-					*state.layout.get_page_of_staff(section.parse::<StaffIndex>().unwrap())
-				]);
-			}
-		}),
-	));
-
-	let next = gio::SimpleAction::new("next_page", None);
-	next.connect_activate(
-		clone!(@strong state, @strong carousel => @default-panic, move |_action, _value| {
-			if state.borrow().is_some() {
+impl actix::StreamHandler<SongEvent> for SongActor {
+	fn handle(&mut self, signal: SongEvent, _ctx: &mut Self::Context) {
+		let carousel = &self.widgets.carousel;
+		match signal {
+			SongEvent::WindowSizeChanged => self.on_resize(),
+			SongEvent::Next => {
+				if self.song.is_none() {
+					return;
+				}
 				carousel.scroll_to(&carousel.get_children()[
 					usize::min(carousel.get_position() as usize + 1, carousel.get_n_pages() as usize - 1)
 				]);
-			}
-		}),
-	);
-	application.add_action(&next);
-	application.set_accels_for_action("app.next_page", &["<Primary>N", "<Alt>N", "Right"]);
-
-	let previous = gio::SimpleAction::new("previous_page", None);
-	previous.connect_activate(
-		clone!(@strong state, @strong carousel => @default-panic, move |_action, _value| {
-			if let Some(state) = &*state.borrow() {
-				carousel.scroll_to(&carousel.get_children()[
-					*state.go_back(PageIndex(carousel.get_position() as usize))
-						.unwrap_or_else(|| PageIndex(usize::max(carousel.get_position() as usize, 1) - 1))
-				]);
-			}
-		}),
-	);
-	application.add_action(&previous);
-	application.set_accels_for_action("app.previous_page", &["<Primary>P", "<Alt>P", "Left"]);
-
-	if !EXPERIMENT_MODE {
-		let zoom_gesture = &sheet_viewer.borrow().zoom_gesture;
-		zoom_gesture.connect_begin(clone!(@strong state => move |_, _| {
-			println!("Begin");
-			if let Some(state) = &mut *state.borrow_mut() {
-				state.zoom_before_gesture = Some(state.zoom);
-			}
-		}));
-
-		zoom_gesture.connect_end(clone!(@strong state => move |_, _| {
-			println!("End");
-			if let Some(state) = &mut *state.borrow_mut() {
-				state.zoom_before_gesture = None;
-			}
-		}));
-
-		zoom_gesture.connect_cancel(clone!(@strong state => move |_, _| {
-			println!("Cancel");
-			if let Some(state) = &mut *state.borrow_mut() {
-				state.zoom = state.zoom_before_gesture.take()
-					//.expect("Should always be Some within after gesture started");
-					.unwrap_or(state.zoom)
-			}
-		}));
-
-		zoom_gesture.connect_scale_changed(clone!(@strong state, @strong sheet_viewer, @weak carousel => @default-panic, move |_, scale| {
-			if let Some(state) = &mut *state.borrow_mut() {
-				dbg!(scale);
-				let new_zoom = scale * state.zoom_before_gesture.expect("Should always be Some within after gesture started");
-				// TODO replace with clamp once stable
-				let new_zoom = f64::max(0.2, f64::min(1.0, new_zoom));
-				state.change_size(carousel.get_allocated_width() as f64, 
-					carousel.get_allocated_height() as f64, state.columns, new_zoom);
-			}
-			SheetViewer::update(&sheet_viewer, &state);
-		}));
-	}
-
-	{
-		carousel.connect_page_changed(clone!(@strong state, @weak part_selection, @strong part_selection_changed_signal => move |_carousel, page| {
-			use std::ops::DerefMut;
-			if let Ok(mut state) = state.try_borrow_mut() {
-				if let Some(state) = state.deref_mut() {
-					state.page = PageIndex(page as usize);
-					part_selection.block_signal(&part_selection_changed_signal);
-					part_selection.set_active_id(
-						Some(&state.part_start(state.page).to_string())
-					);
-					part_selection.unblock_signal(&part_selection_changed_signal);
+			},
+			SongEvent::Previous => {
+				if let Some(song) = self.song.as_mut() {
+					carousel.scroll_to(&carousel.get_children()[
+						*song.go_back(collection::PageIndex(carousel.get_position() as usize))
+							.unwrap_or_else(|| collection::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1))
+					]);
 				}
-			}
-		}));
-		carousel.connect_key_press_event(
-			clone!(@weak next, @weak previous => @default-panic, move |_carousel, event| {
+			},
+			SongEvent::GoBack => {
+				std::mem::drop(self.song.take());
+				self.widgets.carousel.foreach(|p| self.widgets.carousel.remove(p));
+				self.pages.clear();
+
+				self.widgets.part_selection.set_active(None);
+				self.widgets.part_selection.set_sensitive(false);
+				self.widgets.part_selection.remove_all();
+
+				self.widgets.deck.navigate(libhandy::NavigationDirection::Back);
+			},
+			// TODO add cooldown
+			SongEvent::CarouselKeyPress(_carousel, event) => {
 				use gdk::keys::constants;
 				match event.get_keyval() {
 					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
-						next.activate(None);
+						self.next.activate(None);
 						gtk::Inhibit(true)
 					},
 					constants::Left | constants::KP_Left | constants::BackSpace => {
-						previous.activate(None);
+						self.previous.activate(None);
 						gtk::Inhibit(true)
 					}
 					_ => gtk::Inhibit(false)
+				}; // TODO inhibit
+			},
+			// TODO add cooldown
+			// TODO don't trigger on top of a swipe gesture
+			SongEvent::CarouselButtonPress(carousel, event) => {
+				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
+				if (0.0..0.2).contains(&x) {
+					self.previous.activate(None);
+				} else if (0.8..1.0).contains(&x) {
+					self.next.activate(None);
 				}
-			}),
-		);
-		// TODO make this work and remove the other event handler
-		// carousel.connect_size_allocate(clone!(@strong state, @weak columns => @default-panic, move |carousel, event| {
-		// if let Some(state) = &mut *state.borrow_mut() {
-		// 	state.change_size(&library, event.width as f64, event.height as f64, columns.get_value() as usize);
-		// }
-		//rebuild_carousel(&carousel, &*state.borrow(), &library);
-		// }));
-		window.connect_configure_event(clone!(@strong state, @strong sheet_viewer, @weak columns, @strong carousel => @default-panic, move |_, event| {
-			if let Some(state) = &mut *state.borrow_mut() {
-				state.change_size(carousel.get_allocated_width() as f64, 
-					carousel.get_allocated_height() as f64, columns.get_value() as usize, state.zoom);
-			}
-			SheetViewer::update(&sheet_viewer, &state);
-			false
-		}));
-	}
-
-	columns.connect_property_value_notify(clone!(@strong state, @strong sheet_viewer, @strong carousel => @default-panic, move|columns| {
-		if let Some(state) = &mut *state.borrow_mut() {
-			state.change_size(carousel.get_allocated_width() as f64, carousel.get_allocated_height() as f64, columns.get_value() as usize, state.zoom);
-		}
-		SheetViewer::update(&sheet_viewer, &state);
-	}));
-
-	let deck: libhandy::Deck = builder.get_object("deck").unwrap();
-
-	{
-		/* Go back handling */
-		let go_back_action = gio::SimpleAction::new("go-back", None);
-		application.add_action(&go_back_action);
-		go_back_action.connect_activate(
-			clone!(@strong state, @weak deck => @default-panic, move |_action, _no_value| {
-				*state.borrow_mut() = None;
-				deck.navigate(libhandy::NavigationDirection::Back);
-			}),
-		);
-	}
-
-	{
-		/* Song selection */
-		let store_songs: gtk::ListStore = builder.get_object("store_songs").unwrap();
-		let library_grid: gtk::IconView = builder.get_object("library_grid").unwrap();
-
-		for (i, (name, path)) in library.songs.iter().enumerate() {
-			store_songs.set(&store_songs.append(), &[1], &[&name.to_value()]);
-
-			let path = path.clone();
-			let store_songs = store_songs.clone();
-			glib::MainContext::default().spawn_local_with_priority(
-				glib::source::PRIORITY_DEFAULT_IDLE,
-				async move {
-					let preview_image = Song::load_first_staff(&path).await;
-					if let Some(preview_image) = preview_image {
-						store_songs.set(
-							&store_songs.iter_nth_child(None, i as i32).unwrap(),
-							&[0],
-							&[&preview_image],
-						);
-					}
-				},
-			);
-		}
-
-		library_grid.connect_item_activated(clone!(@strong state, @strong sheet_viewer, @strong library, @weak columns, @weak carousel, @weak part_selection, @strong part_selection_changed_signal, @strong deck => @default-panic, move |_libhandy_grid, item| {
-			let state = state.clone();
-			let sheet_viewer = sheet_viewer.clone();
-			let library = library.clone();
-			let deck = deck.clone();
-			let part_selection_changed_signal = part_selection_changed_signal.clone();
-			let image_cache = image_cache.clone();
-
-			let text = store_songs.get_value(&store_songs.get_iter(item).unwrap(), 1)
-				.get::<glib::GString>()
-				.unwrap()
-				.unwrap();
-			glib::MainContext::default().spawn_local_with_priority(glib::source::PRIORITY_DEFAULT_IDLE, async move {
-				let progress = create_progress_spinner_dialog();
-	
-				*state.borrow_mut() = Some(
-					async move {
-						ViewerState::new(
-							library.load_song(&text.as_str(), image_cache).await,
-							columns.get_value() as usize,
-							carousel.get_allocated_width() as f64,
-							carousel.get_allocated_height() as f64
-						)
-					}.await
+			},
+			SongEvent::CarouselPageChanged(_carousel, page) => {
+				let song = self.song.as_mut().unwrap();
+				song.page = collection::PageIndex(page as usize);
+				self.widgets.part_selection.block_signal(self.part_selection_changed_signal.as_ref().unwrap());
+				self.widgets.part_selection.set_active_id(
+					Some(&song.part_start(song.page).to_string())
 				);
-	
-				part_selection.block_signal(&part_selection_changed_signal);
-				part_selection.remove_all();
-				if let Some(state) = &*state.borrow() {
-					let parts = state.get_parts();
-					for (k, p) in &parts {
-						part_selection.append(Some(&k.to_string()), p);
-					}
-					let relevant = parts.len() > 1;
-					part_selection.set_active(if relevant {Some(0)} else {None});
-					part_selection.set_sensitive(relevant);
-				} else {
-					part_selection.set_active(None);
-					part_selection.set_sensitive(false);
-				}
-				part_selection.unblock_signal(&part_selection_changed_signal);
+				self.widgets.part_selection.unblock_signal(self.part_selection_changed_signal.as_ref().unwrap());
+			},
+			SongEvent::SelectPart => if self.song.is_some() {
+				let section = self.widgets.part_selection.get_active_id().unwrap();
 
-				deck.navigate(libhandy::NavigationDirection::Forward);
-				progress.emit_close();
+				self.widgets.carousel.scroll_to(&carousel.get_children()[
+					*self.song.as_ref().unwrap()
+						.layout
+						.get_page_of_staff(section.parse::<collection::StaffIndex>().unwrap())
+				]);
+			},
+		}
+	}
+}
 
-				/* This will spawn its own async Future, as that one might easily get cancelled */
-				SheetViewer::update(&sheet_viewer, &state);
-			});
-		}));
+
+
+
+struct LibraryActor {
+	widgets: LibraryWidgets,
+	library: Rc<RefCell<library::Library>>,
+	song_actor: actix::Addr<SongActor>,
+}
+
+
+
+#[derive(woab::WidgetsFromBuilder)]
+struct LibraryWidgets {
+	store_songs: gtk::ListStore,
+	library_grid: gtk::IconView,
+	deck: libhandy::Deck,
+}
+
+impl actix::Actor for LibraryActor {
+	type Context = actix::Context<Self>;
+
+	fn started(&mut self, _ctx: &mut Self::Context) {
+		println!("Starting LibraryActor");
+		/* TODO add a true loading spinner */
+		let library = &self.library;
+		let store_songs = &self.widgets.store_songs;
+		store_songs.set_sort_column_id(gtk::SortColumn::Index(1), gtk::SortType::Ascending);
+
+		for (i, (_uuid, song)) in library.borrow().songs.iter().enumerate() {
+			// TODO clean this up
+			/* Add an item with the name and UUID */
+			store_songs.set(
+				&store_songs.append(),
+				&[1, 2],
+				&[
+					&song.title().unwrap_or("<no title>").to_value(),
+					&song.uuid().to_string().to_value(),
+				]);
+			/* Optionally set the image */
+			if let Some(thumbnail) = song.thumbnail() {
+				/* Index, column, value */
+				store_songs.set(
+					&store_songs.iter_nth_child(None, i as i32).unwrap(),
+					&[0],
+					&[&thumbnail],
+				);
+			}
+		}
+		self.widgets.library_grid.show();
 	}
 
-	{
-		/* Full screen handling */
-		enum HeaderState {
-			WindowedAlwaysShow,
-			FullscreenShowTimeout,
-			FullscreenShowFocus,
-			FullscreenHidden,
-		};
-		let is_fullscreen = Rc::new(std::cell::Cell::new(false));
+	fn stopped(&mut self, _ctx: &mut Self::Context) {
+		println!("Library Quit");
+	}
+}
 
-		let revealer: gtk::Revealer = builder.get_object("revealer").unwrap();
-		let header: libhandy::HeaderBar = builder.get_object("header").unwrap();
-		let fullscreen_button: gtk::Button = builder.get_object("fullscreen").unwrap();
-		let restore_button: gtk::Button = builder.get_object("restore").unwrap();
+#[derive(woab::BuilderSignal, Debug)]
+enum LibrarySignal {
+	LoadSong(gtk::IconView, gtk::TreePath),
+}
+
+impl actix::StreamHandler<LibrarySignal> for LibraryActor {
+	fn handle(&mut self, signal: LibrarySignal, _ctx: &mut Self::Context) {
+		match signal {
+			LibrarySignal::LoadSong(_library_grid, item) => {
+				println!("Loading song:");
+				let text = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 1)
+					.get::<glib::GString>()
+					.unwrap()
+					.unwrap();
+				let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 2)
+					.get::<glib::GString>()
+					.unwrap()
+					.unwrap();
+				dbg!(&text.as_str());
+				dbg!(&uuid.as_str());
+
+				self.widgets.deck.navigate(libhandy::NavigationDirection::Forward);
+
+				let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
+				let mut library = self.library.borrow_mut();
+				let song = library.songs.get_mut(&uuid).unwrap();
+				self.song_actor.try_send(LoadSong {
+					meta: song.index.clone(),
+					pdf: song.load_sheet(),
+				}).unwrap();
+			},
+		}
+	}
+}
+
+struct FullscreenActor {
+	widgets: FullscreenWidgets,
+	application: gtk::Application,
+	is_fullscreen: bool
+}
+
+#[derive(woab::WidgetsFromBuilder)]
+struct FullscreenWidgets {
+	window: gtk::ApplicationWindow,
+	header: libhandy::HeaderBar,
+	#[widget(name = "fullscreen")]
+	fullscreen_button: gtk::Button,
+	#[widget(name = "restore")]
+	restore_button: gtk::Button,
+}
+
+#[derive(Debug, woab::BuilderSignal)]
+enum FullscreenSignal {
+	Fullscreen,
+	Unfullscreen,
+	#[signal(ret = false)]
+	WindowState(gtk::Window, #[signal(event)] gdk::EventWindowState),
+}
+
+impl actix::Actor for FullscreenActor {
+	type Context = actix::Context<Self>;
+
+	fn started(&mut self, ctx: &mut Self::Context) {
+		let application = &self.application;
 
 		let enter_fullscreen = gio::SimpleAction::new("enter_fullscreen", None);
 		application.add_action(&enter_fullscreen);
 		application.set_accels_for_action("app.enter_fullscreen", &["F11"]);
 
-		enter_fullscreen.connect_activate(
-			clone!(@weak window => @default-panic, move |_action, _value| {
-				println!("Enter fullscreen");
-				window.fullscreen();
-			}),
-		);
+		woab::connect_signal_handler::<Self, _, _>(&enter_fullscreen, "activate", "Fullscreen", ctx);
 
 		let leave_fullscreen = gio::SimpleAction::new("leave_fullscreen", None);
 		application.add_action(&leave_fullscreen);
 		application.set_accels_for_action("app.leave_fullscreen", &["Escape"]);
-
-		leave_fullscreen.connect_activate(
-			clone!(@weak window => @default-panic, move |_action, _value| {
-				println!("Leave fullscreen");
-				window.unfullscreen();
-			}),
-		);
-
-		window.connect_window_state_event(move |window, state| {
-			if state
-				.get_changed_mask()
-				.contains(gdk::WindowState::FULLSCREEN)
-			{
-				if state
-					.get_new_window_state()
-					.contains(gdk::WindowState::FULLSCREEN)
-				{
-					println!("Going fullscreen");
-					is_fullscreen.set(true);
-					fullscreen_button.set_visible(false);
-					restore_button.set_visible(true);
-					header.set_show_close_button(false);
-
-					window.queue_draw();
-				} else {
-					println!("Going unfullscreen");
-					is_fullscreen.set(false);
-					restore_button.set_visible(false);
-					fullscreen_button.set_visible(true);
-					header.set_show_close_button(true);
-					window.queue_draw();
-				}
-			}
-			gtk::Inhibit(false)
-		});
+		leave_fullscreen.connect_local("activate", false, woab::make_signal_handler::<Self, _>("Unfullscreen", ctx)).unwrap();
 	}
 
-	window.show_all();
+	fn stopped(&mut self, _ctx: &mut Self::Context) {
+		println!("Fullscreen Quit");
+	}
+}
 
-	let (midi_tx, midi_rx) =
-		glib::MainContext::channel::<pedal::PageEvent>(glib::Priority::default());
-	let handler = pedal::run(midi_tx).unwrap();
-	midi_rx.attach(None, move |event| {
-		// Reference the MIDI handler which holds the Sender so that it doesn't get dropped.
-		let _handler = &handler;
-		match event {
-			pedal::PageEvent::Next => {
-				next.activate(None);
-				Continue(true)
+impl actix::StreamHandler<FullscreenSignal> for FullscreenActor {
+	fn handle(&mut self, signal: FullscreenSignal, _ctx: &mut Self::Context) {
+		match signal {
+			FullscreenSignal::Fullscreen => {
+				println!("Enter fullscreen");
+				self.widgets.window.fullscreen();
 			},
-			pedal::PageEvent::Previous => {
-				previous.activate(None);
-				Continue(true)
+			FullscreenSignal::Unfullscreen => {
+				println!("Leave fullscreen");
+				self.widgets.window.unfullscreen();
+			},
+			FullscreenSignal::WindowState(window, state) => {
+				if state
+					.get_changed_mask()
+					.contains(gdk::WindowState::FULLSCREEN)
+				{
+					if state
+						.get_new_window_state()
+						.contains(gdk::WindowState::FULLSCREEN)
+					{
+						println!("Going fullscreen");
+						self.is_fullscreen = true;
+						self.widgets.fullscreen_button.set_visible(false);
+						self.widgets.restore_button.set_visible(true);
+						self.widgets.header.set_show_close_button(false);
+	
+						window.queue_draw();
+					} else {
+						println!("Going unfullscreen");
+						self.is_fullscreen = false;
+						self.widgets.restore_button.set_visible(false);
+						self.widgets.fullscreen_button.set_visible(true);
+						self.widgets.header.set_show_close_button(true);
+						window.queue_draw();
+					}
+				}
 			},
 		}
-	});
+	}
 }
 
-fn create_progress_spinner_dialog() -> gtk::Dialog {
-	let progress = gtk::Dialog::new();
-	progress.set_modal(true);
-	progress.set_skip_taskbar_hint(true);
-	progress.set_destroy_with_parent(true);
-	progress.set_position(gtk::WindowPosition::CenterOnParent);
-	progress.get_content_area().add(&{
-		let spinner = gtk::Spinner::new();
-		spinner.start();
-		spinner.show();
-		spinner
-	});
-	progress.set_title("Loading…");
-	progress.set_deletable(false);
-	progress.show_all();
-	progress
+struct AppActor {
+	widgets: AppWidgets,
+	application: gtk::Application,
+	builder: Rc<woab::BuilderConnector>,
+	song_actor: actix::Addr<SongActor>,
 }
 
-mod pedal;
+#[derive(woab::WidgetsFromBuilder)]
+struct AppWidgets {
+	window: gtk::ApplicationWindow,
+	columns: gtk::SpinButton,
+	carousel: libhandy::Carousel,
+	part_selection: gtk::ComboBoxText,
+	deck: libhandy::Deck,
+}
 
-fn main() {
+impl actix::Actor for AppActor {
+	type Context = actix::Context<Self>;
+
+	fn started(&mut self, ctx: &mut Self::Context) {
+		let application = &self.application;
+		let window = &self.widgets.window;
+		// window.set_application(Some(&self.application)); // <-- This line segfaults
+		window.set_position(gtk::WindowPosition::Center);
+		window.add_events(
+			gdk::EventMask::STRUCTURE_MASK
+				| gdk::EventMask::BUTTON_PRESS_MASK
+				| gdk::EventMask::KEY_PRESS_MASK,
+		);
+
+		let quit = gio::SimpleAction::new("quit", None);
+		quit.connect_activate(
+			clone!(@weak application => @default-panic, move |_action, _parameter| {
+				println!("Quit for real");
+				application.quit();
+			}),
+		);
+		application.add_action(&quit);
+		application.set_accels_for_action("app.quit", &["<Primary>Q"]);
+		window.connect_destroy(clone!(@weak application => @default-panic, move |_| {
+			println!("Destroy quit");
+			application.quit();
+		}));
+
+		window.show_all();
+
+		use actix::AsyncContext;
+		let addr = ctx.address();
+		/* Spawn library actor once library is loaded */
+		// std::thread::spawn(move || {
+			// let addr = addr;
+			// println!("Loading library");
+			// let library = futures::executor::block_on(library::Library::load()).unwrap();
+			// println!("Loaded library");
+			// addr.try_send(CreateLibraryActor(library)).unwrap();
+		// });
+		use actix::Handler;
+		// self.handle(CreateLibraryActor(library), ctx);
+	}
+
+	fn stopped(&mut self, _ctx: &mut Self::Context) {
+		println!("Actor Quit");
+		// gtk::main_quit();
+	}
+}
+
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct CreateLibraryActor(library::Library);
+
+impl actix::Handler<CreateLibraryActor> for AppActor {
+	type Result = ();
+
+	fn handle(&mut self, msg: CreateLibraryActor, ctx: &mut Self::Context) -> Self::Result {
+		let library = msg.0;
+		self.builder.actor()
+			.connect_signals::<LibrarySignal>()
+			.create(|_ctx| {
+				LibraryActor {
+					widgets: self.builder.widgets().unwrap(),
+					library: Rc::new(RefCell::new(library)),
+					song_actor: self.song_actor.clone(),
+				}
+			});
+	}
+}
+
+#[derive(woab::BuilderSignal, Debug)]
+enum AppSignal {
+	// WindowDestroy
+}
+
+impl actix::StreamHandler<AppSignal> for AppActor {
+	fn handle(&mut self, signal: AppSignal, _ctx: &mut Self::Context) {
+		println!("A: {:?}", signal);
+		// match signal {
+		// 	AppSignal::WindowDestroy => {},
+		// }
+	}
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.viewer"),
 		gio::ApplicationFlags::NON_UNIQUE,
 	)
 	.expect("Initialization failed...");
 
-	// let editor = true;
-	application.connect_activate(move |app| {
-		build_ui(app);
-	});
-
-	// When activated, shuts down the application
-	let quit = gio::SimpleAction::new("quit", None);
-	quit.connect_activate(
-		clone!(@weak application => @default-panic, move |_action, _parameter| {
-			application.quit();
-		}),
-	);
-	application.add_action(&quit);
-	application.connect_startup(|application| {
+	application.connect_startup(|_application| {
+		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
+		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
-		application.set_accels_for_action("app.quit", &["<Primary>Q"]);
+		woab::run_actix_inside_gtk_event_loop("my-WoAB-app").unwrap(); // <===== IMPORTANT!!!
+		println!("Woab started");
 	});
 
-	// application.run(&args().collect::<Vec<_>>());
+	application.connect_activate(move |application| {
+		let builder = gtk::Builder::from_file("res/viewer.glade");
+		let builder = Rc::new(woab::BuilderConnector::from(builder));
+
+		let song_actor = builder.actor()
+			.connect_signals::<SongEvent>()
+			.create(|_ctx| SongActor::new(builder.widgets().unwrap(), application.clone()));
+
+		builder.actor()
+			.connect_signals::<FullscreenSignal>()
+			.create(|_ctx| {
+				FullscreenActor {
+					widgets: builder.widgets().unwrap(),
+					application: application.clone(),
+					is_fullscreen: false,
+				}
+			});
+
+		builder.actor()
+			.connect_signals::<LibrarySignal>()
+			.create(|_ctx| {
+				println!("Loading library");
+				let library = futures::executor::block_on(library::Library::load()).unwrap();
+				println!("Loaded library");
+				LibraryActor {
+					widgets: builder.widgets().unwrap(),
+					library: Rc::new(RefCell::new(library)),
+					song_actor: song_actor.clone(),
+				}
+			});
+
+		builder.actor()
+			.connect_signals::<AppSignal>()
+			.create({
+				let builder = &builder;
+				clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
+					let widgets: AppWidgets = builder.widgets().unwrap();
+					widgets.window.set_application(Some(&application));
+					AppActor {
+						widgets,
+						application,
+						song_actor,
+						builder: builder.clone(),
+					}
+				})
+			});
+	});
+
 	application.run(&[]);
+	Ok(())
 }
