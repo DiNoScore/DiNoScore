@@ -528,12 +528,16 @@ impl AppActor {
 					title: None,
 					composer: None,
 				};
-				let thumbnail = SongFile::generate_thumbnail(&song, self.pages.get(0).map(|page| &*page.0));
+				let iter_pages = || self.pages.iter()
+					.map(|page| &*page.0)
+					.map(From::from);
+				let thumbnail = SongFile::generate_thumbnail(&song, iter_pages());
 				SongFile::save(
 					file.get_path().unwrap(),
 					song,
-					self.pages.iter().map(|page| &*page.0),
+					iter_pages(),
 					thumbnail,
+					false, // TODO overwrite?!
 				);
 			}
 		}

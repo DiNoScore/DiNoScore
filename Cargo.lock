@@ -854,6 +854,7 @@ dependencies = [
  "async-std",
  "blocking 0.5.2",
  "cairo-rs",
+ "clap",
  "derive_more",
  "either",
  "fragile",
@@ -867,6 +868,7 @@ dependencies = [
  "libhandy",
  "lru-disk-cache",
  "maplit",
+ "maybe-owned",
  "midi-event",
  "noisy_float",
  "once_cell",
@@ -1781,6 +1783,12 @@ name = "matches"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
+
+[[package]]
+name = "maybe-owned"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "maybe-uninit"

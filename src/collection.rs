@@ -41,7 +41,6 @@ impl SongFile {
 
 	pub async fn new(
 		path: impl AsRef<Path>,
-		// image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
 	) -> Self {
 		let path = path.as_ref();
 		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
@@ -144,15 +143,23 @@ impl SongFile {
 	pub fn save<'a, P: AsRef<std::path::Path>>(
 		path: P,
 		metadata: SongMeta,
-		pages: impl Iterator<Item = &'a poppler::PopplerPage>,
+		pages: impl Iterator<Item = maybe_owned::MaybeOwned<'a, poppler::PopplerPage>>,
 		thumbnail: Option<gdk_pixbuf::Pixbuf>,
+		overwrite: bool,
 	) {
-		let mut writer = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+		let file = std::fs::OpenOptions::new()
+			.write(true)
+			.create_new(!overwrite)
+			.create(overwrite)
+			.truncate(overwrite)
+			.open(path)
+			.unwrap();
+		let mut writer = zip::ZipWriter::new(file);
 
 		writer
 			.start_file("staves.json", zip::write::FileOptions::default())
 			.unwrap();
-		serde_json::to_writer(&mut writer, &metadata).unwrap();
+		serde_json::to_writer(&mut writer, &SongMetaVersioned::from(metadata)).unwrap();
 
 		{
 			println!("Saving sheets");
@@ -192,9 +199,9 @@ impl SongFile {
 	}
 
 	// TODO make associated method
-	pub fn generate_thumbnail(song: &SongMeta, page: Option<&poppler::PopplerPage>) -> Option<gdk_pixbuf::Pixbuf> {
-		let page = page?;
+	pub fn generate_thumbnail<'a>(song: &SongMeta, mut pages: impl Iterator<Item = maybe_owned::MaybeOwned<'a, poppler::PopplerPage>>) -> Option<gdk_pixbuf::Pixbuf> {
 		let staff = song.staves.first()?;
+		let page = pages.nth(*staff.page)?;
 
 		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100).unwrap();
 		let context = cairo::Context::new(&surface);
