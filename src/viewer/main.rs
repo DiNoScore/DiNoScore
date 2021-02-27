@@ -41,7 +41,14 @@ impl SongRenderer {
 
 		'outer: loop {
 			/* Cannot use iterators here because of borrow checking */
-			for num in 0..update.layout.pages.len() {
+			for mut num in 0..update.layout.pages.len() {
+				/* Do the currently visible page first, by swapping the indices */
+				if num == 0 {
+					num = *update.current_page;
+				} else if num == *update.current_page {
+					num = 0;
+				}
+
 				let page = &update.layout.pages[num];
 				/* Short circuit if there is newer data to be processed */
 				if let Some(new_update) = fetch_latest(&rx) {
@@ -123,7 +130,7 @@ impl SongRenderer {
 
 struct UpdateLayout {
 	layout: Arc<layout::PageLayout>,
-	current_page: i32,
+	current_page: collection::PageIndex,
 	width: i32,
 	height: i32,
 }
@@ -221,6 +228,7 @@ struct SongActor {
 
 #[derive(woab::WidgetsFromBuilder)]
 struct SongWidgets {
+	header: libhandy::HeaderBar,
 	carousel: libhandy::Carousel,
 	deck: libhandy::Deck,
 	part_selection: gtk::ComboBoxText,
@@ -230,19 +238,21 @@ impl actix::Actor for SongActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
+		let connector = SongEvent::connector().route_to::<Self>(ctx);
+
 		self.application.add_action(&self.next);
 		self.application.set_accels_for_action("app.next_page", &["<Primary>N", "<Alt>N", "Right"]);
-		woab::connect_signal_handler::<Self, _, _>(&self.next, "activate", "Next", ctx);
-	
+		connector.connect(&self.next, "activate", "Next").unwrap();
+
 		self.application.add_action(&self.previous);
 		self.application.set_accels_for_action("app.previous_page", &["<Primary>P", "<Alt>P", "Left"]);
-		woab::connect_signal_handler::<Self, _, _>(&self.previous, "activate", "Previous", ctx);
+		connector.connect(&self.previous, "activate", "Previous").unwrap();
 
 		let go_back_action = gio::SimpleAction::new("go-back", None);
-		woab::connect_signal_handler::<Self, _, _>(&go_back_action, "activate", "GoBack", ctx);
 		self.application.add_action(&go_back_action);
+		connector.connect(&go_back_action, "activate", "GoBack").unwrap();
 
-		let signal_handler = woab::make_signal_handler::<Self, _>("SelectPart", ctx);
+		let signal_handler = connector.handler("SelectPart").unwrap();
 		self.part_selection_changed_signal = Some(
 			self.widgets.part_selection.connect_local("changed".as_ref(), false, signal_handler).unwrap()
 		);
@@ -267,6 +277,13 @@ impl SongActor {
 		let renderer = SongRenderer::spawn(song.clone(), pdf, ctx.address());
 		let width = self.widgets.carousel.get_allocated_width();
 		let height = self.widgets.carousel.get_allocated_height();
+
+		self.widgets.header.set_title(
+			song.title.as_ref()
+				.map(|title| format!("{} – DiNoScore", title))
+				.as_deref()
+				.or(Some("DiNoScore"))
+		);
 
 		let song = SongState::new(renderer, song, 3, width as f64, height as f64);
 
@@ -318,10 +335,11 @@ impl SongActor {
 			area.show();
 		}
 		carousel.queue_draw();
+		carousel.scroll_to_full(&carousel.get_children()[*song.page], 0);
 
 		song.renderer.send(UpdateLayout {
 			layout: song.layout.clone(),
-			current_page: 0,
+			current_page: song.page,
 			width,
 			height,
 		}).unwrap();
@@ -345,7 +363,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 			if page.song != song.song.version_uuid {
 				return;
 			}
-			// println!("Updating page {}", page.index);
+			println!("Updating page {}", page.index);
 			self.pages[*page.index].0.replace(Some(page.surface.unwrap()));
 			self.pages[*page.index].1.queue_draw();
 			// dbg!(&self.pages);
@@ -371,17 +389,35 @@ impl actix::Handler<LoadSong> for SongActor {
 
 #[derive(woab::BuilderSignal)]
 enum SongEvent {
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	WindowSizeChanged,
 	Next,
 	Previous,
 	GoBack,
-	#[signal(ret = false)]
 	CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
-	#[signal(ret = false)]
 	CarouselButtonPress(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselPageChanged(libhandy::Carousel, u32),
 	SelectPart,
+}
+
+impl SongEvent {
+	fn inhibit(&self) -> Option<gtk::Inhibit> {
+		match self {
+			Self::CarouselKeyPress(_carousel, event) => {
+				use gdk::keys::constants;
+				Some(match event.get_keyval() {
+					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
+						gtk::Inhibit(true)
+					},
+					constants::Left | constants::KP_Left | constants::BackSpace => {
+						gtk::Inhibit(true)
+					},
+					_ => gtk::Inhibit(false),
+				})
+			},
+			_ => None,
+		}
+	}
 }
 
 impl actix::StreamHandler<SongEvent> for SongActor {
@@ -422,14 +458,12 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				match event.get_keyval() {
 					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
 						self.next.activate(None);
-						gtk::Inhibit(true)
 					},
 					constants::Left | constants::KP_Left | constants::BackSpace => {
 						self.previous.activate(None);
-						gtk::Inhibit(true)
-					}
-					_ => gtk::Inhibit(false)
-				}; // TODO inhibit
+					},
+					_ => {},
+				}
 			},
 			// TODO add cooldown
 			// TODO don't trigger on top of a swipe gesture
@@ -491,25 +525,21 @@ impl actix::Actor for LibraryActor {
 		let store_songs = &self.widgets.store_songs;
 		store_songs.set_sort_column_id(gtk::SortColumn::Index(1), gtk::SortType::Ascending);
 
-		for (i, (_uuid, song)) in library.borrow().songs.iter().enumerate() {
+		for (_uuid, song) in library.borrow().songs.iter() {
 			// TODO clean this up
-			/* Add an item with the name and UUID */
+			/* Add an item with the name and UUID
+			 * Index, column, value
+			 * The columns are: thumbnail, title, UUID
+			 */
 			store_songs.set(
 				&store_songs.append(),
-				&[1, 2],
+				&[0, 1, 2],
 				&[
+					&song.thumbnail(),
 					&song.title().unwrap_or("<no title>").to_value(),
 					&song.uuid().to_string().to_value(),
-				]);
-			/* Optionally set the image */
-			if let Some(thumbnail) = song.thumbnail() {
-				/* Index, column, value */
-				store_songs.set(
-					&store_songs.iter_nth_child(None, i as i32).unwrap(),
-					&[0],
-					&[&thumbnail],
-				);
-			}
+				]
+			);
 		}
 		self.widgets.library_grid.show();
 	}
@@ -574,7 +604,7 @@ struct FullscreenWidgets {
 enum FullscreenSignal {
 	Fullscreen,
 	Unfullscreen,
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	WindowState(gtk::Window, #[signal(event)] gdk::EventWindowState),
 }
 
@@ -582,18 +612,18 @@ impl actix::Actor for FullscreenActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
+		let connector = FullscreenSignal::connector().route_to::<Self>(ctx);
 		let application = &self.application;
 
 		let enter_fullscreen = gio::SimpleAction::new("enter_fullscreen", None);
 		application.add_action(&enter_fullscreen);
 		application.set_accels_for_action("app.enter_fullscreen", &["F11"]);
-
-		woab::connect_signal_handler::<Self, _, _>(&enter_fullscreen, "activate", "Fullscreen", ctx);
+		connector.connect(&enter_fullscreen, "activate", "Fullscreen").unwrap();
 
 		let leave_fullscreen = gio::SimpleAction::new("leave_fullscreen", None);
 		application.add_action(&leave_fullscreen);
 		application.set_accels_for_action("app.leave_fullscreen", &["Escape"]);
-		leave_fullscreen.connect_local("activate", false, woab::make_signal_handler::<Self, _>("Unfullscreen", ctx)).unwrap();
+		connector.connect(&leave_fullscreen, "activate", "Unfullscreen").unwrap();
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -688,8 +718,8 @@ impl actix::Actor for AppActor {
 
 		window.show_all();
 
-		use actix::AsyncContext;
-		let addr = ctx.address();
+		// use actix::AsyncContext;
+		// let addr = ctx.address();
 		/* Spawn library actor once library is loaded */
 		// std::thread::spawn(move || {
 			// let addr = addr;
@@ -698,7 +728,7 @@ impl actix::Actor for AppActor {
 			// println!("Loaded library");
 			// addr.try_send(CreateLibraryActor(library)).unwrap();
 		// });
-		use actix::Handler;
+		// use actix::Handler;
 		// self.handle(CreateLibraryActor(library), ctx);
 	}
 
@@ -718,7 +748,7 @@ impl actix::Handler<CreateLibraryActor> for AppActor {
 	fn handle(&mut self, msg: CreateLibraryActor, ctx: &mut Self::Context) -> Self::Result {
 		let library = msg.0;
 		self.builder.actor()
-			.connect_signals::<LibrarySignal>()
+			.connect_signals(LibrarySignal::connector())
 			.create(|_ctx| {
 				LibraryActor {
 					widgets: self.builder.widgets().unwrap(),
@@ -763,11 +793,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let builder = Rc::new(woab::BuilderConnector::from(builder));
 
 		let song_actor = builder.actor()
-			.connect_signals::<SongEvent>()
+			.connect_signals(SongEvent::connector().inhibit(SongEvent::inhibit))
 			.create(|_ctx| SongActor::new(builder.widgets().unwrap(), application.clone()));
 
 		builder.actor()
-			.connect_signals::<FullscreenSignal>()
+			.connect_signals(FullscreenSignal::connector())
 			.create(|_ctx| {
 				FullscreenActor {
 					widgets: builder.widgets().unwrap(),
@@ -777,7 +807,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			});
 
 		builder.actor()
-			.connect_signals::<LibrarySignal>()
+			.connect_signals(LibrarySignal::connector())
 			.create(|_ctx| {
 				println!("Loading library");
 				let library = futures::executor::block_on(library::Library::load()).unwrap();
@@ -790,7 +820,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			});
 
 		builder.actor()
-			.connect_signals::<AppSignal>()
+			.connect_signals(AppSignal::connector())
 			.create({
 				let builder = &builder;
 				clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {

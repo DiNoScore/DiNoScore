@@ -68,13 +68,13 @@ impl actix::Actor for EditorActor {
 #[allow(clippy::enum_variant_names)]
 #[derive(woab::BuilderSignal, Debug)]
 pub enum EditorSignal {
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	EditorKeyPress,
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	EditorKeyRelease,
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	EditorButtonPress(gtk::DrawingArea, #[signal(event)] gdk::EventButton),
-	#[signal(ret = false)]
+	#[signal(inhibit = false)]
 	EditorButtonRelease,
 }
 

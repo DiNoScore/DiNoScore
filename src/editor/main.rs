@@ -68,8 +68,10 @@ impl actix::Actor for AppActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
+		let connector = AppSignal::connector().route_to::<Self>(ctx);
 		let application = &self.application;
 		let window = &self.widgets.window;
+
 		// window.set_application(Some(&self.application)); // <-- This line segfaults
 		window.set_position(gtk::WindowPosition::Center);
 		window.add_events(
@@ -80,17 +82,17 @@ impl actix::Actor for AppActor {
 		self.application.set_menubar(Some(&self.widgets.menubar));
 
 		let new = gio::SimpleAction::new("new", None);
-		woab::connect_signal_handler::<Self, _, _>(&new, "activate", "NewDocument", ctx);
+		connector.connect(&new, "activate", "NewDocument").unwrap();
 		application.add_action(&new);
 		application.set_accels_for_action("app.new", &["<Primary>N"]);
 	
 		let open = gio::SimpleAction::new("open", None);
-		woab::connect_signal_handler::<Self, _, _>(&open, "activate", "OpenDocument", ctx);
+		connector.connect(&open, "activate", "OpenDocument").unwrap();
 		application.add_action(&open);
 		application.set_accels_for_action("app.open", &["<Primary>O"]);
 	
 		let save = gio::SimpleAction::new("save", None);
-		woab::connect_signal_handler::<Self, _, _>(&save, "activate", "SaveDocument", ctx);
+		connector.connect(&save, "activate", "SaveDocument").unwrap();
 		application.add_action(&save);
 		application.set_accels_for_action("app.save", &["<Primary>S"]);
 
@@ -108,8 +110,7 @@ impl actix::Actor for AppActor {
 			application.quit();
 		}));
 
-		woab::connect_signal_handler::<Self, _, _>(&self.widgets.pages_preview, "selection-changed", "SelectPage", ctx);
-		// woab::connect_signal_handler::<Self, _, _>(&self.widgets.editor, "draw", "DrawPage", ctx);
+		connector.connect(&self.widgets.pages_preview, "selection-changed", "SelectPage").unwrap();
 
 		window.show_all();
 	}
@@ -537,7 +538,7 @@ impl AppActor {
 					song,
 					iter_pages(),
 					thumbnail,
-					false, // TODO overwrite?!
+					false,// TODO overwrite?!
 				);
 			}
 		}
@@ -626,11 +627,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let builder = woab::BuilderConnector::from(builder);
 
 		let app_builder = builder.actor::<AppActor>()
-			.connect_signals::<AppSignal>();
+			.connect_signals(AppSignal::connector());
 
 		let editor = builder.actor()
-			.connect_signals::<EditorSignal>()
-			.run(EditorActor::new(app_builder.context().address(), builder.widgets().unwrap()));
+			.connect_signals(EditorSignal::connector())
+			.start(EditorActor::new(todo!("app_builder.context().address()"), builder.widgets().unwrap()));
 
 		app_builder.create(
 			clone!(@weak application => @default-panic, move |ctx| {

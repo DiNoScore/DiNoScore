@@ -122,7 +122,6 @@
             <child>
               <object class="HdyHeaderBar" id="header">
                 <property name="show-close-button">True</property>
-                <property name="title" translatable="yes">First GTK+ Program</property>
                 <property name="spacing">10</property>
                 <child>
                   <object class="GtkModelButton">
