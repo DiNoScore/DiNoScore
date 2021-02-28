@@ -52,8 +52,6 @@ impl Staff {
 			let cached: gdk_pixbuf::Pixbuf = image_cache
 				.get(&key)
 				.map(gio::ReadInputStream::new_seekable)
-				// TODO make async again
-				// .and_then(|stream| gdk_pixbuf::Pixbuf::from_stream_async_future(&stream).await)
 				.map(|stream| {
 					gdk_pixbuf::Pixbuf::from_stream(&stream, None::<&gio::Cancellable>).unwrap()
 				})
