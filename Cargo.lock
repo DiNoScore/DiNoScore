@@ -3287,7 +3287,7 @@ dependencies = [
 [[package]]
 name = "xdg"
 version = "2.2.0"
-source = "git+https://github.com/piegamesde/rust-xdg#dffa89a2cbaa2c6c7964a1deaa69bac57a4a79fe"
+source = "git+https://github.com/piegamesde/rust-xdg#d9f887ea46f1b192341eefc66a3323af37b25174"
 dependencies = [
  "dirs",
 ]

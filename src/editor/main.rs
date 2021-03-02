@@ -608,6 +608,13 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let orig_hook = std::panic::take_hook();
+	std::panic::set_hook(Box::new(move |panic_info| {
+		// invoke the default handler and exit the process
+		orig_hook(panic_info);
+		std::process::exit(1);
+	}));
+
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.editor"),
 		gio::ApplicationFlags::NON_UNIQUE,
@@ -618,7 +625,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
-		woab::run_actix_inside_gtk_event_loop("my-WoAB-app").unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop("DiNoScore").unwrap(); // <===== IMPORTANT!!!
 	});
 	println!("D: {:?}", std::thread::current().id());
 
@@ -629,9 +636,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let app_builder = builder.actor::<AppActor>()
 			.connect_signals(AppSignal::connector());
 
+		use woab::BuilderSignal;
 		let editor = builder.actor()
 			.connect_signals(EditorSignal::connector())
-			.start(EditorActor::new(todo!("app_builder.context().address()"), builder.widgets().unwrap()));
+			.start(EditorActor::new(app_builder.actor_context().address(), builder.widgets().unwrap()));
 
 		app_builder.create(
 			clone!(@weak application => @default-panic, move |ctx| {

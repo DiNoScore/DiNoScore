@@ -19,6 +19,8 @@ When using a foot switch to turn the page, bind the page turning actions to `Alt
 
 There's also a small CLI for utility stuff. At the moment, the only feature it has is to bulk-upgrade song files to the newest version of the format. Run it with `cargo run --locked --release --bin cli -- upgrade --help`
 
+Windows users please checkout the [separate documentation](./Windows.md)
+
 ## License
 
-Until everything is sorted out, all parts that depend on GPL code are GPL-licensed as well.
+Until everything is sorted out, all parts that depend on GPL code are GPL-licensed as well. All DiNoScore applications will be licensed under the GPL anyways. But the plan is to make a library with common functionality that can be used under the MPL.

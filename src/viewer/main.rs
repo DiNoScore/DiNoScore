@@ -861,6 +861,13 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let orig_hook = std::panic::take_hook();
+	std::panic::set_hook(Box::new(move |panic_info| {
+		// invoke the default handler and exit the process
+		orig_hook(panic_info);
+		std::process::exit(1);
+	}));
+
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.viewer"),
 		gio::ApplicationFlags::NON_UNIQUE,
@@ -871,7 +878,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
-		woab::run_actix_inside_gtk_event_loop("my-WoAB-app").unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop("DiNoScore").unwrap(); // <===== IMPORTANT!!!
 		println!("Woab started");
 	});
 

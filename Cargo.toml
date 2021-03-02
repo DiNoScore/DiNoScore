@@ -66,7 +66,7 @@ uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
 async-std = { version = "1.9.0", features = [ "unstable" ] }
 lru-disk-cache = "0.4.1"
 woab = { git = "https://github.com/idanarye/woab.git" }
-actix = "^0.9"
+actix = { version = "^0.9", default-features = false }
 tokio = "^0.2"
 fragile = "1.0.0"
 unsafe-send-sync = "0.1.0"
