@@ -8,27 +8,27 @@ let
 in with pkgs;
 mkShell rec {
   buildInputs = [
-   cargo
-   poppler
-   poppler_data
-   pkg-config
-   gnome3.gtk3
-   gdk-pixbuf
-   atk
-   libhandy
-   pango
-   opencv
-   llvmPackages.clang
-   llvmPackages.libclang
-   portmidi
-   libtensorflow-bin
-   curl.out
-   lld
+    cargo
+    poppler
+    poppler_data
+    pkg-config
+    gnome3.gtk3
+    gdk-pixbuf
+    atk
+    libhandy
+    pango
+    opencv
+    llvmPackages.clang
+    llvmPackages.libclang
+    portmidi
+    libtensorflow-bin
+    curl.out
+    lld
 
-   stdenv.cc.cc.lib
-   bzip2
-   glib
-   cairo
+    stdenv.cc.cc.lib
+    bzip2
+    glib
+    cairo
   ];
   shellHook = ''
     export LD_LIBRARY_PATH="${stdenv.lib.makeLibraryPath buildInputs}:$${LD_LIBRARY_PATH}";
@@ -38,4 +38,4 @@ mkShell rec {
     export CARGO_TARGET_DIR=./target
     export RUSTC_WRAPPER=
   '';
- }
+}
