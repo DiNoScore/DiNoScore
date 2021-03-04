@@ -44,6 +44,7 @@ struct FullscreenWidgets {
 enum FullscreenSignal {
 	Fullscreen,
 	Unfullscreen,
+	ToggleFullscreen,
 	#[signal(inhibit = false)]
 	WindowState(gtk::Window, #[signal(event)] gdk::EventWindowState),
 }
@@ -57,13 +58,16 @@ impl actix::Actor for FullscreenActor {
 
 		let enter_fullscreen = gio::SimpleAction::new("enter_fullscreen", None);
 		application.add_action(&enter_fullscreen);
-		application.set_accels_for_action("app.enter_fullscreen", &["F11"]);
 		connector.connect(&enter_fullscreen, "activate", "Fullscreen").unwrap();
 
 		let leave_fullscreen = gio::SimpleAction::new("leave_fullscreen", None);
 		application.add_action(&leave_fullscreen);
-		application.set_accels_for_action("app.leave_fullscreen", &["Escape"]);
 		connector.connect(&leave_fullscreen, "activate", "Unfullscreen").unwrap();
+
+		let toggle_fullscreen = gio::SimpleAction::new("toggle_fullscreen", None);
+		application.add_action(&toggle_fullscreen);
+		application.set_accels_for_action("app.toggle_fullscreen", &["F11"]);
+		connector.connect(&toggle_fullscreen, "activate", "ToggleFullscreen").unwrap();
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -81,6 +85,14 @@ impl actix::StreamHandler<FullscreenSignal> for FullscreenActor {
 			FullscreenSignal::Unfullscreen => {
 				println!("Leave fullscreen");
 				self.widgets.window.unfullscreen();
+			},
+			FullscreenSignal::ToggleFullscreen => {
+				println!("Toggle fullscreen");
+				if self.is_fullscreen {
+					self.widgets.window.unfullscreen();
+				} else {
+					self.widgets.window.fullscreen();
+				}
 			},
 			FullscreenSignal::WindowState(window, state) => {
 				if state

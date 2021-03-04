@@ -27,7 +27,6 @@
     <property name="default_height">300</property>
     <property name="title" translatable="yes">DiNoScore</property>
     <signal name="window-state-event" handler="WindowState" swapped="no" />
-    <signal name="configure-event" handler="WindowSizeChanged" swapped="no" />
     <!-- <signal name="destroy" handler="WindowDestroy" swapped="no" /> -->
     <child>
       <object class="HdyDeck" id="deck">
@@ -35,6 +34,10 @@
         <property name="can-swipe-forward">False</property>
         <property name="transition-type">over</property>
         <property name="visible-child">library_deck</property>
+        <property name="hexpand">True</property>
+        <property name="vexpand">True</property>
+        <property name="halign">fill</property>
+        <property name="halign">fill</property>
         <child>
           <object class="GtkBox" id="library_deck">
             <property name="orientation">vertical</property>
@@ -109,6 +112,7 @@
                         <property name="pixbuf-column">0</property>
                         <property name="text-column">1</property>
                         <signal name="item-activated" handler="LoadSong" swapped="no"/>
+                        <signal name="selection-changed" handler="SongSelected" swapped="no"/>
                       </object>
                     </child>
                   </object>
@@ -122,7 +126,7 @@
                     <property name="can-focus">False</property>
                     <property name="hexpand">False</property>
                     <property name="transition-type">slide-left</property>
-                    <property name="reveal-child">True</property>
+                    <property name="reveal-child">False</property>
                     <child>
                       <object class="GtkScrolledWindow">
                         <property name="visible">True</property>
@@ -133,6 +137,8 @@
                             <property name="visible">False</property>
                             <property name="can_focus">False</property>
                             <property name="label" translatable="yes">Play</property>
+                            <property name="sensitive" bind-source="sidebar_revealer" bind-property="reveal-child" bind-flags="sync-create"/>
+                            <signal name="clicked" handler="PlaySelected" />
                           </object>
                         </child>
                       </object>
@@ -147,7 +153,11 @@
           </object>
         </child>
         <child>
-          <object class="GtkBox">
+          <object class="GtkBox" id="carousel_box">
+            <property name="hexpand">True</property>
+            <property name="vexpand">True</property>
+            <property name="halign">fill</property>
+            <property name="halign">fill</property>
             <property name="orientation">vertical</property>
             <property name="spacing">10</property>
             <property name="can_focus">False</property>
@@ -214,11 +224,20 @@
             </child>
             <child>
               <object class="HdyCarousel" id="carousel">
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <property name="halign">fill</property>
+                <property name="halign">fill</property>
                 <property name="allow-mouse-drag">True</property>
                 <signal name="button-press-event" handler="CarouselButtonPress" />
+                <signal name="button-release-event" handler="CarouselButtonRelease" />
                 <signal name="key-press-event" handler="CarouselKeyPress" />
                 <signal name="page-changed" handler="CarouselPageChanged" />
+                <signal name="size-allocate" handler="CarouselSizeChanged" swapped="no" />
               </object>
+              <packing>
+                <property name="expand">True</property>
+              </packing>
             </child>
           </object>
         </child>

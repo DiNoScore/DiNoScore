@@ -281,6 +281,7 @@ pub struct SongActor {
 struct SongWidgets {
 	header: libhandy::HeaderBar,
 	carousel: libhandy::Carousel,
+	carousel_box: gtk::Box,
 	deck: libhandy::Deck,
 	part_selection: gtk::ComboBoxText,
 }
@@ -301,6 +302,7 @@ impl actix::Actor for SongActor {
 
 		let go_back_action = gio::SimpleAction::new("go-back", None);
 		self.application.add_action(&go_back_action);
+		self.application.set_accels_for_action("app.go-back", &["Escape"]);
 		connector.connect(&go_back_action, "activate", "GoBack").unwrap();
 
 		let signal_handler = connector.handler("SelectPart").unwrap();
@@ -352,13 +354,16 @@ impl SongActor {
 	}
 
 	fn on_resize(&mut self) {
+		let width = self.widgets.carousel.get_allocated_width();
+		let height = self.widgets.carousel.get_allocated_height();
+		if width == 1 || height == 1 {
+			return;
+		}
+
 		let song = match &mut self.song {
 			Some(song) => song,
 			None => return,
 		};
-		// TODO fix that the allocated size initially is 1
-		let width = self.widgets.carousel.get_allocated_width().max(10);
-		let height = self.widgets.carousel.get_allocated_height().max(10);
 
 		song.change_size(width as f64, height as f64, 3, 1.0);
 
@@ -382,7 +387,7 @@ impl SongActor {
 					// 	context.paint();
 					// 	gtk::Inhibit::default()
 					// });
-		
+
 					carousel.add(&area);
 					area.show();
 				}
@@ -429,10 +434,10 @@ impl actix::Handler<UpdatePage> for SongActor {
 			let area: &gtk::DrawingArea = area.downcast_ref().unwrap();
 			let surface = page.surface.unwrap();
 			area.connect_draw(move |area, context| {
-				// context.set_source_rgb(1.0, 0.0, 1.0);
-				// context.paint();
+				context.set_source_rgb(1.0, 1.0, 1.0);
+				context.paint();
 				if surface.get_width() != area.get_allocated_width() 
-				|| surface.get_height() != area.get_allocated_height()  {
+				|| surface.get_height() != area.get_allocated_height() {
 					/* Scaling is simply too slow */
 					// context.scale(
 					// 	area.get_allocated_width() as f64 / surface.get_width() as f64,
@@ -472,13 +477,13 @@ impl actix::Handler<LoadSong> for SongActor {
 
 #[derive(woab::BuilderSignal)]
 enum SongEvent {
-	#[signal(inhibit = false)]
-	WindowSizeChanged,
 	Next,
 	Previous,
 	GoBack,
+	CarouselSizeChanged,
 	CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
 	CarouselButtonPress(libhandy::Carousel, #[signal(event)] gdk::EventButton),
+	CarouselButtonRelease(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselPageChanged(libhandy::Carousel, u32),
 	SelectPart,
 }
@@ -486,7 +491,7 @@ enum SongEvent {
 impl SongEvent {
 	fn inhibit(&self) -> Option<gtk::Inhibit> {
 		match self {
-			Self::CarouselKeyPress(_carousel, event) => {
+			SongEvent::CarouselKeyPress(_carousel, event) => {
 				use gdk::keys::constants;
 				Some(match event.get_keyval() {
 					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
@@ -503,6 +508,10 @@ impl SongEvent {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
 				Some(gtk::Inhibit((0.0..0.2).contains(&x) || (0.8..1.0).contains(&x)))
 			},
+			SongEvent::CarouselButtonRelease(carousel, event) => {
+				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
+				Some(gtk::Inhibit((0.0..0.2).contains(&x) || (0.8..1.0).contains(&x)))
+			},
 			_ => None,
 		}
 	}
@@ -512,7 +521,7 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 	fn handle(&mut self, signal: SongEvent, _ctx: &mut Self::Context) {
 		let carousel = &self.widgets.carousel;
 		match signal {
-			SongEvent::WindowSizeChanged => self.on_resize(),
+			SongEvent::CarouselSizeChanged => self.on_resize(),
 			SongEvent::Next => {
 				if self.song.is_none() {
 					return;
@@ -558,12 +567,19 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 			// TODO add cooldown
 			// TODO don't trigger on top of a swipe gesture
 			SongEvent::CarouselButtonPress(carousel, event) => {
+			},
+			SongEvent::CarouselButtonRelease(carousel, event) => {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
 				if (0.0..0.2).contains(&x) {
 					self.previous.activate(None);
 				} else if (0.8..1.0).contains(&x) {
 					self.next.activate(None);
 				}
+				// if (0.0..0.5).contains(&x) {
+				// 	self.previous.activate(None);
+				// } else if (0.5..1.0).contains(&x) {
+				// 	self.next.activate(None);
+				// }
 			},
 			SongEvent::CarouselPageChanged(_carousel, page) => {
 				let song = self.song.as_mut().unwrap();

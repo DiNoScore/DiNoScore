@@ -130,12 +130,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	)
 	.expect("Initialization failed...");
 
-	application.connect_startup(|_application| {
+	application.connect_startup(|application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
+
 		woab::run_actix_inside_gtk_event_loop("DiNoScore").unwrap(); // <===== IMPORTANT!!!
 		println!("Woab started");
+
+		application.inhibit(
+			Option::<&gtk::Window>::None,
+			gtk::ApplicationInhibitFlags::IDLE,
+			Some("You wouldn't want your screen go blank while playing an instrument"),
+		);
 	});
 
 	application.connect_activate(move |application| {

@@ -73,36 +73,66 @@ impl actix::Actor for LibraryActor {
 	}
 }
 
+impl LibraryActor {
+	fn load_song(&mut self, song: uuid::Uuid) {
+		println!("Loading song: {}", song);
+
+		let mut library = self.library.borrow_mut();
+		let song = library.songs.get_mut(&song).unwrap();
+
+		self.widgets.deck.navigate(libhandy::NavigationDirection::Forward);
+
+		let song_actor = self.song_actor.clone();
+		let mut event = Some(LoadSong {
+			meta: song.index.clone(),
+			pdf: song.load_sheet(),
+		});
+		/* Hack to get the event processed in the correct order */
+		glib::timeout_add_local(50, move || {
+			song_actor.try_send(event.take().unwrap()).unwrap();
+			Continue(false)
+		});
+	}
+}
+
 #[derive(woab::BuilderSignal, Debug)]
 pub enum LibrarySignal {
+	SongSelected(gtk::IconView),
+	PlaySelected(gtk::Button),
 	LoadSong(gtk::IconView, gtk::TreePath),
 }
 
 impl actix::StreamHandler<LibrarySignal> for LibraryActor {
 	fn handle(&mut self, signal: LibrarySignal, _ctx: &mut Self::Context) {
 		match signal {
+			LibrarySignal::SongSelected(_library_grid) => {
+				let song: Option<uuid::Uuid> = {
+					self.widgets.library_grid.get_selected_items()
+						.into_iter()
+						.next() /* There is at most one item */
+						.map(|song| self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&song).unwrap(), 2))
+						.map(|uuid: glib::Value| uuid.get::<glib::GString>().unwrap().unwrap())
+						.map(|uuid| uuid::Uuid::parse_str(uuid.as_str()).unwrap())
+				};
+				self.widgets.sidebar_revealer.set_reveal_child(song.is_some());
+			},
+			LibrarySignal::PlaySelected(_button) => {
+				println!("Activated");
+				let uuid = {
+					/* There is exactly one item */
+					let song = self.widgets.library_grid.get_selected_items().into_iter().next().unwrap();
+					let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&song).unwrap(), 2);
+					uuid::Uuid::parse_str(uuid.get::<glib::GString>().unwrap().unwrap().as_str()).unwrap()
+				};
+				self.load_song(uuid);
+			},
 			LibrarySignal::LoadSong(_library_grid, item) => {
-				println!("Loading song:");
-				let text = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 1)
-					.get::<glib::GString>()
-					.unwrap()
-					.unwrap();
 				let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 2)
 					.get::<glib::GString>()
 					.unwrap()
 					.unwrap();
-				dbg!(&text.as_str());
-				dbg!(&uuid.as_str());
-
-				self.widgets.deck.navigate(libhandy::NavigationDirection::Forward);
-
 				let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
-				let mut library = self.library.borrow_mut();
-				let song = library.songs.get_mut(&uuid).unwrap();
-				self.song_actor.try_send(LoadSong {
-					meta: song.index.clone(),
-					pdf: song.load_sheet(),
-				}).unwrap();
+				self.load_song(uuid);
 			},
 		}
 	}
