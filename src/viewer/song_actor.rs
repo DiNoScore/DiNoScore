@@ -71,7 +71,7 @@ impl SongRenderer {
 				actor.try_send(UpdatePage {
 					index: collection::PageIndex(num),
 					surface: unsafe_send_sync::UnsafeSend::new(surface),
-					song: self.song.version_uuid,
+					layout_id: update.layout.random_id,
 				}).unwrap();
 			}
 
@@ -199,11 +199,14 @@ struct SongState {
 	zoom: f64,
 	/* Backup for when a gesture starts */
 	zoom_before_gesture: Option<f64>,
+	pdf_page_width: f64,
 }
 
 impl SongState {
-	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, columns: usize, width: f64, height: f64) -> Self {
-		let layout = Arc::new(layout::PageLayout::new(&song, width, height, 1.0, columns, 10.0));
+	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, columns: usize, width: f64, height: f64, pdf_page_width: f64) -> Self {
+		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, columns, 10.0));
+		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height, columns));
+		let layout = Arc::new(layout::layout_fixed_scale(&song, width, height, 500.0, pdf_page_width));
 		Self {
 			song,
 			page: 0.into(),
@@ -212,6 +215,7 @@ impl SongState {
 			columns,
 			zoom: 1.0,
 			zoom_before_gesture: None,
+			pdf_page_width,
 		}
 	}
 
@@ -219,7 +223,9 @@ impl SongState {
 		self.columns = columns;
 		self.zoom = zoom;
 		let layout_staff = self.layout.get_center_staff(self.page);
-		self.layout = Arc::new(layout::PageLayout::new(&self.song, width, height, zoom, self.columns, 10.0));
+		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, self.columns, 10.0));
+		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height, self.columns));
+		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, 500.0, self.pdf_page_width));
 		self.page = self.layout.get_page_of_staff(layout_staff);
 	}
 
@@ -271,7 +277,6 @@ pub struct SongActor {
 	application: gtk::Application,
 	/// Always Some once started. Could have used a lazy init cell as well
 	part_selection_changed_signal: Option<glib::SignalHandlerId>,
-	// layout
 	song: Option<SongState>,
 	next: gio::SimpleAction,
 	previous: gio::SimpleAction,
@@ -327,6 +332,8 @@ impl SongActor {
 		use actix::AsyncContext;
 
 		let song = Arc::new(song);
+		// TODO make this per page, and less ugly please
+		let pdf_page_width = pdf.get_page(0).unwrap().get_size().0 as f64;
 		let renderer = SongRenderer::spawn(song.clone(), pdf, ctx.address());
 		let width = self.widgets.carousel.get_allocated_width();
 		let height = self.widgets.carousel.get_allocated_height();
@@ -338,7 +345,7 @@ impl SongActor {
 				.or(Some("DiNoScore"))
 		);
 
-		let song = SongState::new(renderer, song, 3, width as f64, height as f64);
+		let song = SongState::new(renderer, song, 3, width as f64, height as f64, pdf_page_width);
 
 		let parts = song.get_parts();
 		self.widgets.part_selection.remove_all();
@@ -417,8 +424,8 @@ impl SongActor {
 struct UpdatePage {
 	index: collection::PageIndex,
 	surface: unsafe_send_sync::UnsafeSend<cairo::ImageSurface>,
-	/// Song identifier to ignore old data
-	song: uuid::Uuid,
+	/// Unique random identifier to ignore old data
+	layout_id: uuid::Uuid,
 }
 
 impl actix::Handler<UpdatePage> for SongActor {
@@ -426,7 +433,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 
 	fn handle(&mut self, page: UpdatePage, _ctx: &mut Self::Context) -> Self::Result {
 		if let Some(song) = self.song.as_ref() {
-			if page.song != song.song.version_uuid {
+			if page.layout_id != song.layout.random_id {
 				return;
 			}
 			// println!("Updating page {}", page.index);
