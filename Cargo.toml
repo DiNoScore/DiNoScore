@@ -1,6 +1,6 @@
 [package]
 name = "dinoscore"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["piegames <git@piegames.de>"]
 edition = "2018"
 default-run = "viewer"
