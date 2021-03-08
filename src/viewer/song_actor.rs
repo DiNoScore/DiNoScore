@@ -219,13 +219,12 @@ impl SongState {
 		}
 	}
 
-	fn change_size(&mut self, width: f64, height: f64, columns: usize, zoom: f64) {
-		self.columns = columns;
-		self.zoom = zoom;
+	fn change_size(&mut self, width: f64, height: f64) {
 		let layout_staff = self.layout.get_center_staff(self.page);
 		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, self.columns, 10.0));
 		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height, self.columns));
-		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, 500.0, self.pdf_page_width));
+		dbg!(self.zoom);
+		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, 500.0 * self.zoom, self.pdf_page_width));
 		self.page = self.layout.get_page_of_staff(layout_staff);
 	}
 
@@ -280,6 +279,7 @@ pub struct SongActor {
 	song: Option<SongState>,
 	next: gio::SimpleAction,
 	previous: gio::SimpleAction,
+	zoom_gesture: gtk::GestureZoom,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -314,6 +314,12 @@ impl actix::Actor for SongActor {
 		self.part_selection_changed_signal = Some(
 			self.widgets.part_selection.connect_local("changed".as_ref(), false, signal_handler).unwrap()
 		);
+
+		let zoom_gesture = &self.zoom_gesture;
+		connector.connect(zoom_gesture, "begin", "ZoomBegin").unwrap();
+		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
+		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
+		connector.connect(zoom_gesture, "scale-changed", "ZoomScaleChanged").unwrap();
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -325,7 +331,15 @@ impl SongActor {
 	fn new(widgets: SongWidgets, application: gtk::Application) -> Self {
 		let next = gio::SimpleAction::new("next_page", None);
 		let previous = gio::SimpleAction::new("previous_page", None);
-		Self { widgets, application, song: None, next, previous, part_selection_changed_signal: None }
+		Self {
+			zoom_gesture: gtk::GestureZoom::new(&widgets.carousel),
+			widgets,
+			application,
+			song: None,
+			next,
+			previous,
+			part_selection_changed_signal: None
+		}
 	}
 
 	fn load_song(&mut self, ctx: &mut actix::Context<Self>, song: collection::SongMeta, pdf: owned::OwnedPopplerDocument) {
@@ -357,10 +371,10 @@ impl SongActor {
 		self.widgets.part_selection.set_sensitive(relevant);
 
 		self.song = Some(song);
-		self.on_resize();
+		self.update_content(ctx);
 	}
 
-	fn on_resize(&mut self) {
+	fn update_content(&mut self, ctx: &mut actix::Context<Self>) {
 		let width = self.widgets.carousel.get_allocated_width();
 		let height = self.widgets.carousel.get_allocated_height();
 		if width == 1 || height == 1 {
@@ -372,7 +386,7 @@ impl SongActor {
 			None => return,
 		};
 
-		song.change_size(width as f64, height as f64, 3, 1.0);
+		song.change_size(width as f64, height as f64);
 
 		let carousel = &self.widgets.carousel;
 		let new_pages = song.layout.pages.len();
@@ -394,6 +408,9 @@ impl SongActor {
 					// 	context.paint();
 					// 	gtk::Inhibit::default()
 					// });
+					area.add_events(gdk::EventMask::SCROLL_MASK);
+					let connector = SongEvent::connector().route_to::<Self>(ctx);
+					connector.connect(&area, "scroll-event", "AreaScroll").unwrap();
 
 					carousel.add(&area);
 					area.show();
@@ -484,15 +501,26 @@ impl actix::Handler<LoadSong> for SongActor {
 
 #[derive(woab::BuilderSignal)]
 enum SongEvent {
+	/* Switch pages */
 	Next,
 	Previous,
+	/* Unload the song */
 	GoBack,
+	/* From the dropdown */
+	SelectPart,
 	CarouselSizeChanged,
 	CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
 	CarouselButtonPress(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselButtonRelease(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselPageChanged(libhandy::Carousel, u32),
-	SelectPart,
+	/* Events from the zoom gesture */
+	ZoomBegin,
+	ZoomEnd,
+	ZoomCancel,
+	ZoomScaleChanged(gtk::GestureZoom, f64),
+	/* Scroll events on the page, for zooming */
+	#[signal(inhibit = false)]
+	AreaScroll(gtk::DrawingArea, #[signal(event)] gdk::EventScroll),
 }
 
 impl SongEvent {
@@ -513,11 +541,14 @@ impl SongEvent {
 			},
 			SongEvent::CarouselButtonPress(carousel, event) => {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
-				Some(gtk::Inhibit((0.0..0.2).contains(&x) || (0.8..1.0).contains(&x)))
+				Some(gtk::Inhibit((0.0..0.3).contains(&x) || (0.6..1.0).contains(&x)))
 			},
 			SongEvent::CarouselButtonRelease(carousel, event) => {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
-				Some(gtk::Inhibit((0.0..0.2).contains(&x) || (0.8..1.0).contains(&x)))
+				Some(gtk::Inhibit((0.0..0.3).contains(&x) || (0.6..1.0).contains(&x)))
+			},
+			SongEvent::AreaScroll(_area, event) => {
+				Some(gtk::Inhibit(event.get_state().contains(gdk::ModifierType::CONTROL_MASK)))
 			},
 			_ => None,
 		}
@@ -525,10 +556,10 @@ impl SongEvent {
 }
 
 impl actix::StreamHandler<SongEvent> for SongActor {
-	fn handle(&mut self, signal: SongEvent, _ctx: &mut Self::Context) {
+	fn handle(&mut self, signal: SongEvent, ctx: &mut Self::Context) {
 		let carousel = &self.widgets.carousel;
 		match signal {
-			SongEvent::CarouselSizeChanged => self.on_resize(),
+			SongEvent::CarouselSizeChanged => self.update_content(ctx),
 			SongEvent::Next => {
 				if self.song.is_none() {
 					return;
@@ -573,13 +604,13 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 			},
 			// TODO add cooldown
 			// TODO don't trigger on top of a swipe gesture
-			SongEvent::CarouselButtonPress(carousel, event) => {
+			SongEvent::CarouselButtonPress(_carousel, _event) => {
 			},
 			SongEvent::CarouselButtonRelease(carousel, event) => {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
-				if (0.0..0.2).contains(&x) {
+				if (0.0..0.3).contains(&x) {
 					self.previous.activate(None);
-				} else if (0.8..1.0).contains(&x) {
+				} else if (0.6..1.0).contains(&x) {
 					self.next.activate(None);
 				}
 				// if (0.0..0.5).contains(&x) {
@@ -606,6 +637,48 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 						.get_page_of_staff(section.parse::<collection::StaffIndex>().unwrap())
 				]);
 			},
+			SongEvent::ZoomBegin => {
+				println!("Begin");
+				if let Some(song) = self.song.as_mut() {
+					song.zoom_before_gesture = Some(song.zoom);
+				}
+			},
+			SongEvent::ZoomEnd => {
+				println!("End");
+				if let Some(song) = self.song.as_mut() {
+					song.zoom_before_gesture = None;
+				}
+			},
+			SongEvent::ZoomCancel => {
+				println!("Cancel");
+				if let Some(song) = self.song.as_mut() {
+					song.zoom = song.zoom_before_gesture.take()
+						//.expect("Should always be Some within after gesture started");
+						.unwrap_or(song.zoom)
+				}
+			},
+			SongEvent::ZoomScaleChanged(_, scale) => {
+				if let Some(song) = self.song.as_mut() {
+					dbg!(scale);
+					let new_zoom = scale * song.zoom_before_gesture.expect("Should always be Some within after gesture started");
+					let new_zoom = new_zoom.clamp(1.0, 10.0);
+					song.zoom = new_zoom;
+					self.update_content(ctx);
+				}
+			},
+			SongEvent::AreaScroll(_area, event) => {
+				if event.get_state().contains(gdk::ModifierType::CONTROL_MASK) {
+					if let Some(song) = self.song.as_mut() {
+						let new_zoom = song.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
+						let new_zoom = new_zoom.clamp(1.0, 10.0);
+						song.zoom = new_zoom;
+						self.update_content(ctx);
+					}
+				}
+			},
 		}
+	}
+
+	fn finished(&mut self, _ctx: &mut Self::Context) {
 	}
 }

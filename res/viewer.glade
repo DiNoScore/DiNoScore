@@ -154,10 +154,6 @@
         </child>
         <child>
           <object class="GtkBox" id="carousel_box">
-            <property name="hexpand">True</property>
-            <property name="vexpand">True</property>
-            <property name="halign">fill</property>
-            <property name="halign">fill</property>
             <property name="orientation">vertical</property>
             <property name="spacing">10</property>
             <property name="can_focus">False</property>
@@ -224,10 +220,6 @@
             </child>
             <child>
               <object class="HdyCarousel" id="carousel">
-                <property name="hexpand">True</property>
-                <property name="vexpand">True</property>
-                <property name="halign">fill</property>
-                <property name="halign">fill</property>
                 <property name="allow-mouse-drag">True</property>
                 <signal name="button-press-event" handler="CarouselButtonPress" />
                 <signal name="button-release-event" handler="CarouselButtonRelease" />
