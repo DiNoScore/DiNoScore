@@ -51,7 +51,7 @@ pub fn layout_fixed_scale(
 	scale: f64,
 	pdf_page_width: f64,
 ) -> PageLayout {
-	let scale = scale / pdf_page_width;
+	let scale = scale * height / pdf_page_width;
 
 	/* 1. Find out where the columns of each page start */
 	let column_starts = {
@@ -81,13 +81,13 @@ pub fn layout_fixed_scale(
 	};
 
 	/* 2. Convert the start indices to proper start..end ranges */
-	let columns: Vec<(StaffIndex, StaffIndex, f64)> = column_starts 
+	/* columns: Vec<(StaffIndex, StaffIndex, f64)> */
+	let columns = column_starts 
 		.windows(2)
 		.map(|v| (v[0], v[1]))
 		.map(|((chunk_start, chunk_width), (chunk_end, _))| {
 			(chunk_start, chunk_end, chunk_width)
-		})
-		.collect();
+		});
 
 	/* 3. Determine how many columns fit on each page */
 	let page_starts: Vec<Vec<(StaffIndex, StaffIndex, f64)>> = {
@@ -95,8 +95,9 @@ pub fn layout_fixed_scale(
 		let mut page = Vec::new();
 		let mut x = 0.0;
 		for (column_start, column_end, column_width) in columns {
-			if x + column_width > width
-			|| (song.piece_starts.contains_key(&column_start) && *column_start > 0) {
+			if (x + column_width > width
+			 || song.piece_starts.contains_key(&column_start))
+			 && *column_start > 0 {
 				pages.push(page);
 				page = Vec::new();
 				x = 0.0;
@@ -112,7 +113,8 @@ pub fn layout_fixed_scale(
 	 * 4. Calculate the exact position of each staff.
 	 * Effectively, this does `(StaffIndex, StaffIndex) -> Vec<StaffLayout>` within our data structure
 	 */
-	let pages: Vec<Vec<(Vec<StaffLayout>, f64)>> = page_starts
+	/* pages: Vec<Vec<(Vec<StaffLayout>, f64)>> */
+	let pages = page_starts
 		.into_iter()
 		.map(|page| page
 			.into_iter()
@@ -139,16 +141,14 @@ pub fn layout_fixed_scale(
 
 				(column, column_width)
 			})
-			.collect()
-		)
-		.collect();
+			.collect::<Vec<(Vec<StaffLayout>, f64)>>()
+		);
 
 	/*
 	 * 5. Merge the multiple columns of each page using iterator magic.
 	 * Effectively, this flattens the Vec<(Vec<StaffLayout>, f64)> to a simple Vec<StaffLayout> per page.
 	 */
 	let pages = pages
-		.into_iter()
 		.map(|columns| {
 			let excess_space = width
 			- columns

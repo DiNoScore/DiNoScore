@@ -206,7 +206,7 @@ impl SongState {
 	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, columns: usize, width: f64, height: f64, pdf_page_width: f64) -> Self {
 		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, columns, 10.0));
 		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height, columns));
-		let layout = Arc::new(layout::layout_fixed_scale(&song, width, height, 500.0, pdf_page_width));
+		let layout = Arc::new(layout::layout_fixed_scale(&song, width, height, 1.0, pdf_page_width));
 		Self {
 			song,
 			page: 0.into(),
@@ -224,7 +224,7 @@ impl SongState {
 		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, self.columns, 10.0));
 		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height, self.columns));
 		dbg!(self.zoom);
-		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, 500.0 * self.zoom, self.pdf_page_width));
+		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, self.zoom, self.pdf_page_width));
 		self.page = self.layout.get_page_of_staff(layout_staff);
 	}
 
