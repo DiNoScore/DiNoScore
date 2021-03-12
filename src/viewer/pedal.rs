@@ -4,6 +4,8 @@ use std::{any::Any, error::Error};
 use midi_event::*;
 use portmidi as pm;
 
+#[derive(actix::Message)]
+#[rtype(result = "()")]
 pub enum PageEvent {
 	Next,
 	Previous,

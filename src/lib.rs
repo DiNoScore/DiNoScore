@@ -24,6 +24,7 @@ pub mod library;
 pub mod collection;
 pub mod layout;
 pub mod owned;
+#[cfg(feature = "editor")]
 pub mod recognition;
 
 pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {

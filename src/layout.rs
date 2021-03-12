@@ -122,13 +122,17 @@ pub fn layout_fixed_scale(
 				let mut column = Vec::new();
 				let staves: &[Staff] = &song.staves[column_start.into()..column_end.into()];
 
-				let excess_space = height
-					- staves
-						.iter()
-						.map(|staff| staff.height() * scale)
-						.sum::<f64>();
-				let spacing = excess_space / staves.len() as f64;
-				let mut y = (excess_space - spacing * (staves.len() - 1) as f64) / 2.0;
+				let staves_total_height = staves
+					.iter()
+					.map(|staff| staff.height() * scale)
+					.sum::<f64>();
+				let excess_space = height - staves_total_height;
+				/* We limit the spacing to 10% of the average staff height. Thus, it won't spread the staves in
+				 * the case there are only a few
+				 */
+				let max_spacing = staves_total_height / 10.0 / staves.len() as f64;
+				let spacing = f64::min(excess_space / staves.len() as f64, max_spacing);
+				let mut y = f64::min((excess_space - spacing * (staves.len() - 1) as f64) / 2.0, max_spacing * 3.0);
 				for (index, staff) in staves.iter().enumerate() {
 					column.push(StaffLayout {
 						index: column_start + StaffIndex(index),

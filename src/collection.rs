@@ -270,6 +270,7 @@ pub struct StaffIndex(pub usize);
 	Eq,
 	PartialOrd,
 	Ord,
+	Hash,
 )]
 pub struct PageIndex(pub usize);
 

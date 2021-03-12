@@ -3,6 +3,7 @@ use super::*;
 
 const PB_PATH: &str = "./res/2019-05-16_faster-rcnn-inception-resnet-v2.pb";
 
+#[cfg(feature = "editor")]
 static DETECTION_GRAPH: once_cell::sync::Lazy<tensorflow::Graph> =
 	once_cell::sync::Lazy::new(|| {
 		use std::io::Read;
@@ -38,6 +39,7 @@ impl RelativeStaff {
 	}
 }
 
+#[cfg(feature = "editor")]
 pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	assert!(!image.get_has_alpha());
 	assert!(image.get_n_channels() == 3);

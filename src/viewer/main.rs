@@ -17,6 +17,7 @@ use dinoscore::*;
 mod song_actor;
 mod fullscreen_actor;
 mod library_actor;
+mod pedal;
 
 use song_actor::SongActor;
 use fullscreen_actor::FullscreenActor;
@@ -33,7 +34,6 @@ struct AppActor {
 #[derive(woab::WidgetsFromBuilder)]
 struct AppWidgets {
 	window: gtk::ApplicationWindow,
-	columns: gtk::SpinButton,
 	carousel: libhandy::Carousel,
 	part_selection: gtk::ComboBoxText,
 	deck: libhandy::Deck,

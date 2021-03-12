@@ -10,6 +10,7 @@ use libhandy::prelude::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
 use dinoscore::*;
+use super::*;
 
 pub fn create(builder: &woab::BuilderConnector, application: gtk::Application) -> actix::Addr<SongActor> {
 	builder.actor()
@@ -194,25 +195,27 @@ struct SongState {
 	page: collection::PageIndex,
 	layout: Arc<layout::PageLayout>,
 	renderer: Sender<UpdateLayout>,
-	/* To keep the current view consistent between layout changes */
-	columns: usize,
 	zoom: f64,
 	/* Backup for when a gesture starts */
 	zoom_before_gesture: Option<f64>,
 	pdf_page_width: f64,
+	/* For each explicit page turn, track the visible staves. Use that to 
+	 * synchronize the view on layout changes
+	 */
+	current_staves: Vec<collection::StaffIndex>,
 }
 
 impl SongState {
-	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, columns: usize, width: f64, height: f64, pdf_page_width: f64) -> Self {
-		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, columns, 10.0));
-		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height, columns));
+	fn new(renderer: Sender<UpdateLayout>, song: Arc<collection::SongMeta>, width: f64, height: f64, pdf_page_width: f64) -> Self {
+		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, 10.0));
+		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height));
 		let layout = Arc::new(layout::layout_fixed_scale(&song, width, height, 1.0, pdf_page_width));
 		Self {
 			song,
 			page: 0.into(),
+			current_staves: layout.get_staves_of_page(collection::PageIndex(0)).collect(),
 			layout,
 			renderer,
-			columns,
 			zoom: 1.0,
 			zoom_before_gesture: None,
 			pdf_page_width,
@@ -221,8 +224,8 @@ impl SongState {
 
 	fn change_size(&mut self, width: f64, height: f64) {
 		let layout_staff = self.layout.get_center_staff(self.page);
-		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, self.columns, 10.0));
-		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height, self.columns));
+		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, 10.0));
+		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height));
 		dbg!(self.zoom);
 		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, self.zoom, self.pdf_page_width));
 		self.page = self.layout.get_page_of_staff(layout_staff);
@@ -320,6 +323,17 @@ impl actix::Actor for SongActor {
 		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
 		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
 		connector.connect(zoom_gesture, "scale-changed", "ZoomScaleChanged").unwrap();
+
+		let (midi_tx, midi_rx) = glib::MainContext::channel::<pedal::PageEvent>(glib::Priority::default());
+		let handler = pedal::run(midi_tx).unwrap();
+		use actix::AsyncContext;
+		let address = ctx.address();
+		midi_rx.attach(None, move |event| {
+			/* Reference the MIDI handler which holds the Sender so that it doesn't get dropped. */
+			let _handler = &handler;
+			address.try_send(event).unwrap();
+			Continue(true)
+		});
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -359,7 +373,7 @@ impl SongActor {
 				.or(Some("DiNoScore"))
 		);
 
-		let song = SongState::new(renderer, song, 3, width as f64, height as f64, pdf_page_width);
+		let song = SongState::new(renderer, song, width as f64, height as f64, pdf_page_width);
 
 		let parts = song.get_parts();
 		self.widgets.part_selection.remove_all();
@@ -425,7 +439,24 @@ impl SongActor {
 		}
 
 		carousel.queue_draw();
-		carousel.scroll_to_full(&carousel.get_children()[*song.page], 0);
+		/* Calculate the new page, which has the most staves in common with the previous layout/page */
+		let new_page: collection::PageIndex = {
+			use itertools::Itertools;
+
+			song.current_staves.iter()
+				.copied()
+				.map(|staff| song.layout.get_page_of_staff(staff))
+				.counts()
+				.iter()
+				.max_by(|(a_page, a_count), (b_page, b_count)| {
+					/* We want smallest page with the most number of hits */
+					a_count.cmp(b_count).then_with(|| a_page.cmp(b_page).reverse())
+				})
+				.map(|(page, _count)| *page)
+				.unwrap()
+		};
+		carousel.scroll_to_full(&carousel.get_children()[*new_page], 0);
+		song.page = new_page;
 
 		song.renderer.send(UpdateLayout {
 			layout: song.layout.clone(),
@@ -499,6 +530,21 @@ impl actix::Handler<LoadSong> for SongActor {
 	}
 }
 
+impl actix::Handler<pedal::PageEvent> for SongActor {
+	type Result = ();
+
+	fn handle(&mut self, event: pedal::PageEvent, _ctx: &mut Self::Context) -> Self::Result {
+		match event {
+			pedal::PageEvent::Next => {
+				self.next.activate(None);
+			},
+			pedal::PageEvent::Previous => {
+				self.previous.activate(None);
+			},
+		}
+	}
+}
+
 #[derive(woab::BuilderSignal)]
 enum SongEvent {
 	/* Switch pages */
@@ -561,19 +607,16 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 		match signal {
 			SongEvent::CarouselSizeChanged => self.update_content(ctx),
 			SongEvent::Next => {
-				if self.song.is_none() {
-					return;
+				if self.song.is_some() {
+					let new_page = usize::min(carousel.get_position() as usize + 1, carousel.get_n_pages() as usize - 1);
+					carousel.scroll_to(&carousel.get_children()[new_page]);
 				}
-				carousel.scroll_to(&carousel.get_children()[
-					usize::min(carousel.get_position() as usize + 1, carousel.get_n_pages() as usize - 1)
-				]);
 			},
 			SongEvent::Previous => {
 				if let Some(song) = self.song.as_ref() {
-					carousel.scroll_to(&carousel.get_children()[
-						*song.go_back(collection::PageIndex(carousel.get_position() as usize))
-							.unwrap_or_else(|| collection::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1))
-					]);
+					let new_page = song.go_back(collection::PageIndex(carousel.get_position() as usize))
+						.unwrap_or_else(|| collection::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1));
+					carousel.scroll_to(&carousel.get_children()[*new_page]);
 				}
 			},
 			SongEvent::GoBack => {
@@ -613,15 +656,12 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				} else if (0.6..1.0).contains(&x) {
 					self.next.activate(None);
 				}
-				// if (0.0..0.5).contains(&x) {
-				// 	self.previous.activate(None);
-				// } else if (0.5..1.0).contains(&x) {
-				// 	self.next.activate(None);
-				// }
 			},
 			SongEvent::CarouselPageChanged(_carousel, page) => {
 				let song = self.song.as_mut().unwrap();
 				song.page = collection::PageIndex(page as usize);
+				song.current_staves = song.layout.get_staves_of_page(song.page).collect();
+
 				self.widgets.part_selection.block_signal(self.part_selection_changed_signal.as_ref().unwrap());
 				self.widgets.part_selection.set_active_id(
 					Some(&song.part_start(song.page).to_string())
@@ -661,7 +701,7 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				if let Some(song) = self.song.as_mut() {
 					dbg!(scale);
 					let new_zoom = scale * song.zoom_before_gesture.expect("Should always be Some within after gesture started");
-					let new_zoom = new_zoom.clamp(1.0, 10.0);
+					let new_zoom = new_zoom.clamp(0.6, 3.0);
 					song.zoom = new_zoom;
 					self.update_content(ctx);
 				}
@@ -670,7 +710,7 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				if event.get_state().contains(gdk::ModifierType::CONTROL_MASK) {
 					if let Some(song) = self.song.as_mut() {
 						let new_zoom = song.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
-						let new_zoom = new_zoom.clamp(1.0, 10.0);
+						let new_zoom = new_zoom.clamp(0.6, 3.0);
 						song.zoom = new_zoom;
 						self.update_content(ctx);
 					}
