@@ -179,7 +179,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">This staff marks the start of a new piece/movement/variation/…</property>
                                 <property name="draw_indicator">True</property>
-                                <signal name="notify::active" handler="PieceStartToggle" />
+                                <signal name="notify::active" handler="PieceStartUpdate" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>

@@ -37,14 +37,12 @@ struct AppActor {
 	application: gtk::Application,
 	editor: actix::Addr<EditorActor>,
 
-// 	update_ui: glib::Sender<EditorViewUpdateEvent>,
 	pages: Vec<(Rc<poppler::PopplerPage>, Vec<Staff>)>,
-// 	/* Sections */
+	/* Sections */
 	piece_starts: BTreeMap<StaffIndex, Option<String>>,
 	section_starts: BTreeMap<StaffIndex, SectionMeta>,
 	selected_page: Option<PageIndex>,
 	selected_staff: Option<usize>,
-	// state: Rc<RefCell<EditorState>>,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -124,7 +122,7 @@ impl actix::Actor for AppActor {
 impl AppActor {
 	fn new(widgets: AppWidgets, application: gtk::Application, editor: actix::Addr<EditorActor>) -> Self {
 		widgets.window.set_application(Some(&application));
-		Self {
+		let mut this = Self {
 			widgets,
 			application,
 			editor,
@@ -133,7 +131,10 @@ impl AppActor {
 			selected_staff: None,
 			piece_starts: BTreeMap::new(),
 			section_starts: BTreeMap::new(),
-		}
+		};
+		/* Enforce some invariants */
+		this.unload_and_clear();
+		this
 	}
 
 	fn add_pages(&mut self) {
@@ -306,7 +307,7 @@ impl AppActor {
 		self.pages
 			.iter()
 			.enumerate()
-			.flat_map(|(page_index, page)| page.1.iter())
+			.flat_map(|(_page_index, page)| page.1.iter())
 			.cloned()
 			.collect()
 	}
@@ -320,10 +321,113 @@ impl AppActor {
 
 	fn update_selection(&mut self, selected_staff: Option<usize>) {
 		self.selected_staff = selected_staff;
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_part_name(&mut self, new_name: &str) {
+		let index = self
+			.selected_page
+			.map(|page| self.count_staves_before(page))
+			.and_then(|staff| {
+				self.selected_staff
+					.map(|s| staff + s)
+			})
+			.expect("You shouldn't be able to click this with nothing selected");
+		let name = self
+			.piece_starts
+			.get_mut(&index.into())
+			.expect("You shouldn't be able to set the name on non part starts");
+		*name = Some(new_name.to_string());
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_section_start(&mut self, selected: bool) {
+		let index = self
+			.selected_page
+			.map(|page| self.count_staves_before(page))
+			.and_then(|staff| {
+				self.selected_staff
+					.map(|s| staff + s)
+			})
+			.expect("You shouldn't be able to click this with nothing selected");
+		let index = StaffIndex(index);
+		if selected {
+			self.section_starts
+				.entry(index)
+				.or_insert_with(SectionMeta::default);
+		} else {
+			self.section_starts.remove(&index);
+		}
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_section_repetition(&mut self, selected: bool) {
+		let index = self
+			.selected_page
+			.map(|page| self.count_staves_before(page))
+			.and_then(|staff| {
+				self.selected_staff
+					.map(|s| staff + s)
+			})
+			.expect("You shouldn't be able to click this with nothing selected");
+		let index = StaffIndex(index);
+		self.section_starts
+			.get_mut(&index)
+			.expect("You shouldn't be able to click this if there's no section start")
+			.is_repetition = selected;
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_section_end(&mut self, selected: bool) {
+		let index = self
+			.selected_page
+			.map(|page| self.count_staves_before(page))
+			.and_then(|staff| {
+				self.selected_staff
+					.map(|s| staff + s)
+			})
+			.expect("You shouldn't be able to click this with nothing selected");
+		let index = StaffIndex(index);
+		self.section_starts
+			.get_mut(&index)
+			.expect("You shouldn't be able to click this if there's no section start")
+			.section_end = selected;
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_part_start(&mut self, selected: bool) {
+		let index = self
+			.selected_page
+			.map(|page| self.count_staves_before(page))
+			.and_then(|staff| {
+				self.selected_staff
+					.map(|s| staff + s)
+			})
+			.expect("You shouldn't be able to click this with nothing selected");
+		let index = StaffIndex(index);
+		if selected {
+			self.piece_starts.entry(index).or_insert(None);
+			/* When a piece starts, a section must start as well */
+			self.section_starts
+				.entry(index)
+				.or_insert_with(SectionMeta::default);
+		} else {
+			self.piece_starts.remove(&index);
+		}
+
+		self.update_bottom_widgets();
+	}
+
+	fn update_bottom_widgets(&mut self) {
 		let index = self.selected_page
 			.map(|page| self.count_staves_before(page))
 			.and_then(|staff| {
-				selected_staff
+				self.selected_staff
 					.map(|s| staff + s)
 			});
 
@@ -334,8 +438,7 @@ impl AppActor {
 		self.widgets.piece_start.set_sensitive(piece_start_sensitive);
 		/* Set the selection */
 		let piece_start_active = index
-			.map(|i| self.piece_starts.get(&StaffIndex(i)))
-			.flatten()
+			.and_then(|i| self.piece_starts.get(&StaffIndex(i)))
 			.is_some();
 		self.widgets.piece_start.set_active(piece_start_active);
 
@@ -365,94 +468,6 @@ impl AppActor {
 		self.widgets.section_end.set_sensitive(section_start.is_some());
 		self.widgets.section_end
 			.set_active(section_start.map(|meta| meta.section_end).unwrap_or(false));
-	}
-
-	fn update_part_name(&mut self, new_name: &str) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let name = self
-			.piece_starts
-			.get_mut(&index.into())
-			.expect("You shouldn't be able to set the name on non part starts");
-		*name = Some(new_name.to_string());
-	}
-
-	fn update_section_start(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
-		if selected {
-			self.section_starts
-				.entry(index)
-				.or_insert_with(SectionMeta::default);
-		} else {
-			self.section_starts.remove(&index);
-		}
-	}
-
-	fn update_section_repetition(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
-		self.section_starts
-			.get_mut(&index)
-			.expect("You shouldn't be able to click this if there's no section start")
-			.is_repetition = selected;
-	}
-
-	fn update_section_end(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
-		self.section_starts
-			.get_mut(&index)
-			.expect("You shouldn't be able to click this if there's no section start")
-			.section_end = selected;
-	}
-
-	fn update_part_start(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
-		if selected {
-			self.piece_starts.entry(index).or_insert(None);
-			/* When a piece starts, a section must start as well */
-			self.section_starts
-				.entry(index)
-				.or_insert_with(SectionMeta::default);
-		} else {
-			self.piece_starts.remove(&index);
-		}
 	}
 
 
@@ -552,7 +567,7 @@ struct StaffSelected(Option<usize>);
 impl actix::Handler<StaffSelected> for AppActor {
 	type Result = ();
 
-	fn handle(&mut self, selected_staff: StaffSelected, ctx: &mut Self::Context) {
+	fn handle(&mut self, selected_staff: StaffSelected, _ctx: &mut Self::Context) {
 		let selected_staff = selected_staff.0;
 		self.update_selection(selected_staff);
 	}
@@ -570,11 +585,11 @@ enum AppSignal {
 	SelectPage,
 	Autodetect,
 	/* Editor */
-	PieceStartUpdate(gtk::CheckButton),
+	PieceStartUpdate(gtk::CheckButton, glib::ParamSpec),
 	PieceNameUpdate(gtk::Entry),
-	SectionStartUpdate(gtk::CheckButton),
-	SectionEndUpdate(gtk::CheckButton),
-	SectionRepetitionUpdate(gtk::CheckButton),
+	SectionStartUpdate(gtk::CheckButton, glib::ParamSpec),
+	SectionEndUpdate(gtk::CheckButton, glib::ParamSpec),
+	SectionRepetitionUpdate(gtk::CheckButton, glib::ParamSpec),
 }
 
 impl actix::StreamHandler<AppSignal> for AppActor {
@@ -591,11 +606,11 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 				});
 			},
 			AppSignal::Autodetect => self.autodetect(ctx),
-			AppSignal::PieceStartUpdate(piece_start) => self.update_part_start(piece_start.get_active()),
+			AppSignal::PieceStartUpdate(piece_start, _) => self.update_part_start(piece_start.get_active()),
 			AppSignal::PieceNameUpdate(piece_name) => self.update_part_name(&piece_name.get_text()),
-			AppSignal::SectionStartUpdate(section_start) => self.update_section_start(section_start.get_active()),
-			AppSignal::SectionEndUpdate(section_end) => self.update_section_end(section_end.get_active()),
-			AppSignal::SectionRepetitionUpdate(section_repetition) => self.update_section_repetition(section_repetition.get_active()),
+			AppSignal::SectionStartUpdate(section_start, _) => self.update_section_start(section_start.get_active()),
+			AppSignal::SectionEndUpdate(section_end, _) => self.update_section_end(section_end.get_active()),
+			AppSignal::SectionRepetitionUpdate(section_repetition, _) => self.update_section_repetition(section_repetition.get_active()),
 			AppSignal::OpenDocument => self.load_with_dialog(),
 			AppSignal::NewDocument => self.unload_and_clear(),
 			AppSignal::SaveDocument => self.save_with_ui(),
