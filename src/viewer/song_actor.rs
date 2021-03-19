@@ -190,12 +190,20 @@ struct UpdateLayout {
 }
 
 #[derive(Debug)]
+enum ScaleMode {
+	FitStaves(u32),
+	FitPages(u32),
+	Zoom(f32),
+}
+
+#[derive(Debug)]
 struct SongState {
 	song: Arc<collection::SongMeta>,
 	page: collection::PageIndex,
 	layout: Arc<layout::PageLayout>,
 	renderer: Sender<UpdateLayout>,
 	zoom: f64,
+	scale_mode: ScaleMode,
 	/* Backup for when a gesture starts */
 	zoom_before_gesture: Option<f64>,
 	pdf_page_width: f64,
@@ -217,6 +225,7 @@ impl SongState {
 			layout,
 			renderer,
 			zoom: 1.0,
+			scale_mode: ScaleMode::Zoom(1.0),
 			zoom_before_gesture: None,
 			pdf_page_width,
 		}
@@ -226,6 +235,17 @@ impl SongState {
 		let layout_staff = self.layout.get_center_staff(self.page);
 		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, 10.0));
 		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height));
+
+		match self.scale_mode {
+			ScaleMode::Zoom(_) => {},
+			ScaleMode::FitStaves(num) => {
+				self.zoom = layout::find_scale_for_fixed_staves(&self.song, width, height, num, self.pdf_page_width)
+			},
+			ScaleMode::FitPages(num) => {
+				self.zoom = layout::find_scale_for_fixed_columns(&self.song, width, height, num, self.pdf_page_width)
+			}
+		}
+
 		dbg!(self.zoom);
 		self.layout = Arc::new(layout::layout_fixed_scale(&self.song, width, height, self.zoom, self.pdf_page_width));
 		self.page = self.layout.get_page_of_staff(layout_staff);
@@ -277,12 +297,14 @@ impl SongState {
 pub struct SongActor {
 	widgets: SongWidgets,
 	application: gtk::Application,
+	actions: gio::SimpleActionGroup,
 	/// Always Some once started. Could have used a lazy init cell as well
 	part_selection_changed_signal: Option<glib::SignalHandlerId>,
 	song: Option<SongState>,
 	next: gio::SimpleAction,
 	previous: gio::SimpleAction,
 	zoom_gesture: gtk::GestureZoom,
+	sizing_mode_action: gio::SimpleAction,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -292,6 +314,8 @@ struct SongWidgets {
 	carousel_box: gtk::Box,
 	deck: libhandy::Deck,
 	part_selection: gtk::ComboBoxText,
+	zoom_button: gtk::MenuButton,
+	zoom_menu: gio::Menu,
 }
 
 impl actix::Actor for SongActor {
@@ -300,17 +324,19 @@ impl actix::Actor for SongActor {
 	fn started(&mut self, ctx: &mut Self::Context) {
 		let connector = SongEvent::connector().route_to::<Self>(ctx);
 
-		self.application.add_action(&self.next);
-		self.application.set_accels_for_action("app.next_page", &["<Primary>N", "<Alt>N", "Right"]);
+		self.widgets.carousel_box.insert_action_group("view_actions", Some(&self.actions));
+
+		self.actions.add_action(&self.next);
+		self.application.set_accels_for_action("view_actions.next_page", &["<Primary>N", "<Alt>N", "Right"]);
 		connector.connect(&self.next, "activate", "Next").unwrap();
 
-		self.application.add_action(&self.previous);
-		self.application.set_accels_for_action("app.previous_page", &["<Primary>P", "<Alt>P", "Left"]);
+		self.actions.add_action(&self.previous);
+		self.application.set_accels_for_action("view_actions.previous_page", &["<Primary>P", "<Alt>P", "Left"]);
 		connector.connect(&self.previous, "activate", "Previous").unwrap();
 
 		let go_back_action = gio::SimpleAction::new("go-back", None);
-		self.application.add_action(&go_back_action);
-		self.application.set_accels_for_action("app.go-back", &["Escape"]);
+		self.actions.add_action(&go_back_action);
+		self.application.set_accels_for_action("view_actions.go-back", &["Escape"]);
 		connector.connect(&go_back_action, "activate", "GoBack").unwrap();
 
 		let signal_handler = connector.handler("SelectPart").unwrap();
@@ -321,9 +347,31 @@ impl actix::Actor for SongActor {
 		let zoom_gesture = &self.zoom_gesture;
 		connector.connect(zoom_gesture, "begin", "ZoomBegin").unwrap();
 		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
-		connector.connect(zoom_gesture, "end", "ZoomEnd").unwrap();
+		connector.connect(zoom_gesture, "cancel", "ZoomCancel").unwrap();
 		connector.connect(zoom_gesture, "scale-changed", "ZoomScaleChanged").unwrap();
 
+		let zoom_popover = gtk::Popover::from_model(None::<&gtk::Widget>, &self.widgets.zoom_menu);
+		self.widgets.zoom_button.set_popover(Some(&zoom_popover));
+
+		self.actions.add_action(&self.sizing_mode_action);
+		connector.connect(&self.sizing_mode_action, "activate", "ScaleModeChanged").unwrap();
+
+		let zoom_in = gio::SimpleAction::new("zoom-in", None);
+		self.actions.add_action(&zoom_in);
+		self.application.set_accels_for_action("view_actions.zoom-in", &["<Primary>plus"]);
+		connector.connect(&zoom_in, "activate", "ZoomIn").unwrap();
+
+		let zoom_out = gio::SimpleAction::new("zoom-out", None);
+		self.actions.add_action(&zoom_out);
+		self.application.set_accels_for_action("view_actions.zoom-out", &["<Primary>minus"]);
+		connector.connect(&zoom_out, "activate", "ZoomOut").unwrap();
+
+		let zoom_original = gio::SimpleAction::new("zoom-original", None);
+		self.actions.add_action(&zoom_original);
+		self.application.set_accels_for_action("view_actions.zoom-original", &["<Primary>0"]);
+		connector.connect(&zoom_original, "activate", "ZoomOriginal").unwrap();
+
+		/* MIDI handling */
 		let (midi_tx, midi_rx) = glib::MainContext::channel::<pedal::PageEvent>(glib::Priority::default());
 		let handler = pedal::run(midi_tx).unwrap();
 		use actix::AsyncContext;
@@ -349,10 +397,16 @@ impl SongActor {
 			zoom_gesture: gtk::GestureZoom::new(&widgets.carousel),
 			widgets,
 			application,
+			actions: gio::SimpleActionGroup::new(),
 			song: None,
 			next,
 			previous,
-			part_selection_changed_signal: None
+			part_selection_changed_signal: None,
+			sizing_mode_action: gio::SimpleAction::new_stateful(
+				"sizing-mode",
+				Some(&String::static_variant_type()),
+				&"manual".to_variant(),
+			),
 		}
 	}
 
@@ -372,6 +426,7 @@ impl SongActor {
 				.as_deref()
 				.or(Some("DiNoScore"))
 		);
+		self.widgets.carousel_box.grab_focus();
 
 		let song = SongState::new(renderer, song, width as f64, height as f64, pdf_page_width);
 
@@ -388,6 +443,15 @@ impl SongActor {
 		self.update_content(ctx);
 	}
 
+	fn update_manual_zoom(&mut self, modify_zoom: impl FnOnce(&mut SongState) -> f64, ctx: &mut actix::Context<Self>) {
+		if let Some(song) = self.song.as_mut() {
+			self.sizing_mode_action.set_state(&"manual".to_variant());
+			song.zoom = modify_zoom(song);
+			song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
+			self.update_content(ctx);
+		}
+	}
+
 	fn update_content(&mut self, ctx: &mut actix::Context<Self>) {
 		let width = self.widgets.carousel.get_allocated_width();
 		let height = self.widgets.carousel.get_allocated_height();
@@ -401,6 +465,7 @@ impl SongActor {
 		};
 
 		song.change_size(width as f64, height as f64);
+		self.widgets.zoom_button.set_label(&format!("{:.0}%", song.zoom * 100.0));
 
 		let carousel = &self.widgets.carousel;
 		let new_pages = song.layout.pages.len();
@@ -555,7 +620,7 @@ enum SongEvent {
 	/* From the dropdown */
 	SelectPart,
 	CarouselSizeChanged,
-	CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
+	// CarouselKeyPress(libhandy::Carousel, #[signal(event)] gdk::EventKey),
 	CarouselButtonPress(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselButtonRelease(libhandy::Carousel, #[signal(event)] gdk::EventButton),
 	CarouselPageChanged(libhandy::Carousel, u32),
@@ -567,24 +632,17 @@ enum SongEvent {
 	/* Scroll events on the page, for zooming */
 	#[signal(inhibit = false)]
 	AreaScroll(gtk::DrawingArea, #[signal(event)] gdk::EventScroll),
+	/* Generic zoom events */
+	ZoomIn,
+	ZoomOut,
+	ZoomOriginal,
+
+	ScaleModeChanged(gio::SimpleAction, glib::Variant),
 }
 
 impl SongEvent {
 	fn inhibit(&self) -> Option<gtk::Inhibit> {
 		match self {
-			SongEvent::CarouselKeyPress(_carousel, event) => {
-				use gdk::keys::constants;
-				Some(match event.get_keyval() {
-					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
-						gtk::Inhibit(true)
-					},
-					constants::Left | constants::KP_Left | constants::BackSpace => {
-						gtk::Inhibit(true)
-					},
-					_ => gtk::Inhibit(false),
-				})
-				// Some(gtk::Inhibit(false))
-			},
 			SongEvent::CarouselButtonPress(carousel, event) => {
 				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
 				Some(gtk::Inhibit((0.0..0.3).contains(&x) || (0.6..1.0).contains(&x)))
@@ -630,22 +688,6 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				self.widgets.deck.navigate(libhandy::NavigationDirection::Back);
 			},
 			// TODO add cooldown
-			SongEvent::CarouselKeyPress(_carousel, event) => {
-				if self.song.is_none() {
-					return;
-				}
-				use gdk::keys::constants;
-				match event.get_keyval() {
-					constants::Right | constants::KP_Right | constants::space | constants::KP_Space => {
-						self.next.activate(None);
-					},
-					constants::Left | constants::KP_Left | constants::BackSpace => {
-						self.previous.activate(None);
-					},
-					_ => {},
-				}
-			},
-			// TODO add cooldown
 			// TODO don't trigger on top of a swipe gesture
 			SongEvent::CarouselButtonPress(_carousel, _event) => {
 			},
@@ -658,15 +700,16 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 				}
 			},
 			SongEvent::CarouselPageChanged(_carousel, page) => {
-				let song = self.song.as_mut().unwrap();
-				song.page = collection::PageIndex(page as usize);
-				song.current_staves = song.layout.get_staves_of_page(song.page).collect();
+				if let Some(song) = self.song.as_mut() {
+					song.page = collection::PageIndex(page as usize);
+					song.current_staves = song.layout.get_staves_of_page(song.page).collect();
 
-				self.widgets.part_selection.block_signal(self.part_selection_changed_signal.as_ref().unwrap());
-				self.widgets.part_selection.set_active_id(
-					Some(&song.part_start(song.page).to_string())
-				);
-				self.widgets.part_selection.unblock_signal(self.part_selection_changed_signal.as_ref().unwrap());
+					self.widgets.part_selection.block_signal(self.part_selection_changed_signal.as_ref().unwrap());
+					self.widgets.part_selection.set_active_id(
+						Some(&song.part_start(song.page).to_string())
+					);
+					self.widgets.part_selection.unblock_signal(self.part_selection_changed_signal.as_ref().unwrap());
+				}
 			},
 			SongEvent::SelectPart => if self.song.is_some() {
 				let section = self.widgets.part_selection.get_active_id().unwrap();
@@ -691,31 +734,42 @@ impl actix::StreamHandler<SongEvent> for SongActor {
 			},
 			SongEvent::ZoomCancel => {
 				println!("Cancel");
-				if let Some(song) = self.song.as_mut() {
-					song.zoom = song.zoom_before_gesture.take()
+				self.update_manual_zoom(|song| {
+					song.zoom_before_gesture.take()
 						//.expect("Should always be Some within after gesture started");
 						.unwrap_or(song.zoom)
-				}
+				}, ctx);
 			},
 			SongEvent::ZoomScaleChanged(_, scale) => {
-				if let Some(song) = self.song.as_mut() {
-					dbg!(scale);
-					let new_zoom = scale * song.zoom_before_gesture.expect("Should always be Some within after gesture started");
-					let new_zoom = new_zoom.clamp(0.6, 3.0);
-					song.zoom = new_zoom;
-					self.update_content(ctx);
-				}
+				dbg!(scale);
+				self.update_manual_zoom(|song| {
+					let zoom = scale * song.zoom_before_gesture.expect("Should always be Some within after gesture started");
+					zoom.clamp(0.6, 3.0)
+				}, ctx);
 			},
 			SongEvent::AreaScroll(_area, event) => {
 				if event.get_state().contains(gdk::ModifierType::CONTROL_MASK) {
-					if let Some(song) = self.song.as_mut() {
-						let new_zoom = song.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
-						let new_zoom = new_zoom.clamp(0.6, 3.0);
-						song.zoom = new_zoom;
-						self.update_content(ctx);
-					}
+					self.update_manual_zoom(|song| {
+						let zoom = song.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
+						zoom.clamp(0.6, 3.0)
+					}, ctx);
 				}
 			},
+			SongEvent::ZoomIn => self.update_manual_zoom(|song| (song.zoom / 0.95).clamp(0.6, 3.0), ctx),
+			SongEvent::ZoomOut => self.update_manual_zoom(|song| (song.zoom * 0.95).clamp(0.6, 3.0), ctx),
+			SongEvent::ZoomOriginal => self.update_manual_zoom(|_| 1.0, ctx),
+			SongEvent::ScaleModeChanged(action, mode) => {
+				action.set_state(&mode);
+				if let Some(song) = self.song.as_mut() {
+					song.scale_mode = match mode.get::<String>().unwrap().as_str() {
+						"fit-staves" => ScaleMode::FitStaves(3),
+						"fit-columns" => ScaleMode::FitPages(2),
+						"manual" => return,
+						invalid => unreachable!(format!("Invalid value: '{}'", invalid)),
+					};
+					self.update_content(ctx);
+				}
+			}
 		}
 	}
 

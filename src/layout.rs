@@ -44,6 +44,33 @@ impl PageLayout {
 	}
 }
 
+pub fn find_scale_for_fixed_staves(
+	song: &collection::SongMeta,
+	width: f64,
+	height: f64,
+	num_staves: u32,
+	pdf_page_width: f64,
+) -> f64 {
+	let average_height: f64 = song.staves.iter().map(Staff::height).sum::<f64>() / (song.staves.len() as f64);
+	/* The +0.5 is to have some safety margin that prevents above average staves to form two-staff pages.
+	 * If we can fit n + 0.5 average staves on a page, we have a lower probability of having pages with n-1 staves.
+	 * Same for pages with n+1 staves.
+	 * Ideally, we'd use some percentile (maybe upper quartile?) instead of the average …
+	 */
+	pdf_page_width / average_height / (num_staves as f64 + 0.5)
+}
+
+pub fn find_scale_for_fixed_columns(
+	song: &collection::SongMeta,
+	width: f64,
+	height: f64,
+	num_columns: u32,
+	pdf_page_width: f64,
+) -> f64 {
+	let average_width: f64 = song.staves.iter().map(Staff::width).sum::<f64>() / (song.staves.len() as f64);
+	pdf_page_width / height * width / average_width / (num_columns as f64 + 0.5)
+}
+
 pub fn layout_fixed_scale(
 	song: &collection::SongMeta,
 	width: f64,

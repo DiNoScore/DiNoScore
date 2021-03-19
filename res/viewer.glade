@@ -156,7 +156,7 @@
           <object class="GtkBox" id="carousel_box">
             <property name="orientation">vertical</property>
             <property name="spacing">10</property>
-            <property name="can_focus">False</property>
+            <property name="can_focus">True</property>
             <child>
               <object class="HdyHeaderBar" id="header">
                 <property name="show-close-button">True</property>
@@ -164,7 +164,7 @@
                 <child>
                   <object class="GtkModelButton">
                     <property name="tooltip-text" translatable="yes">Go back</property>
-                    <property name="action_name">app.go-back</property>
+                    <property name="action_name">view_actions.go-back</property>
                     <property name="icon">go-back-icon</property>
                     <property name="iconic">True</property>
                   </object>
@@ -209,9 +209,8 @@
                     <property name="pack-type">end</property>
                   </packing>
                 </child>
-                <child>
+                <!-- <child>
                   <object class="GtkMenuButton">
-                    <property name="visible">True</property>
                     <property name="can-focus">True</property>
                     <property name="receives-default">True</property>
                     <property name="popover">view_menu_widget</property>
@@ -227,6 +226,17 @@
                   <packing>
                     <property name="pack-type">end</property>
                   </packing>
+                </child> -->
+                <child>
+                  <object class="GtkMenuButton" id="zoom_button">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">True</property>
+                    <property name="label" translatable="no">100%</property>
+                  </object>
+                  <packing>
+                    <property name="pack-type">end</property>
+                  </packing>
                 </child>
               </object>
             </child>
@@ -235,7 +245,6 @@
                 <property name="allow-mouse-drag">True</property>
                 <signal name="button-press-event" handler="CarouselButtonPress" />
                 <signal name="button-release-event" handler="CarouselButtonRelease" />
-                <signal name="key-press-event" handler="CarouselKeyPress" />
                 <signal name="page-changed" handler="CarouselPageChanged" />
                 <signal name="size-allocate" handler="CarouselSizeChanged" swapped="no" />
               </object>
@@ -248,6 +257,39 @@
       </object>
     </child>
   </object>
+
+  <menu id="zoom_menu">
+    <section>
+      <attribute name="display-hint">horizontal-buttons</attribute>
+      <item>
+        <attribute name="label">Zoom out</attribute>
+        <attribute name="action">view_actions.zoom-out</attribute>
+        <attribute name="verb-icon">zoom-out-symbolic</attribute>
+      </item>
+      <item>
+        <attribute name="label">Reset zoom</attribute>
+        <attribute name="action">view_actions.zoom-original</attribute>
+        <attribute name="verb-icon">zoom-original-symbolic</attribute>
+      </item>
+      <item>
+        <attribute name="label">Zoom in</attribute>
+        <attribute name="action">view_actions.zoom-in</attribute>
+        <attribute name="verb-icon">zoom-in-symbolic</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Three staves</attribute>
+        <attribute name="action">view_actions.sizing-mode</attribute>
+        <attribute name="target">fit-staves</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Two columns</attribute>
+        <attribute name="action">view_actions.sizing-mode</attribute>
+        <attribute name="target">fit-columns</attribute>
+      </item>
+    </section>
+  </menu>
 
   <object class="GtkPopover" id="view_menu_widget">
     <property name="can-focus">False</property>

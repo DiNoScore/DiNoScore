@@ -42,15 +42,14 @@ struct AppWidgets {
 impl actix::Actor for AppActor {
 	type Context = actix::Context<Self>;
 
-	fn started(&mut self, ctx: &mut Self::Context) {
+	fn started(&mut self, _ctx: &mut Self::Context) {
 		let application = &self.application;
 		let window = &self.widgets.window;
 		// window.set_application(Some(&self.application)); // <-- This line segfaults
 		window.set_position(gtk::WindowPosition::Center);
 		window.add_events(
 			gdk::EventMask::STRUCTURE_MASK
-				| gdk::EventMask::BUTTON_PRESS_MASK
-				| gdk::EventMask::KEY_PRESS_MASK,
+				| gdk::EventMask::BUTTON_PRESS_MASK,
 		);
 
 		let quit = gio::SimpleAction::new("quit", None);
