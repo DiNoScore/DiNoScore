@@ -151,6 +151,11 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 		bar.bottom *= scale_y;
 	}
 
+	/* Set this to true to disable post-processing for debugging purposes */
+	if false {
+		return bars;
+	}
+
 	/* Group them by staff */
 	let mut bars = bars.into_iter().enumerate().collect::<Vec<_>>();
 

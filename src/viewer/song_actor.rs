@@ -371,6 +371,10 @@ impl actix::Actor for SongActor {
 		self.application.set_accels_for_action("view_actions.zoom-original", &["<Primary>0"]);
 		connector.connect(&zoom_original, "activate", "ZoomOriginal").unwrap();
 
+		glib::timeout_add_seconds_local(1, || {
+			Continue(true)
+		});
+
 		/* MIDI handling */
 		let (midi_tx, midi_rx) = glib::MainContext::channel::<pedal::PageEvent>(glib::Priority::default());
 		let handler = pedal::run(midi_tx).unwrap();

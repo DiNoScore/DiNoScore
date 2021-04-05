@@ -21,7 +21,7 @@ pub struct LibrarySong {
 }
 
 impl LibrarySong {
-	fn new(song: Uuid) -> Self {
+	pub fn new(song: Uuid) -> Self {
 		LibrarySong {
 			song,
 			times_played: 0,
@@ -29,6 +29,16 @@ impl LibrarySong {
 			last_played: None,
 			usage_score: 1.0,
 		}
+	}
+
+	pub fn on_load(&mut self) {
+		self.times_played += 1;
+		self.last_played = Some(std::time::SystemTime::now());
+	}
+
+	pub fn on_update(&mut self, add_seconds: u32) {
+		self.seconds_played += add_seconds;
+		self.last_played = Some(std::time::SystemTime::now());
 	}
 }
 
@@ -74,14 +84,5 @@ impl Library {
 			songs,
 			stats,
 		})
-	}
-
-	pub async fn load_song(
-		&self,
-		name: &str,
-		image_cache: Rc<RefCell<lru_disk_cache::LruDiskCache>>,
-	) -> Song {
-		unimplemented!()
-		// Song::new(self.songs.get(name).unwrap(), image_cache).await
 	}
 }

@@ -12,26 +12,6 @@ use dinoscore::recognition;
 mod editor;
 use editor::*;
 
-// impl EditorView {
-// 	fn new(builder: &gtk::Builder) -> Rc<RefCell<Self>> {
-
-// 		pages_preview.connect_key_press_event(clone!(@strong state =>
-// 			move |pages_preview, event| {
-// 				if event.get_keyval() == gdk::keys::constants::Delete
-// 				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
-// 					let state = &mut *state.borrow_mut();
-// 					let selected_items = pages_preview.get_selected_items();
-// 					selected_items.iter()
-// 						.map(|selected| selected.get_indices()[0] as usize)
-// 						.for_each(|i| {
-// 							state.remove_page(PageIndex(i));
-// 						});
-// 				}
-// 				gtk::Inhibit::default()
-// 			}
-// 		));
-
-
 struct AppActor {
 	widgets: AppWidgets,
 	application: gtk::Application,
@@ -42,6 +22,7 @@ struct AppActor {
 	piece_starts: BTreeMap<StaffIndex, Option<String>>,
 	section_starts: BTreeMap<StaffIndex, SectionMeta>,
 	selected_page: Option<PageIndex>,
+	/* Relative to the currently selected page */
 	selected_staff: Option<usize>,
 }
 
@@ -228,6 +209,17 @@ impl AppActor {
 			.set(&self.widgets.pages_preview_data.append(), &[0], &[&pixbuf]);
 	}
 
+	fn remove_page(&mut self, page: PageIndex) {
+		if self.selected_page == Some(page) {
+			self.select_page(None);
+		}
+		self.pages.remove(*page);
+		// TODO remove section starts, part starts, update all indices and fix up potentially broken invariants
+		self.widgets.pages_preview_data.remove(
+			&self.widgets.pages_preview_data.get_iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
+		);
+	}
+
 	fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
 		self.pages[*page_index].1.extend(staves);
 		if self.selected_page == Some(page_index) {
@@ -325,18 +317,35 @@ impl AppActor {
 		self.update_bottom_widgets();
 	}
 
-	fn update_part_name(&mut self, new_name: &str) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
+	fn delete_selected_staff(&mut self) {
+		if self.selected_staff.is_none() {
+			return;
+		}
+		let staff = self.selected_staff.take().unwrap();
+
+		self.update_bottom_widgets();
+
+		self.pages[*self.selected_page.unwrap()].1.remove(staff);
+
+		self.editor.try_send(EditorSignal2::LoadPage(unsafe_send_sync::UnsafeSend::new(
+			self.selected_page.map(|page_index| {
+				let (page, bars) = self.pages[*page_index].clone();
+				(page, bars, self.count_staves_before(page_index))
 			})
-			.expect("You shouldn't be able to click this with nothing selected");
+		))).unwrap();
+	}
+
+	fn update_part_name(&mut self, new_name: &str) {
+		if self.selected_page.is_none() || self.selected_staff.is_none() {
+			return;
+		}
+		let index = StaffIndex(
+			self.count_staves_before(self.selected_page.unwrap())
+			+ self.selected_staff.unwrap()
+		);
 		let name = self
 			.piece_starts
-			.get_mut(&index.into())
+			.get_mut(&index)
 			.expect("You shouldn't be able to set the name on non part starts");
 		*name = Some(new_name.to_string());
 
@@ -344,15 +353,13 @@ impl AppActor {
 	}
 
 	fn update_section_start(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
+		if self.selected_page.is_none() || self.selected_staff.is_none() {
+			return;
+		}
+		let index = StaffIndex(
+			self.count_staves_before(self.selected_page.unwrap())
+			+ self.selected_staff.unwrap()
+		);
 		if selected {
 			self.section_starts
 				.entry(index)
@@ -365,15 +372,13 @@ impl AppActor {
 	}
 
 	fn update_section_repetition(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
+		if self.selected_page.is_none() || self.selected_staff.is_none() {
+			return;
+		}
+		let index = StaffIndex(
+			self.count_staves_before(self.selected_page.unwrap())
+			+ self.selected_staff.unwrap()
+		);
 		self.section_starts
 			.get_mut(&index)
 			.expect("You shouldn't be able to click this if there's no section start")
@@ -383,15 +388,13 @@ impl AppActor {
 	}
 
 	fn update_section_end(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
+		if self.selected_page.is_none() || self.selected_staff.is_none() {
+			return;
+		}
+		let index = StaffIndex(
+			self.count_staves_before(self.selected_page.unwrap())
+			+ self.selected_staff.unwrap()
+		);
 		self.section_starts
 			.get_mut(&index)
 			.expect("You shouldn't be able to click this if there's no section start")
@@ -401,15 +404,13 @@ impl AppActor {
 	}
 
 	fn update_part_start(&mut self, selected: bool) {
-		let index = self
-			.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			})
-			.expect("You shouldn't be able to click this with nothing selected");
-		let index = StaffIndex(index);
+		if self.selected_page.is_none() || self.selected_staff.is_none() {
+			return;
+		}
+		let index = StaffIndex(
+			self.count_staves_before(self.selected_page.unwrap())
+			+ self.selected_staff.unwrap()
+		);
 		if selected {
 			self.piece_starts.entry(index).or_insert(None);
 			/* When a piece starts, a section must start as well */
@@ -573,6 +574,18 @@ impl actix::Handler<StaffSelected> for AppActor {
 	}
 }
 
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct DeleteSelectedStaff;
+
+impl actix::Handler<DeleteSelectedStaff> for AppActor {
+	type Result = ();
+
+	fn handle(&mut self, _: DeleteSelectedStaff, _ctx: &mut Self::Context) {
+		self.delete_selected_staff();
+	}
+}
+
 #[derive(woab::BuilderSignal, Debug)]
 enum AppSignal {
 	/* Menu */
@@ -584,6 +597,9 @@ enum AppSignal {
 	AddPages2,
 	SelectPage,
 	Autodetect,
+	/* Side bar */
+	#[signal(inhibit = false)]
+	PreviewKeyPress(gtk::IconView, #[signal(event)] gdk::EventKey),
 	/* Editor */
 	PieceStartUpdate(gtk::CheckButton, glib::ParamSpec),
 	PieceNameUpdate(gtk::Entry),
@@ -597,6 +613,7 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 		println!("Signal: {:?}", signal);
 		match signal {
 			AppSignal::AddPages => self.add_pages(),
+			AppSignal::AddPages2 => { /* TODO */ },
 			AppSignal::SelectPage => {
 				let selected_items = self.widgets.pages_preview.get_selected_items();
 				self.select_page(match selected_items.len() {
@@ -614,12 +631,20 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 			AppSignal::OpenDocument => self.load_with_dialog(),
 			AppSignal::NewDocument => self.unload_and_clear(),
 			AppSignal::SaveDocument => self.save_with_ui(),
-			_ => (),
+			AppSignal::PreviewKeyPress(pages_preview, event) => {
+				if event.get_keyval() == gdk::keys::constants::Delete
+				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
+					let selected_items = pages_preview.get_selected_items();
+					selected_items.iter()
+						.map(|selected| selected.get_indices()[0] as usize)
+						.for_each(|i| {
+							self.remove_page(PageIndex(i));
+						});
+				}
+			},
 		}
 	}
 }
-
-
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

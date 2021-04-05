@@ -123,6 +123,7 @@
                     <property name="item_width">64</property>
                     <property name="reorderable">True</property>
                     <property name="pixbuf-column">0</property>
+                    <signal name="key-press-event" handler="EditorKeyPress"/>
                   </object>
                 </child>
               </object>

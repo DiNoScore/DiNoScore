@@ -69,7 +69,7 @@ impl actix::Actor for EditorActor {
 #[derive(woab::BuilderSignal, Debug)]
 pub enum EditorSignal {
 	#[signal(inhibit = false)]
-	EditorKeyPress,
+	EditorKeyPress(gtk::DrawingArea, #[signal(event)] gdk::EventKey),
 	#[signal(inhibit = false)]
 	EditorKeyRelease,
 	#[signal(inhibit = false)]
@@ -106,7 +106,13 @@ impl actix::StreamHandler<EditorSignal> for EditorActor {
 					self.app.try_send(StaffSelected(selected_staff)).unwrap();
 				}
 			},
-			EditorSignal::EditorKeyPress => {
+			EditorSignal::EditorKeyPress(_editor, event) => {
+				if event.get_keyval() == gdk::keys::constants::Delete
+				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
+					self.selected_staff = None;
+					self.render_page();
+					self.app.try_send(DeleteSelectedStaff).unwrap();
+				}
 			},
 			_ => (),
 		}
