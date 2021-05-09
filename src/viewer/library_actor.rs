@@ -1,28 +1,27 @@
-use std::sync::Arc;
-use std::cell::RefCell;
-use std::rc::Rc;
-use gtk::prelude::*;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
+use gtk::prelude::*;
 use libhandy::prelude::*;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
+use actix::Actor;
+use dinoscore::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
-use dinoscore::*;
 
-use super::song_actor::{SongActor, LoadSong};
+use super::song_actor::{LoadSong, SongActor};
 
-pub fn create(builder: &woab::BuilderConnector, song_actor: actix::Addr<SongActor>, library: library::Library) -> actix::Addr<LibraryActor> {
-	builder.actor()
-		.connect_signals(LibrarySignal::connector())
-		.create(|_ctx| {
-			LibraryActor {
-				widgets: builder.widgets().unwrap(),
-				library: Rc::new(RefCell::new(library)),
-				song_actor,
-			}
-		})
+pub fn create(
+	builder: &woab::BuilderConnector,
+	song_actor: actix::Addr<SongActor>,
+	library: library::Library,
+) -> actix::Addr<LibraryActor> {
+	LibraryActor::create(move |_ctx| LibraryActor {
+		widgets: builder.widgets().unwrap(),
+		library: Rc::new(RefCell::new(library)),
+		song_actor,
+	})
 }
 
 pub struct LibraryActor {
@@ -62,7 +61,7 @@ impl actix::Actor for LibraryActor {
 					&song.thumbnail(),
 					&song.title().unwrap_or("<no title>").to_value(),
 					&song.uuid().to_string().to_value(),
-				]
+				],
 			);
 		}
 		self.widgets.library_grid.show();
@@ -80,12 +79,14 @@ impl LibraryActor {
 		let mut library = self.library.borrow_mut();
 		let song = library.songs.get_mut(&song).unwrap();
 
-		self.widgets.deck.navigate(libhandy::NavigationDirection::Forward);
+		self.widgets
+			.deck
+			.navigate(libhandy::NavigationDirection::Forward);
 
 		let song_actor = self.song_actor.clone();
 		let mut event = Some(LoadSong {
 			meta: song.index.clone(),
-			pdf: song.load_sheet(),
+			pages: unsafe { unsafe_force::Send::new(song.load_sheets().unwrap()) },
 		});
 		/* Hack to get the event processed in the correct order */
 		glib::timeout_add_local(50, move || {
@@ -95,17 +96,12 @@ impl LibraryActor {
 	}
 }
 
-#[derive(woab::BuilderSignal, Debug)]
-pub enum LibrarySignal {
-	SongSelected(gtk::IconView),
-	PlaySelected(gtk::Button),
-	LoadSong(gtk::IconView, gtk::TreePath),
-}
+impl actix::Handler<woab::Signal> for LibraryActor {
+	type Result = woab::SignalResult;
 
-impl actix::StreamHandler<LibrarySignal> for LibraryActor {
-	fn handle(&mut self, signal: LibrarySignal, _ctx: &mut Self::Context) {
-		match signal {
-			LibrarySignal::SongSelected(_library_grid) => {
+	fn handle(&mut self, signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
+		signal!(match (signal) {
+			"SongSelected" => {
 				let song: Option<uuid::Uuid> = {
 					self.widgets.library_grid.get_selected_items()
 						.into_iter()
@@ -116,7 +112,7 @@ impl actix::StreamHandler<LibrarySignal> for LibraryActor {
 				};
 				self.widgets.sidebar_revealer.set_reveal_child(song.is_some());
 			},
-			LibrarySignal::PlaySelected(_button) => {
+			"PlaySelected" => {
 				println!("Activated");
 				let uuid = {
 					/* There is exactly one item */
@@ -126,7 +122,7 @@ impl actix::StreamHandler<LibrarySignal> for LibraryActor {
 				};
 				self.load_song(uuid);
 			},
-			LibrarySignal::LoadSong(_library_grid, item) => {
+			"LoadSong" => |_ = gtk::IconView, item = gtk::TreePath | {
 				let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 2)
 					.get::<glib::GString>()
 					.unwrap()
@@ -134,6 +130,8 @@ impl actix::StreamHandler<LibrarySignal> for LibraryActor {
 				let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
 				self.load_song(uuid);
 			},
-		}
+		});
+
+		Ok(None)
 	}
 }

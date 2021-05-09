@@ -1,5 +1,5 @@
-use itertools::Itertools;
 use super::*;
+use itertools::Itertools;
 
 const PB_PATH: &str = "./res/2019-05-16_faster-rcnn-inception-resnet-v2.pb";
 
@@ -30,7 +30,12 @@ pub struct RelativeStaff {
 }
 
 impl RelativeStaff {
-	pub fn into_staff(self, page: collection::PageIndex, width: f64, height: f64) -> collection::Staff {
+	pub fn into_staff(
+		self,
+		page: collection::PageIndex,
+		width: f64,
+		height: f64,
+	) -> collection::Staff {
 		collection::Staff {
 			page,
 			start: (self.left * width, self.top * height),
@@ -55,10 +60,9 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 		println!("A");
 		let detection_graph = &DETECTION_GRAPH;
 
-		let image_tensor =
-			tf::Tensor::new(&[1, image_height as u64, image_width as u64, 3])
-				.with_values(&image_bytes)
-				.unwrap();
+		let image_tensor = tf::Tensor::new(&[1, image_height as u64, image_width as u64, 3])
+			.with_values(&image_bytes)
+			.unwrap();
 		println!("A2");
 
 		let mut session = tf::Session::new(&tf::SessionOptions::new(), &detection_graph).unwrap();
@@ -157,9 +161,10 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	}
 
 	/* Group them by staff */
-	let mut bars = bars.into_iter().enumerate().collect::<Vec<_>>();
+	let mut bars: Vec<(usize, _)> = bars.into_iter().enumerate().collect::<Vec<_>>();
 
-	while { /* do */
+	while {
+		/* do */
 		let mut changed = false;
 		for i in 0..bars.len() {
 			for j in 0..bars.len() {
@@ -167,13 +172,15 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 					continue;
 				}
 				// This is safe thanks to the index check above
-				let bar1 = & unsafe { &*(&bars as *const Vec<(usize, RelativeStaff)>) }[i];
+				let bar1 = &unsafe { &*(&bars as *const Vec<(usize, RelativeStaff)>) }[i];
 				let bar2 = &mut unsafe { &mut *(&mut bars as *mut Vec<(usize, RelativeStaff)>) }[j];
 				let c1 = (bar1.1.top + bar1.1.bottom) / 2.0;
 				let c2 = (bar2.1.top + bar2.1.bottom) / 2.0;
-				if c1 > bar2.1.top && c1 < bar2.1.bottom
-						&& c2 > bar1.1.top && c2 < bar1.1.bottom
-						&& bar1.0 != bar2.0 {
+				if c1 > bar2.1.top
+					&& c1 < bar2.1.bottom
+					&& c2 > bar1.1.top && c2 < bar1.1.bottom
+					&& bar1.0 != bar2.0
+				{
 					changed = true;
 					bar2.0 = bar1.0;
 				}
@@ -181,14 +188,14 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 		}
 		/* while */
 		changed
-	} {};
+	} {}
 
 	let staves = bars.into_iter().into_group_map();
 
 	/* Merge them */
-	use reduce::Reduce;
-	let mut staves: Vec<RelativeStaff> = staves.into_iter().filter_map(
-		|staves| {
+	let mut staves: Vec<RelativeStaff> = staves
+		.into_iter()
+		.filter_map(|staves| {
 			staves.1.into_iter().reduce(|a, b| RelativeStaff {
 				left: a.left.min(b.left),
 				right: a.right.max(b.right),

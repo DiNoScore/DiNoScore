@@ -20,12 +20,107 @@ use uuid::Uuid;
 // pub mod song;
 // use song::*;
 
-pub mod library;
+#[macro_export]
+macro_rules! first_arg {
+	($signal:expr, $var:ident: $type:ty) => {
+		let signal: &woab::Signal<_> = &$signal;
+		let $var: $type = signal.param(0)?;
+	};
+}
+
+#[macro_export]
+macro_rules! some_arg {
+	($signal:expr, $index:expr, _) => {};
+	($signal:expr, $index:expr) => {};
+	($signal:expr, $index:expr, _ = $type:ty) => {};
+	($signal:expr, $index:expr, $var:pat = $type:ty) => {
+		let $var: $type = $signal.param($index)?;
+	};
+}
+
+#[macro_export]
+macro_rules! all_args {
+	($signal:expr $(, $var:ident: $type:ty)* $(,)?) => {
+		#[allow(unused_variables)]
+		let ($($var, )*) = {
+			let signal: &woab::Signal<_> = &$signal;
+			let index = 0;
+			$(
+				let $var: $type = signal.param(index)?;
+				let index = index + 1;
+			)*
+			($($var, )*)
+		};
+	};
+	($signal:expr $(, $var:pat $(= $type:ty)?)* $(,)?) => {
+		let signal: &woab::Signal<_> = &$signal;
+		/* This is not hygienic and will put index into scope */
+		let mut index = 0;
+		$(
+			some_arg!(signal, index $(, $var = $type)?);
+			index += 1;
+		)*
+		/* Make sure we at least can't accidentally use it, creating subtly wrong behavior */
+		// std::mem::drop(index);
+	};
+}
+
+#[macro_export]
+macro_rules! parse_args {
+	($signal:expr, ..) => {
+	};
+	($signal:expr, $($var:ident: $type:ty),+) => {
+		let signal: &woab::Signal<_> = &$signal;
+		/* This is not hygienic and will put index into scope */
+		let mut index = 0;
+		$(
+			let $var: $type = signal.param(index)?;
+			index += 1;
+		)+
+		/* Make sure we at least can't accidentally use it, creating subtly wrong behavior */
+		std::mem::drop(index);
+	};
+	($signal:expr, _$(, $var:ident: $type:ty)*) => {
+		let signal: &woab::Signal<_> = &$signal;
+		/* This is not hygienic and will put index into scope */
+		let mut index = 1;
+		$(
+			let $var: $type = signal.param(index)?;
+			index += 1;
+		)+
+		/* Make sure we at least can't accidentally use it, creating subtly wrong behavior */
+		std::mem::drop(index);
+	};
+}
+
+#[macro_export]
+macro_rules! signal {
+	(match ($signal:expr) {
+		$( $handler:pat => $(|$($arg:pat $(= $type:ty)?),* $(,)?|)? $content:block ),*
+		$(,)?
+	}) => {
+		let signal: &woab::Signal<_> = &$signal;
+		match signal.name() {
+			$($handler => {
+				$(all_args!(signal $(, $arg $(= $type)?)*);)?
+				$content
+			}),*
+			other => unreachable!("Invalid signal name '{}'", other),
+		}
+	};
+}
+
 pub mod collection;
 pub mod layout;
+pub mod library;
+#[deprecated]
 pub mod owned;
+pub mod page_image;
 #[cfg(feature = "editor")]
 pub mod recognition;
+pub mod unsafe_force;
+
+pub use page_image::{PageImage, PageImageBox, PageImageExt, RawPageImage};
 
 pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {
 	let progress = gtk::Dialog::new();
@@ -40,5 +135,6 @@ pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar)
 	progress.set_title("Loading…");
 	progress.set_deletable(false);
 	progress.show_all();
+	bar.set_fraction(0.0);
 	(progress, bar)
 }

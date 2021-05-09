@@ -1,12 +1,18 @@
+use actix::prelude::*;
+use gdk::prelude::*;
+use gio::prelude::*;
+use glib::clone;
+use gtk::prelude::*;
+
 use std::{cell::RefCell, rc::Rc};
 
 use super::*;
 
-pub (super) struct EditorActor {
+pub(super) struct EditorActor {
 	widgets: EditorWidgets,
 
 	app: actix::Addr<AppActor>,
-	current_page: Option<(Rc<poppler::PopplerPage>, Vec<Staff>, usize)>,
+	current_page: Option<(Rc<RawPageImage>, Vec<Staff>, usize)>,
 	selected_staff: Option<usize>,
 	// Internal image cache
 	editor_content: Rc<RefCell<(cairo::ImageSurface, bool)>>,
@@ -32,7 +38,8 @@ impl actix::Actor for EditorActor {
 				| gdk::EventMask::KEY_RELEASE_MASK,
 		);
 
-		{ /* DrawingArea rendering */
+		{
+			/* DrawingArea rendering */
 			let addr = ctx.address();
 			editor.connect_draw(clone!(@weak self.editor_content as editor_content => @default-panic, move |editor, context| {
 				let (surface, _is_valid) = &mut *editor_content.borrow_mut();
@@ -64,33 +71,31 @@ impl actix::Actor for EditorActor {
 	}
 }
 
+// #[allow(clippy::enum_variant_names)]
+// #[derive(woab::BuilderSignal, Debug)]
+// pub enum EditorSignal {
+// 	EditorKeyPress(gtk::DrawingArea, #[signal(event)] gdk::EventKey),
+// 	EditorKeyRelease,
+// 	EditorButtonPress(gtk::DrawingArea, #[signal(event)] gdk::EventButton),
+// 	EditorButtonRelease,
+// }
 
-#[allow(clippy::enum_variant_names)]
-#[derive(woab::BuilderSignal, Debug)]
-pub enum EditorSignal {
-	#[signal(inhibit = false)]
-	EditorKeyPress(gtk::DrawingArea, #[signal(event)] gdk::EventKey),
-	#[signal(inhibit = false)]
-	EditorKeyRelease,
-	#[signal(inhibit = false)]
-	EditorButtonPress(gtk::DrawingArea, #[signal(event)] gdk::EventButton),
-	#[signal(inhibit = false)]
-	EditorButtonRelease,
-}
+impl actix::Handler<woab::Signal> for EditorActor {
+	type Result = woab::SignalResult;
 
-impl actix::StreamHandler<EditorSignal> for EditorActor {
-	fn handle(&mut self, signal: EditorSignal, _ctx: &mut Self::Context) {
-		println!("Editor signal: {:?}", signal);
-		match signal {
-			EditorSignal::EditorButtonPress(editor, event) => {
+	fn handle(&mut self, signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
+		println!("Editor signal: {:?}", signal.name());
+		signal!(match (signal) {
+			"button_press" => |editor = gtk::DrawingArea, event = gdk::Event| {
+				let event: gdk::EventButton = event.downcast().unwrap();
 				editor.emit_grab_focus();
 
 				let (page, bars, _staves_before) = match &self.current_page {
 					Some(current_page) => current_page,
-					None => return,
+					None => return Ok(Some(Inhibit(false))),
 				};
 
-				let scale = editor.get_allocated_height() as f64 / page.get_size().1;
+				let scale = editor.get_allocated_height() as f64 / page.get_height();
 				let x = event.get_position().0 / scale;
 				let y = event.get_position().1 / scale;
 				let mut selected_staff = None;
@@ -106,7 +111,8 @@ impl actix::StreamHandler<EditorSignal> for EditorActor {
 					self.app.try_send(StaffSelected(selected_staff)).unwrap();
 				}
 			},
-			EditorSignal::EditorKeyPress(_editor, event) => {
+			"key_press" => |_editor = gtk::DrawingArea, event = gdk::Event| {
+				let event: gdk::EventKey = event.downcast().unwrap();
 				if event.get_keyval() == gdk::keys::constants::Delete
 				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
 					self.selected_staff = None;
@@ -114,8 +120,9 @@ impl actix::StreamHandler<EditorSignal> for EditorActor {
 					self.app.try_send(DeleteSelectedStaff).unwrap();
 				}
 			},
-			_ => (),
-		}
+			_ => | | {},
+		});
+		Ok(Some(Inhibit(false)))
 	}
 }
 
@@ -123,7 +130,7 @@ impl actix::StreamHandler<EditorSignal> for EditorActor {
 #[rtype(result = "()")]
 pub enum EditorSignal2 {
 	Redraw,
-	LoadPage(unsafe_send_sync::UnsafeSend<Option<(Rc<poppler::PopplerPage>, Vec<Staff>, usize)>>),
+	LoadPage(fragile::Fragile<Option<(Rc<RawPageImage>, Vec<Staff>, usize)>>),
 }
 
 impl actix::Handler<EditorSignal2> for EditorActor {
@@ -133,7 +140,7 @@ impl actix::Handler<EditorSignal2> for EditorActor {
 		match signal {
 			EditorSignal2::Redraw => self.render_page(),
 			EditorSignal2::LoadPage(current_page) => {
-				self.current_page = current_page.unwrap();
+				self.current_page = current_page.into_inner();
 				self.selected_staff = None;
 				self.app.try_send(StaffSelected(None)).unwrap();
 				self.render_page();
@@ -161,7 +168,12 @@ impl EditorActor {
 		let editor = &self.widgets.editor;
 		editor.queue_draw();
 		let (surface, _is_valid) = &mut *self.editor_content.borrow_mut();
-		*surface = cairo::ImageSurface::create(cairo::Format::Rgb24, editor.get_allocated_width(), editor.get_allocated_height()).unwrap();
+		*surface = cairo::ImageSurface::create(
+			cairo::Format::Rgb24,
+			editor.get_allocated_width(),
+			editor.get_allocated_height(),
+		)
+		.unwrap();
 		let context = cairo::Context::new(&surface);
 		context.set_source_rgb(1.0, 1.0, 1.0);
 		context.paint();
@@ -177,7 +189,7 @@ impl EditorActor {
 		// let bars = &page.1;
 		// let page = &page.0;
 
-		let scale = editor.get_allocated_height() as f64 / page.get_size().1;
+		let scale = editor.get_allocated_height() as f64 / page.get_height();
 		dbg!(scale);
 		context.scale(scale, scale);
 		page.render(&context);
@@ -191,12 +203,7 @@ impl EditorActor {
 
 				/* Main shape */
 				context.set_source_rgba(0.15, 0.3, 0.5, 0.3);
-				context.rectangle(
-					staff.left(),
-					staff.top(),
-					staff.width(),
-					staff.height()
-				);
+				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
 				context.fill_preserve();
 				context.stroke();
 
@@ -205,36 +212,39 @@ impl EditorActor {
 				context.arc(
 					staff.left(),
 					staff.top(),
-					10.0, 0.0, 2.0 * std::f64::consts::PI
+					10.0,
+					0.0,
+					2.0 * std::f64::consts::PI,
 				);
 				context.fill();
 				context.arc(
 					staff.right(),
 					staff.top(),
-					10.0, 0.0, 2.0 * std::f64::consts::PI
+					10.0,
+					0.0,
+					2.0 * std::f64::consts::PI,
 				);
 				context.fill();
 				context.arc(
 					staff.left(),
 					staff.bottom(),
-					10.0, 0.0, 2.0 * std::f64::consts::PI
+					10.0,
+					0.0,
+					2.0 * std::f64::consts::PI,
 				);
 				context.fill();
 				context.arc(
 					staff.right(),
 					staff.bottom(),
-					10.0, 0.0, 2.0 * std::f64::consts::PI
+					10.0,
+					0.0,
+					2.0 * std::f64::consts::PI,
 				);
 				context.fill();
 
 				context.restore();
 			} else {
-				context.rectangle(
-					staff.left(),
-					staff.top(),
-					staff.width(),
-					staff.height(),
-				);
+				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
 				context.fill_preserve();
 				context.stroke();
 			}

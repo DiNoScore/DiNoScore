@@ -1,6 +1,6 @@
 #![allow(unused_variables, clippy::too_many_arguments)]
 
-use gdk_pixbuf::{Pixbuf, Colorspace, InterpType, PixbufRotation};
+use gdk_pixbuf::{Colorspace, InterpType, Pixbuf, PixbufRotation};
 use poppler::{PopplerDocument, PopplerPage};
 
 #[derive(Debug)]
@@ -52,9 +52,8 @@ impl OwnedPixbuf {
 		bits_per_sample: i32,
 		width: i32,
 		height: i32,
-	) -> Option<OwnedPixbuf>  {
-		Pixbuf::new(colorspace, has_alpha, bits_per_sample, width, height)
-			.map(OwnedPixbuf)
+	) -> Option<OwnedPixbuf> {
+		Pixbuf::new(colorspace, has_alpha, bits_per_sample, width, height).map(OwnedPixbuf)
 	}
 
 	pub fn from_bytes(
@@ -73,13 +72,12 @@ impl OwnedPixbuf {
 			bits_per_sample,
 			width,
 			height,
-			rowstride
+			rowstride,
 		))
 	}
 
 	pub fn from_resource(resource_path: &str) -> Result<OwnedPixbuf, glib::Error> {
-		Pixbuf::from_resource(resource_path)
-			.map(OwnedPixbuf)
+		Pixbuf::from_resource(resource_path).map(OwnedPixbuf)
 	}
 
 	pub fn from_resource_at_scale(
@@ -133,16 +131,18 @@ impl OwnedPixbuf {
 		color1: u32,
 		color2: u32,
 	) -> Option<OwnedPixbuf> {
-		self.map(|pixbuf| pixbuf.composite_color_simple(
+		self.map(|pixbuf| {
+			pixbuf.composite_color_simple(
 				dest_width,
 				dest_height,
 				interp_type,
 				overall_alpha,
 				check_size,
 				color1,
-				color2
-			))
-			.map(OwnedPixbuf)
+				color2,
+			)
+		})
+		.map(OwnedPixbuf)
 	}
 
 	pub fn fill(&mut self, pixel: u32) {
@@ -150,8 +150,7 @@ impl OwnedPixbuf {
 	}
 
 	pub fn flip(&self, horizontal: bool) -> Option<OwnedPixbuf> {
-		self.map(|pixbuf| pixbuf.flip(horizontal))
-			.map(OwnedPixbuf)
+		self.map(|pixbuf| pixbuf.flip(horizontal)).map(OwnedPixbuf)
 	}
 
 	pub fn get_bits_per_sample(&self) -> i32 {
@@ -228,8 +227,7 @@ impl OwnedPopplerDocument {
 		p: P,
 		password: &str,
 	) -> Result<OwnedPopplerDocument, glib::error::Error> {
-		PopplerDocument::new_from_file(p, password)
-			.map(OwnedPopplerDocument)
+		PopplerDocument::new_from_file(p, password).map(OwnedPopplerDocument)
 	}
 
 	pub fn new_from_bytes(

@@ -6,8 +6,6 @@ A digital music stand written with GTK in Rust using [WoAB](https://github.com/i
 
 ## Try it out
 
-Don't forget to clone the submodules! (`git clone --recurse-submodules https://gitlab.gnome.org/piegames/dinoscore.git`)
-
 If you've installed Nix, simply type `nix-shell` and you're good to go. Power users may prefer `direnv allow`.
 
 - **Run the application**: `cargo run --locked --release`

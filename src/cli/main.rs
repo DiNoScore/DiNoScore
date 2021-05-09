@@ -1,7 +1,7 @@
-
+use anyhow::Context;
 use dinoscore::*;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
 	gtk::init().unwrap();
 
 	use clap::*;
@@ -51,23 +51,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		for input in inputs {
 			let input: &std::path::Path = input.as_ref();
 			println!("Upgrading '{}'", input.display());
+
 			let output_path = output_dir.join(input.file_name().unwrap());
-			let mut song = futures::executor::block_on(collection::SongFile::new(input));
-			let pdf = song.load_sheet().into_inner();
+			let mut song = collection::SongFile::new(input);
+			let sheets: Vec<RawPageImage> =
+				song.load_sheets_raw().context("Failed to load sheets")?;
 			let thumbnail = song.thumbnail().cloned();
 			let meta = song.index;
-			let iter_pages = || (0..pdf.get_n_pages())
-				.map(|i| pdf.get_page(i).unwrap())
-				.map(From::from);
-			let thumbnail = thumbnail
-				.or_else(|| collection::SongFile::generate_thumbnail(&meta, iter_pages()));
-			collection::SongFile::save(
-				output_path,
-				meta,
-				iter_pages(),
-				thumbnail,
-				overwrite,
-			);
+			let thumbnail =
+				thumbnail.or_else(|| collection::SongFile::generate_thumbnail(&meta, &sheets));
+			collection::SongFile::save(output_path, meta, &sheets, thumbnail, overwrite)?;
 		}
 	}
 

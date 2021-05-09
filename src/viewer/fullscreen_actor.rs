@@ -1,33 +1,30 @@
-use std::sync::Arc;
-use std::cell::RefCell;
-use std::rc::Rc;
-use gtk::prelude::*;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
+use gtk::prelude::*;
 use libhandy::prelude::*;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
+use actix::Actor;
+use dinoscore::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
-use dinoscore::*;
 
-pub fn create(builder: &woab::BuilderConnector, application: gtk::Application) -> actix::Addr<FullscreenActor> {
-	builder.actor()
-		.connect_signals(FullscreenSignal::connector())
-		.create(|_ctx| {
-			FullscreenActor {
-				widgets: builder.widgets().unwrap(),
-				application: application.clone(),
-				is_fullscreen: false,
-			}
-		})
+pub fn create(
+	builder: &woab::BuilderConnector,
+	application: gtk::Application,
+) -> actix::Addr<FullscreenActor> {
+	FullscreenActor::create(|_ctx| FullscreenActor {
+		widgets: builder.widgets().unwrap(),
+		application: application.clone(),
+		is_fullscreen: false,
+	})
 }
-
 
 pub struct FullscreenActor {
 	widgets: FullscreenWidgets,
 	application: gtk::Application,
-	is_fullscreen: bool
+	is_fullscreen: bool,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -40,34 +37,25 @@ struct FullscreenWidgets {
 	restore_button: gtk::Button,
 }
 
-#[derive(Debug, woab::BuilderSignal)]
-enum FullscreenSignal {
-	Fullscreen,
-	Unfullscreen,
-	ToggleFullscreen,
-	#[signal(inhibit = false)]
-	WindowState(gtk::Window, #[signal(event)] gdk::EventWindowState),
-}
-
 impl actix::Actor for FullscreenActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
-		let connector = FullscreenSignal::connector().route_to::<Self>(ctx);
+		use actix::AsyncContext;
 		let application = &self.application;
 
 		let enter_fullscreen = gio::SimpleAction::new("enter_fullscreen", None);
 		application.add_action(&enter_fullscreen);
-		connector.connect(&enter_fullscreen, "activate", "Fullscreen").unwrap();
+		woab::route_action(&enter_fullscreen, ctx.address()).unwrap();
 
 		let leave_fullscreen = gio::SimpleAction::new("leave_fullscreen", None);
 		application.add_action(&leave_fullscreen);
-		connector.connect(&leave_fullscreen, "activate", "Unfullscreen").unwrap();
+		woab::route_action(&leave_fullscreen, ctx.address()).unwrap();
 
 		let toggle_fullscreen = gio::SimpleAction::new("toggle_fullscreen", None);
 		application.add_action(&toggle_fullscreen);
 		application.set_accels_for_action("app.toggle_fullscreen", &["F11"]);
-		connector.connect(&toggle_fullscreen, "activate", "ToggleFullscreen").unwrap();
+		woab::route_action(&toggle_fullscreen, ctx.address()).unwrap();
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -75,18 +63,20 @@ impl actix::Actor for FullscreenActor {
 	}
 }
 
-impl actix::StreamHandler<FullscreenSignal> for FullscreenActor {
-	fn handle(&mut self, signal: FullscreenSignal, _ctx: &mut Self::Context) {
-		match signal {
-			FullscreenSignal::Fullscreen => {
+impl actix::Handler<woab::Signal> for FullscreenActor {
+	type Result = woab::SignalResult;
+
+	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
+		signal!(match (signal) {
+			"enter_fullscreen" => {
 				println!("Enter fullscreen");
 				self.widgets.window.fullscreen();
 			},
-			FullscreenSignal::Unfullscreen => {
+			"leave_fullscreen" => {
 				println!("Leave fullscreen");
 				self.widgets.window.unfullscreen();
 			},
-			FullscreenSignal::ToggleFullscreen => {
+			"toggle_fullscreen" => {
 				println!("Toggle fullscreen");
 				if self.is_fullscreen {
 					self.widgets.window.unfullscreen();
@@ -94,7 +84,8 @@ impl actix::StreamHandler<FullscreenSignal> for FullscreenActor {
 					self.widgets.window.fullscreen();
 				}
 			},
-			FullscreenSignal::WindowState(window, state) => {
+			"WindowState" => |window = gtk::Window, state = gdk::Event| {
+				let state: gdk::EventWindowState = state.downcast().unwrap();
 				if state
 					.get_changed_mask()
 					.contains(gdk::WindowState::FULLSCREEN)
@@ -119,7 +110,10 @@ impl actix::StreamHandler<FullscreenSignal> for FullscreenActor {
 						window.queue_draw();
 					}
 				}
+				return Ok(Some(gtk::Inhibit(false)));
 			},
-		}
+		});
+
+		Ok(None)
 	}
 }

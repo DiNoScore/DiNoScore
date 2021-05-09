@@ -1,33 +1,31 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
-use std::sync::Arc;
-use std::cell::RefCell;
-use std::rc::Rc;
-use gtk::prelude::*;
+use actix::Actor;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
+use gtk::prelude::*;
 use libhandy::prelude::*;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
+use dinoscore::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
-use dinoscore::*;
 
-mod song_actor;
 mod fullscreen_actor;
 mod library_actor;
 mod pedal;
+mod song_actor;
 
-use song_actor::SongActor;
 use fullscreen_actor::FullscreenActor;
-use library_actor::{LibraryActor, LibrarySignal};
-
+use library_actor::LibraryActor;
+use song_actor::SongActor;
 
 struct AppActor {
 	widgets: AppWidgets,
 	application: gtk::Application,
-	builder: Rc<woab::BuilderConnector>,
+	// builder: Rc<woab::BuilderConnector>,
 	song_actor: actix::Addr<SongActor>,
 }
 
@@ -47,10 +45,7 @@ impl actix::Actor for AppActor {
 		let window = &self.widgets.window;
 		// window.set_application(Some(&self.application)); // <-- This line segfaults
 		window.set_position(gtk::WindowPosition::Center);
-		window.add_events(
-			gdk::EventMask::STRUCTURE_MASK
-				| gdk::EventMask::BUTTON_PRESS_MASK,
-		);
+		window.add_events(gdk::EventMask::STRUCTURE_MASK | gdk::EventMask::BUTTON_PRESS_MASK);
 
 		let quit = gio::SimpleAction::new("quit", None);
 		quit.connect_activate(
@@ -72,11 +67,11 @@ impl actix::Actor for AppActor {
 		// let addr = ctx.address();
 		/* Spawn library actor once library is loaded */
 		// std::thread::spawn(move || {
-			// let addr = addr;
-			// println!("Loading library");
-			// let library = futures::executor::block_on(library::Library::load()).unwrap();
-			// println!("Loaded library");
-			// addr.try_send(CreateLibraryActor(library)).unwrap();
+		// let addr = addr;
+		// println!("Loading library");
+		// let library = futures::executor::block_on(library::Library::load()).unwrap();
+		// println!("Loaded library");
+		// addr.try_send(CreateLibraryActor(library)).unwrap();
 		// });
 		// use actix::Handler;
 		// self.handle(CreateLibraryActor(library), ctx);
@@ -92,29 +87,24 @@ impl actix::Actor for AppActor {
 #[rtype(result = "()")]
 struct CreateLibraryActor(library::Library);
 
-impl actix::Handler<CreateLibraryActor> for AppActor {
-	type Result = ();
+// impl actix::Handler<CreateLibraryActor> for AppActor {
+// 	type Result = ();
 
-	fn handle(&mut self, msg: CreateLibraryActor, ctx: &mut Self::Context) -> Self::Result {
-		let library = msg.0;
-		library_actor::create(&self.builder, self.song_actor.clone(), library);
+// 	fn handle(&mut self, msg: CreateLibraryActor, ctx: &mut Self::Context) -> Self::Result {
+// 		let library = msg.0;
+// 		let library_actor = library_actor::create(&self.builder, self.song_actor.clone(), library);
+// 	}
+// }
+
+impl actix::Handler<woab::Signal> for AppActor {
+	type Result = woab::SignalResult;
+
+	fn handle(&mut self, _signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
+		unreachable!();
 	}
 }
 
-#[derive(woab::BuilderSignal, Debug)]
-enum AppSignal {
-	// WindowDestroy
-}
-
-impl actix::StreamHandler<AppSignal> for AppActor {
-	fn handle(&mut self, signal: AppSignal, _ctx: &mut Self::Context) {
-		println!("A: {:?}", signal);
-		// match signal {
-		// 	AppSignal::WindowDestroy => {},
-		// }
-	}
-}
-
+#[allow(clippy::unnecessary_wraps)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let orig_hook = std::panic::take_hook();
 	std::panic::set_hook(Box::new(move |panic_info| {
@@ -134,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
 
-		woab::run_actix_inside_gtk_event_loop("DiNoScore").unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
 		println!("Woab started");
 
 		application.inhibit(
@@ -146,28 +136,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	application.connect_activate(move |application| {
 		let builder = gtk::Builder::from_file("res/viewer.glade");
-		let builder = Rc::new(woab::BuilderConnector::from(builder));
+		let builder = woab::BuilderConnector::from(builder);
 
-		let song_actor = song_actor::create(&*builder, application.clone());
-		fullscreen_actor::create(&*builder, application.clone());
-		let library = futures::executor::block_on(library::Library::load()).unwrap();
-		library_actor::create(&*builder, song_actor.clone(), library);
+		woab::block_on(async {
+			let song_actor = song_actor::create(&builder, application.clone());
+			let fullscreen_actor = fullscreen_actor::create(&builder, application.clone());
+			let library = library::Library::load().unwrap();
+			let library_actor = library_actor::create(&builder, song_actor.clone(), library);
 
-		builder.actor()
-			.connect_signals(AppSignal::connector())
-			.create({
-				let builder = &builder;
+			let widgets: AppWidgets = builder.widgets().unwrap();
+			let app_actor = AppActor::create(
 				clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
-					let widgets: AppWidgets = builder.widgets().unwrap();
 					widgets.window.set_application(Some(&application));
 					AppActor {
 						widgets,
 						application,
 						song_actor,
-						builder: builder.clone(),
 					}
-				})
-			});
+				}),
+			);
+
+			builder.connect_to(
+				woab::NamespacedSignalRouter::default()
+					.route(song_actor)
+					.route(library_actor)
+					.route(app_actor)
+					.route(fullscreen_actor),
+			);
+		});
 	});
 
 	application.run(&[]);

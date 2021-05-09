@@ -26,7 +26,7 @@
     <property name="default_width">450</property>
     <property name="default_height">300</property>
     <property name="title" translatable="yes">DiNoScore</property>
-    <signal name="window-state-event" handler="WindowState" swapped="no" />
+    <signal name="window-state-event" handler="FullscreenActor::WindowState" swapped="no" />
     <!-- <signal name="destroy" handler="WindowDestroy" swapped="no" /> -->
     <child>
       <object class="HdyDeck" id="deck">
@@ -111,8 +111,8 @@
                         <!-- <property name="columns">3</property> -->
                         <property name="pixbuf-column">0</property>
                         <property name="text-column">1</property>
-                        <signal name="item-activated" handler="LoadSong" swapped="no"/>
-                        <signal name="selection-changed" handler="SongSelected" swapped="no"/>
+                        <signal name="item-activated" handler="LibraryActor::LoadSong" swapped="no"/>
+                        <signal name="selection-changed" handler="LibraryActor::SongSelected" swapped="no"/>
                       </object>
                     </child>
                   </object>
@@ -138,7 +138,7 @@
                             <property name="can_focus">False</property>
                             <property name="label" translatable="yes">Play</property>
                             <property name="sensitive" bind-source="sidebar_revealer" bind-property="reveal-child" bind-flags="sync-create"/>
-                            <signal name="clicked" handler="PlaySelected" />
+                            <signal name="clicked" handler="LibraryActor::PlaySelected" />
                           </object>
                         </child>
                       </object>
@@ -164,14 +164,14 @@
                 <child>
                   <object class="GtkModelButton">
                     <property name="tooltip-text" translatable="yes">Go back</property>
-                    <property name="action_name">view_actions.go-back</property>
+                    <property name="action_name">view_actions.go_back</property>
                     <property name="icon">go-back-icon</property>
                     <property name="iconic">True</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkComboBoxText" id="part_selection">
-                    <!-- <signal name="changed" handler="SelectPart" /> -->
+                    <!-- <signal name="changed" handler="SongActor::SelectPart" /> -->
                   </object>
                 </child>
                 <child>
@@ -243,10 +243,10 @@
             <child>
               <object class="HdyCarousel" id="carousel">
                 <property name="allow-mouse-drag">True</property>
-                <signal name="button-press-event" handler="CarouselButtonPress" />
-                <signal name="button-release-event" handler="CarouselButtonRelease" />
-                <signal name="page-changed" handler="CarouselPageChanged" />
-                <signal name="size-allocate" handler="CarouselSizeChanged" swapped="no" />
+                <signal name="button-press-event" handler="SongActor::CarouselButtonPress" />
+                <signal name="button-release-event" handler="SongActor::CarouselButtonRelease" />
+                <signal name="page-changed" handler="SongActor::CarouselPageChanged" />
+                <signal name="size-allocate" handler="SongActor::CarouselSizeChanged" swapped="no" />
               </object>
               <packing>
                 <property name="expand">True</property>

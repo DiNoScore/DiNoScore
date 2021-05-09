@@ -45,7 +45,7 @@
             <property name="can_focus">False</property>
             <child>
               <object class="GtkToolButton">
-                <signal name="clicked" handler="AddPages" />
+                <signal name="clicked" handler="AppActor::add_pages" />
                 <property name="can_focus">False</property>
                 <property name="tooltip_text">Add pages from images or PDF files</property>
                 <property name="label">Add BW images…</property>
@@ -57,7 +57,7 @@
             </child>
             <child>
               <object class="GtkToolButton" id="add_pages2">
-                <signal name="clicked" handler="AddPages2" />
+                <signal name="clicked" handler="AppActor::add_pages2" />
                 <property name="can_focus">False</property>
                 <property name="tooltip_text">Add pages from images that need more processing. PDF files are treated as containing one picture per page.</property>
                 <property name="label">Add colour images…</property>
@@ -78,7 +78,7 @@
             </child>
             <child>
               <object class="GtkToolButton" id="autodetect">
-                <signal name="clicked" handler="Autodetect" />
+                <signal name="clicked" handler="AppActor::autodetect" />
                 <property name="can_focus">False</property>
                 <property name="label">Autodetect</property>
               </object>
@@ -123,7 +123,7 @@
                     <property name="item_width">64</property>
                     <property name="reorderable">True</property>
                     <property name="pixbuf-column">0</property>
-                    <signal name="key-press-event" handler="EditorKeyPress"/>
+                    <signal name="key-press-event" handler="AppActor::key_press"/>
                   </object>
                 </child>
               </object>
@@ -139,10 +139,10 @@
                 <child>
                   <object class="GtkDrawingArea" id="editor">
                     <property name="can_focus">True</property>
-                    <signal name="key-press-event" handler="EditorKeyPress" />
-                    <signal name="key-release-event" handler="EditorKeyRelease" />
-                    <signal name="button-press-event" handler="EditorButtonPress" />
-                    <signal name="button-release-event" handler="EditorButtonRelease" />
+                    <signal name="key-press-event" handler="EditorActor::key_press" />
+                    <signal name="key-release-event" handler="EditorActor::key_release" />
+                    <signal name="button-press-event" handler="EditorActor::button_press" />
+                    <signal name="button-release-event" handler="EditorActor::button_release" />
                   </object>
                   <packing>
                     <property name="expand">True</property>
@@ -180,7 +180,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">This staff marks the start of a new piece/movement/variation/…</property>
                                 <property name="draw_indicator">True</property>
-                                <signal name="notify::active" handler="PieceStartUpdate" />
+                                <signal name="notify::active" handler="AppActor::piece_start_update" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -195,7 +195,7 @@
                                 <property name="can_focus">True</property>
                                 <property name="tooltip_text">Give that piece a name</property>
                                 <property name="placeholder_text">I. Presto</property>
-                                <signal name="notify::text" handler="PieceNameUpdate" />
+                                <signal name="notify::text" handler="AppActor::piece_name_update" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -240,7 +240,7 @@
                                 <property name="tooltip_text">This staff contains the start of a new section</property>
                                 <property name="sensitive">False</property>
                                 <property name="draw_indicator">True</property>
-                                <signal name="notify::active" handler="SectionStartUpdate" />
+                                <signal name="notify::active" handler="AppActor::section_start_update" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -256,7 +256,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">Check this if the old section ends and the new sections starts in the same staff</property>
                                 <property name="draw_indicator">True</property>
-                                <signal name="notify::active" handler="SectionEndUpdate" />
+                                <signal name="notify::active" handler="AppActor::section_end_update" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -272,7 +272,7 @@
                                 <property name="receives_default">False</property>
                                 <property name="tooltip_text">This section is a repetition</property>
                                 <property name="draw_indicator">True</property>
-                                <signal name="notify::active" handler="SectionRepetitionUpdate" />
+                                <signal name="notify::active" handler="AppActor::section_repetition_update" />
                               </object>
                               <packing>
                                 <property name="expand">False</property>

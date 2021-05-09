@@ -31,7 +31,8 @@ Open the image in GIMP. Do less work and skip steps if the image looks good enou
     - Adjust the gray handle so that all staff lines are legible.
     - A strong black/white contrast is good enough, you don't need to perform actual binarization.
 6. **Color correction 3:** The previous steps might have given you some transparent pixels. Make them white using "Layer → Transparency → Remove Alpha Channel".
-7. **Scale down:** You probably don't need your sheets to be in 4k. With some generous JPEG compression (80% or so), you'll get sufficiently small file sizes. Calculate less than 1 MiB per page.
+7. **Binarize:** You may already have an *almost*-monochrome image. Applying a Threshold filter will result in a much smaller file, at the cost of quality. It's up to you.
+8. **Scale down and save:** You probably don't need your sheets to be in 4k. Save the image as PNG, with an indexed palette. Aim for a few 100kiB per page. Don't include EXIF data and the thumbnail with the image, they won't be needed.
 
 ## Import the scans using the editor
 

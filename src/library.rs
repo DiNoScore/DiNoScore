@@ -1,13 +1,13 @@
 /*! The library of songs managed by the user.
- * 
+ *
  * This does not contain the actual song files themselves, but instead all the usage metadata.
  * Nevertheless, this is the primary thing a user manages and of uttermost importance.
  */
 use super::*;
-use std::collections::HashMap;
-use uuid::Uuid;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 pub enum Song {}
 
@@ -46,9 +46,7 @@ impl LibrarySong {
 #[serde(tag = "version")]
 enum LibraryFile {
 	#[serde(rename = "0")]
-	V0 {
-		songs: HashMap<Uuid, LibrarySong>,
-	},
+	V0 { songs: HashMap<Uuid, LibrarySong> },
 }
 
 #[derive(Debug)]
@@ -58,21 +56,22 @@ pub struct Library {
 }
 
 impl Library {
-	pub async fn load() -> Result<Self, ()> {
+	pub fn load() -> Result<Self, ()> {
 		// TODO don't hardcode here
 		let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
-		let songs = collection::load().await;
-		let mut stats: HashMap<Uuid, LibrarySong> = async_std::task::spawn_blocking(move || {
+		let songs = collection::load();
+		let mut stats: HashMap<Uuid, LibrarySong> = {
 			match xdg.find_data_file("library.json") {
 				Some(path) => {
-					let stats: LibraryFile = serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+					let stats: LibraryFile =
+						serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
 					match stats {
-						LibraryFile::V0 {songs} => songs
+						LibraryFile::V0 { songs } => songs,
 					}
 				},
-				None => HashMap::new()
+				None => HashMap::new(),
 			}
-		}).await;
+		};
 		/* Create stats for all new songs */
 		for uuid in songs.keys() {
 			if stats.contains_key(uuid) {
@@ -80,9 +79,6 @@ impl Library {
 			}
 			stats.insert(*uuid, LibrarySong::new(*uuid));
 		}
-		Ok(Library {
-			songs,
-			stats,
-		})
+		Ok(Library { songs, stats })
 	}
 }

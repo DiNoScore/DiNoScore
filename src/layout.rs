@@ -1,6 +1,4 @@
-
-use super::*;
-use super::collection::*;
+use super::{collection::*, *};
 
 use noisy_float::prelude::*;
 
@@ -51,7 +49,8 @@ pub fn find_scale_for_fixed_staves(
 	num_staves: u32,
 	pdf_page_width: f64,
 ) -> f64 {
-	let average_height: f64 = song.staves.iter().map(Staff::height).sum::<f64>() / (song.staves.len() as f64);
+	let average_height: f64 =
+		song.staves.iter().map(Staff::height).sum::<f64>() / (song.staves.len() as f64);
 	/* The +0.5 is to have some safety margin that prevents above average staves to form two-staff pages.
 	 * If we can fit n + 0.5 average staves on a page, we have a lower probability of having pages with n-1 staves.
 	 * Same for pages with n+1 staves.
@@ -67,7 +66,8 @@ pub fn find_scale_for_fixed_columns(
 	num_columns: u32,
 	pdf_page_width: f64,
 ) -> f64 {
-	let average_width: f64 = song.staves.iter().map(Staff::width).sum::<f64>() / (song.staves.len() as f64);
+	let average_width: f64 =
+		song.staves.iter().map(Staff::width).sum::<f64>() / (song.staves.len() as f64);
 	pdf_page_width / height * width / average_width / (num_columns as f64 + 0.5)
 }
 
@@ -94,9 +94,7 @@ pub fn layout_fixed_scale(
 			column_width = column_width.max(staff_width);
 
 			/* Start a new column for a new piece, or when the page is full */
-			if song.piece_starts.contains_key(&index)
-				|| (y + staff_height > height)
-			{
+			if song.piece_starts.contains_key(&index) || (y + staff_height > height) {
 				y = 0.0;
 				column_starts.push((index, column_width));
 			}
@@ -109,12 +107,10 @@ pub fn layout_fixed_scale(
 
 	/* 2. Convert the start indices to proper start..end ranges */
 	/* columns: Vec<(StaffIndex, StaffIndex, f64)> */
-	let columns = column_starts 
+	let columns = column_starts
 		.windows(2)
 		.map(|v| (v[0], v[1]))
-		.map(|((chunk_start, chunk_width), (chunk_end, _))| {
-			(chunk_start, chunk_end, chunk_width)
-		});
+		.map(|((chunk_start, chunk_width), (chunk_end, _))| (chunk_start, chunk_end, chunk_width));
 
 	/* 3. Determine how many columns fit on each page */
 	let page_starts: Vec<Vec<(StaffIndex, StaffIndex, f64)>> = {
@@ -122,9 +118,9 @@ pub fn layout_fixed_scale(
 		let mut page = Vec::new();
 		let mut x = 0.0;
 		for (column_start, column_end, column_width) in columns {
-			if (x + column_width > width
-			 || song.piece_starts.contains_key(&column_start))
-			 && *column_start > 0 {
+			if (x + column_width > width || song.piece_starts.contains_key(&column_start))
+				&& *column_start > 0
+			{
 				pages.push(page);
 				page = Vec::new();
 				x = 0.0;
@@ -136,15 +132,13 @@ pub fn layout_fixed_scale(
 		pages
 	};
 
-	/* 
+	/*
 	 * 4. Calculate the exact position of each staff.
 	 * Effectively, this does `(StaffIndex, StaffIndex) -> Vec<StaffLayout>` within our data structure
 	 */
 	/* pages: Vec<Vec<(Vec<StaffLayout>, f64)>> */
-	let pages = page_starts
-		.into_iter()
-		.map(|page| page
-			.into_iter()
+	let pages = page_starts.into_iter().map(|page| {
+		page.into_iter()
 			.map(|(column_start, column_end, column_width)| {
 				let mut column = Vec::new();
 				let staves: &[Staff] = &song.staves[column_start.into()..column_end.into()];
@@ -159,7 +153,10 @@ pub fn layout_fixed_scale(
 				 */
 				let max_spacing = staves_total_height / 10.0 / staves.len() as f64;
 				let spacing = f64::min(excess_space / staves.len() as f64, max_spacing);
-				let mut y = f64::min((excess_space - spacing * (staves.len() - 1) as f64) / 2.0, max_spacing * 3.0);
+				let mut y = f64::min(
+					(excess_space - spacing * (staves.len() - 1) as f64) / 2.0,
+					max_spacing * 3.0,
+				);
 				for (index, staff) in staves.iter().enumerate() {
 					column.push(StaffLayout {
 						index: column_start + StaffIndex(index),
@@ -173,7 +170,7 @@ pub fn layout_fixed_scale(
 				(column, column_width)
 			})
 			.collect::<Vec<(Vec<StaffLayout>, f64)>>()
-		);
+	});
 
 	/*
 	 * 5. Merge the multiple columns of each page using iterator magic.
@@ -182,10 +179,10 @@ pub fn layout_fixed_scale(
 	let pages = pages
 		.map(|columns| {
 			let excess_space = width
-			- columns
-				.iter()
-				.map(|(_column, column_width)| column_width)
-				.sum::<f64>();
+				- columns
+					.iter()
+					.map(|(_column, column_width)| column_width)
+					.sum::<f64>();
 			let spacing = excess_space / columns.len() as f64;
 			let mut x = (excess_space - spacing * (columns.len() - 1) as f64) / 2.0;
 
@@ -330,7 +327,12 @@ pub fn layout_fixed_width(
 	}
 }
 
-pub fn layout_fixed_height(song: &collection::SongMeta, width: f64, height: f64, row_count: usize) -> PageLayout {
+pub fn layout_fixed_height(
+	song: &collection::SongMeta,
+	width: f64,
+	height: f64,
+	row_count: usize,
+) -> PageLayout {
 	let row_height = height / row_count as f64;
 
 	let column_starts = {
@@ -377,8 +379,7 @@ pub fn layout_fixed_height(song: &collection::SongMeta, width: f64, height: f64,
 					StaffLayout {
 						index: StaffIndex(in_page_index) + chunk_start,
 						x: (width - staff_width) / 2.0,
-						y: in_page_index as f64 * row_height
-							+ (row_height - staff_height) / 2.0,
+						y: in_page_index as f64 * row_height + (row_height - staff_height) / 2.0,
 						width: staff_width,
 					}
 				})

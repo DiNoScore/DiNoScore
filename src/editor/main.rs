@@ -1,26 +1,132 @@
-use std::collections::BTreeMap;
 use actix::prelude::*;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
-use std::rc::Rc;
+use uuid::Uuid;
 
-use dinoscore::collection::*;
-use dinoscore::recognition;
+use std::{collections::BTreeMap, rc::Rc};
+
+use dinoscore::{collection::*, *};
 
 mod editor;
 use editor::*;
 
+/**
+ * Representation of a [`collection::SongFile`] together with its
+ * [`SongMeta`](collection::SongMeta) as required by the editor
+ */
+struct EditorSongFile {
+	pages: Vec<(Rc<RawPageImage>, Vec<Staff>)>,
+
+	piece_starts: BTreeMap<StaffIndex, String>,
+	section_starts: BTreeMap<StaffIndex, SectionMeta>,
+
+	/// A unique identifier for this song that is stable across file modifications
+	song_uuid: Uuid,
+	/// Effectively a random string generated on each save. Useful for caching
+	version_uuid: Uuid,
+}
+
+impl EditorSongFile {
+	fn new() -> Self {
+		Self {
+			pages: Vec::new(),
+			piece_starts: {
+				let mut map = BTreeMap::new();
+				map.insert(0.into(), "".into());
+				map
+			},
+			section_starts: {
+				let mut map = BTreeMap::new();
+				map.insert(0.into(), SectionMeta::default());
+				map
+			},
+			song_uuid: Uuid::new_v4(),
+			version_uuid: Uuid::new_v4(),
+		}
+	}
+
+	fn get_staves(&self) -> Vec<Staff> {
+		self.pages
+			.iter()
+			.enumerate()
+			.flat_map(|(_page_index, page)| page.1.iter())
+			.cloned()
+			.collect()
+	}
+
+	fn get_pages(&self) -> Vec<Rc<RawPageImage>> {
+		self.pages.iter().map(|(page, _)| page).cloned().collect()
+	}
+
+	fn count_staves_before(&self, page: PageIndex) -> usize {
+		self.pages[0..*page].iter().map(|p| p.1.len()).sum()
+	}
+
+	fn shift_items(&mut self, threshold: usize, offset: isize) {
+		/* I whish Rust had generic closures or partially applied functions */
+		fn mapper<T: Clone>(
+			threshold: usize,
+			offset: isize,
+		) -> impl Fn((&StaffIndex, &mut T)) -> (StaffIndex, T) {
+			move |(&index, value)| {
+				if *index > threshold {
+					(
+						StaffIndex((*index as isize + offset) as usize),
+						value.clone(),
+					)
+				} else {
+					(index, value.clone())
+				}
+			}
+		}
+		/* TODO replace with `drain_filter` once stabilized */
+		self.piece_starts = self
+			.piece_starts
+			.iter_mut()
+			.map(mapper(threshold, offset))
+			.collect();
+		self.section_starts = self
+			.section_starts
+			.iter_mut()
+			.map(mapper(threshold, offset))
+			.collect();
+	}
+
+	fn add_page(&mut self, page: RawPageImage) {
+		self.pages.push((Rc::new(page), vec![]));
+	}
+
+	fn remove_page(&mut self, page_index: PageIndex) {
+		let (_page, staves) = self.pages.remove(*page_index);
+		self.shift_items(
+			self.count_staves_before(page_index),
+			-(staves.len() as isize),
+		);
+	}
+
+	fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
+		self.shift_items(
+			self.count_staves_before(page_index) + staves.len(),
+			staves.len() as isize,
+		);
+		self.pages[*page_index].1.extend(staves);
+	}
+
+	/** The `staff` parameter is relative to the page index */
+	fn delete_staff(&mut self, page_index: PageIndex, staff: usize) {
+		self.shift_items(self.count_staves_before(page_index) + staff, -1);
+		self.pages[*page_index].1.remove(staff);
+	}
+}
+
 struct AppActor {
-	widgets: AppWidgets,
+	widgets: Rc<AppWidgets>,
 	application: gtk::Application,
 	editor: actix::Addr<EditorActor>,
+	file: EditorSongFile,
 
-	pages: Vec<(Rc<poppler::PopplerPage>, Vec<Staff>)>,
-	/* Sections */
-	piece_starts: BTreeMap<StaffIndex, Option<String>>,
-	section_starts: BTreeMap<StaffIndex, SectionMeta>,
 	selected_page: Option<PageIndex>,
 	/* Relative to the currently selected page */
 	selected_staff: Option<usize>,
@@ -47,7 +153,6 @@ impl actix::Actor for AppActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
-		let connector = AppSignal::connector().route_to::<Self>(ctx);
 		let application = &self.application;
 		let window = &self.widgets.window;
 
@@ -61,17 +166,17 @@ impl actix::Actor for AppActor {
 		self.application.set_menubar(Some(&self.widgets.menubar));
 
 		let new = gio::SimpleAction::new("new", None);
-		connector.connect(&new, "activate", "NewDocument").unwrap();
+		woab::route_signal(&new, "activate", "NewDocument", ctx.address()).unwrap();
 		application.add_action(&new);
 		application.set_accels_for_action("app.new", &["<Primary>N"]);
-	
+
 		let open = gio::SimpleAction::new("open", None);
-		connector.connect(&open, "activate", "OpenDocument").unwrap();
+		woab::route_signal(&open, "activate", "OpenDocument", ctx.address()).unwrap();
 		application.add_action(&open);
 		application.set_accels_for_action("app.open", &["<Primary>O"]);
-	
+
 		let save = gio::SimpleAction::new("save", None);
-		connector.connect(&save, "activate", "SaveDocument").unwrap();
+		woab::route_signal(&save, "activate", "SaveDocument", ctx.address()).unwrap();
 		application.add_action(&save);
 		application.set_accels_for_action("app.save", &["<Primary>S"]);
 
@@ -89,7 +194,13 @@ impl actix::Actor for AppActor {
 			application.quit();
 		}));
 
-		connector.connect(&self.widgets.pages_preview, "selection-changed", "SelectPage").unwrap();
+		woab::route_signal(
+			&self.widgets.pages_preview,
+			"selection-changed",
+			"SelectPage",
+			ctx.address(),
+		)
+		.unwrap();
 
 		window.show_all();
 	}
@@ -101,47 +212,85 @@ impl actix::Actor for AppActor {
 }
 
 impl AppActor {
-	fn new(widgets: AppWidgets, application: gtk::Application, editor: actix::Addr<EditorActor>) -> Self {
+	fn new(
+		widgets: AppWidgets,
+		application: gtk::Application,
+		editor: actix::Addr<EditorActor>,
+	) -> Self {
 		widgets.window.set_application(Some(&application));
 		let mut this = Self {
-			widgets,
+			widgets: Rc::new(widgets),
 			application,
 			editor,
-			pages: Vec::new(),
+			file: EditorSongFile::new(),
 			selected_page: None,
 			selected_staff: None,
-			piece_starts: BTreeMap::new(),
-			section_starts: BTreeMap::new(),
 		};
 		/* Enforce some invariants */
 		this.unload_and_clear();
 		this
 	}
 
-	fn add_pages(&mut self) {
-		let filter = gtk::FileFilter::new();
-		filter.add_pixbuf_formats();
-		filter.add_mime_type("application/pdf");
-		let choose = gtk::FileChooserNativeBuilder::new()
-			.title("Select images or PDFs to load")
-			.action(gtk::FileChooserAction::Open)
-			.select_multiple(true)
-			.filter(&filter)
-			.build();
-		if choose.run() == gtk::ResponseType::Accept {
-			for file in choose.get_files() {
-				let path = file.get_path().unwrap();
-				let pdf = if let Some("pdf") = path.as_path().extension().and_then(std::ffi::OsStr::to_str) {
-					poppler::PopplerDocument::new_from_file(path, "").unwrap()
-				} else {
-					pixbuf_to_pdf(&gdk_pixbuf::Pixbuf::from_file(&path).unwrap())
-				};
-				for page in 0..pdf.get_n_pages() {
-					let page = pdf.get_page(page).unwrap();
-					self.add_page(page);
+	fn add_pages(&mut self, ctx: &mut <Self as actix::Actor>::Context) {
+		let addr = ctx.address();
+
+		glib::MainContext::default().spawn_local_with_priority(
+			glib::source::PRIORITY_DEFAULT_IDLE,
+			async move {
+				let filter = gtk::FileFilter::new();
+				filter.add_pixbuf_formats();
+				filter.add_mime_type("application/pdf");
+				let choose = gtk::FileChooserNativeBuilder::new()
+					.title("Select images or PDFs to load")
+					.action(gtk::FileChooserAction::Open)
+					.select_multiple(true)
+					.filter(&filter)
+					.build();
+
+				if choose.run() == gtk::ResponseType::Accept {
+					let (progress_dialog, progress) =
+						dinoscore::create_progress_bar_dialog("Loading pages …");
+					let total_work = choose.get_files().len();
+
+					for (i, file) in choose.get_files().iter().enumerate() {
+						let path = file.get_path().unwrap();
+
+						let pages = blocking::unblock(move || {
+							let raw = std::fs::read(path.as_path()).unwrap();
+							let extension =
+								path.as_path().extension().and_then(std::ffi::OsStr::to_str);
+							let pages = if let Some("pdf") = extension {
+								page_image::explode_pdf_full(&raw, |raw, page| {
+									RawPageImage::Vector { page, raw }
+								})
+								.unwrap()
+							} else {
+								vec![RawPageImage::Raster {
+									image: gdk_pixbuf::Pixbuf::from_file(&path).unwrap(),
+									raw,
+									extension: extension
+										.expect("Image files must have an extension")
+										.to_string(),
+								}]
+							};
+							unsafe { unsafe_force::Send::new(pages) }
+						})
+						.await;
+
+						progress.set_fraction((i + 1) as f64 / total_work as f64);
+
+						addr.try_send(RunLater::new(move |this: &mut Self| {
+							for page in unsafe { pages.unwrap() } {
+								this.add_page(page);
+							}
+						}))
+						.unwrap();
+					}
+					async_std::task::sleep(std::time::Duration::from_millis(350)).await;
+					progress_dialog.emit_close();
 				}
-			}
-		}
+			},
+		);
 	}
 
 	fn add_pages2(&mut self) {
@@ -167,14 +316,14 @@ impl AppActor {
 		// 	for file in choose.get_files() {
 		// 		let path = file.get_path().unwrap();
 		// 		let image = opencv::imgcodecs::imread(&path.to_str().unwrap(), 0).unwrap();
-				
+
 		// 		let mut image_binarized = opencv::core::Mat::default().unwrap();
-		// 		opencv::imgproc::adaptive_threshold(&image, &mut image_binarized, 255.0, 
+		// 		opencv::imgproc::adaptive_threshold(&image, &mut image_binarized, 255.0,
 		// 			opencv::imgproc::AdaptiveThresholdTypes::ADAPTIVE_THRESH_MEAN_C as i32,
 		// 			opencv::imgproc::ThresholdTypes::THRESH_BINARY as i32,
 		// 			101, 30.0
 		// 		).unwrap();
-				
+
 		// 		let mut image_binarized_median = opencv::core::Mat::default().unwrap();
 		// 		opencv::imgproc::median_blur(&image_binarized, &mut image_binarized_median, 3).unwrap();
 
@@ -201,289 +350,317 @@ impl AppActor {
 		// }
 	}
 
-	fn add_page(&mut self, page: poppler::PopplerPage) {
-		let pixbuf = pdf_to_pixbuf(&page, 400);
-		self.pages.push((Rc::new(page), vec![]));
+	fn add_page(&mut self, page: RawPageImage) {
+		let pixbuf = page.render_to_thumbnail(400);
+		self.file.add_page(page);
 
-		self.widgets.pages_preview_data
-			.set(&self.widgets.pages_preview_data.append(), &[0], &[&pixbuf]);
+		self.widgets.pages_preview_data.set(
+			&self.widgets.pages_preview_data.append(),
+			&[0],
+			&[&pixbuf],
+		);
 	}
 
 	fn remove_page(&mut self, page: PageIndex) {
 		if self.selected_page == Some(page) {
 			self.select_page(None);
 		}
-		self.pages.remove(*page);
-		// TODO remove section starts, part starts, update all indices and fix up potentially broken invariants
-		self.widgets.pages_preview_data.remove(
-			&self.widgets.pages_preview_data.get_iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
-		);
+		self.file.remove_page(page);
+
+		clone!(@strong self.widgets as widgets => move || woab::spawn_outside(async move {
+			widgets.pages_preview_data.remove(
+				&widgets.pages_preview_data.get_iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
+			);
+		}))();
 	}
 
 	fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
-		self.pages[*page_index].1.extend(staves);
+		self.file.add_staves(page_index, staves);
+
 		if self.selected_page == Some(page_index) {
-			self.editor.try_send(EditorSignal2::LoadPage(unsafe_send_sync::UnsafeSend::new(
-				self.selected_page.map(|page_index| {
-					let (page, bars) = self.pages[*page_index].clone();
-					(page, bars, self.count_staves_before(page_index))
-				})
-			))).unwrap();
+			self.editor
+				.try_send(EditorSignal2::LoadPage(
+					self.selected_page
+						.map(|page_index| {
+							let (page, bars) = self.file.pages[*page_index].clone();
+							(page, bars, self.file.count_staves_before(page_index))
+						})
+						.into(),
+				))
+				.unwrap();
 		}
 	}
 
 	fn select_page(&mut self, selected_page: Option<PageIndex>) {
 		self.selected_page = selected_page;
-		self.editor.try_send(EditorSignal2::LoadPage(unsafe_send_sync::UnsafeSend::new(
-			self.selected_page.map(|page_index| {
-				let (page, bars) = self.pages[page_index.0].clone();
-				(page, bars, self.count_staves_before(page_index))
-			})
-		))).unwrap();
+		self.editor
+			.try_send(EditorSignal2::LoadPage(
+				self.selected_page
+					.map(|page_index| {
+						let (page, bars) = self.file.pages[page_index.0].clone();
+						(page, bars, self.file.count_staves_before(page_index))
+					})
+					.into(),
+			))
+			.unwrap();
 	}
 
 	pub fn autodetect(&mut self, ctx: &mut <Self as actix::Actor>::Context) {
 		let selected_items = self.widgets.pages_preview.get_selected_items();
-		use actix::prelude::*;
-		let (progress_dialog, progress) = dinoscore::create_progress_bar_dialog("Detecting staves …");
-		let total_work = selected_items.len();
-		ctx.wait({
-			actix::fut::wrap_stream::<_, Self>(futures::stream::iter(
-				selected_items.into_iter()
+
+		let widgets = self.widgets.clone();
+		let pdf_pages = self.file.get_pages();
+		let address = ctx.address();
+
+		ctx.spawn(actix::fut::wrap_future(async move {
+			let (progress_dialog, progress) =
+				dinoscore::create_progress_bar_dialog("Detecting staves …");
+			let total_work = selected_items.len();
+			async_std::task::yield_now().await;
+
+			for (i, page) in selected_items
+				.into_iter()
 				.map(|selected| selected.get_indices()[0] as usize)
 				.enumerate()
-				/* Need to manually move/clone out all GTK objects :( */
-				.map(move |(i, page)| (i, page, progress.clone()))
-			))
-			.then(move |(i, page, progress), this, _ctx| {
-				let data = this.widgets.pages_preview_data.get_value(
-					&this.widgets.pages_preview_data.iter_nth_child(None, page as i32).unwrap(),
-					0,
-				).downcast::<gdk_pixbuf::Pixbuf>().unwrap().get().unwrap();
-				let pdf_page = &this.pages[page].0;
-				let width = pdf_page.get_size().0 as f64;
-				let height = pdf_page.get_size().1 as f64;
+			{
+				let data = widgets
+					.pages_preview_data
+					.get_value(
+						&widgets
+							.pages_preview_data
+							.iter_nth_child(None, page as i32)
+							.unwrap(),
+						0,
+					)
+					.downcast::<gdk_pixbuf::Pixbuf>()
+					.unwrap()
+					.get()
+					.unwrap();
+				let pdf_page = &pdf_pages[page];
+				let width = pdf_page.get_width() as f64;
+				let height = pdf_page.get_height() as f64;
 
-				actix::fut::wrap_future(Box::pin(async move {
+				let data = unsafe { unsafe_force::Send::new(data) };
+				let (page, bars_inner) = blocking::unblock(move || {
 					println!("Autodetecting {} ({}/{})", page, i, total_work);
 					let page = PageIndex(page);
-					let bars_inner: Vec<Staff> = recognition::recognize_staves(&data)
-						.iter()
-						.cloned()
-						.map(|staff| staff.into_staff(page, width, height))
-						.collect();
-					println!("G");
-					progress.set_fraction((i+1) as f64 / total_work as f64);
+					let bars_inner: Vec<Staff> =
+						recognition::recognize_staves(&unsafe { data.unwrap() })
+							.iter()
+							.cloned()
+							.map(|staff| staff.into_staff(page, width, height))
+							.collect();
 					(page, bars_inner)
-				}))
-			})
-			.map(move |(page, bars_inner), this, _ctx| {
-			// .map(move |_, this, _ctx| {
-				println!("H");
-				this.add_staves(page, bars_inner);
-			})
-			.fold((), move |(), _, _this, _ctx| {
-				println!("I");
-				actix::fut::ready(())
-			})
-			.then(move |(), _, _| actix::fut::wrap_future(async move {
-				println!("J");
-				async_std::task::sleep(std::time::Duration::from_millis(350)).await;
-				progress_dialog.emit_close();
-			}))
-		});
-		println!("Autodetected");
+				})
+				.await;
+				progress.set_fraction((i + 1) as f64 / total_work as f64);
+
+				// actix::fut::ready(()).map(|(), this: &mut Self, _ctx|  {
+				// });
+				address
+					.try_send(RunLater::new(move |this: &mut Self| {
+						this.add_staves(page, bars_inner);
+					}))
+					.unwrap();
+			}
+
+			async_std::task::sleep(std::time::Duration::from_millis(350)).await;
+			progress_dialog.emit_close();
+			async_std::task::yield_now().await;
+			println!("Autodetected");
+		}));
 	}
 
-	fn get_staves(&self) -> Vec<Staff> {
-		self.pages
-			.iter()
-			.enumerate()
-			.flat_map(|(_page_index, page)| page.1.iter())
-			.cloned()
-			.collect()
-	}
-
-	fn count_staves_before(&self, page: PageIndex) -> usize {
-		self.pages[0..*page]
-			.iter()
-			.map(|p| p.1.len())
-			.sum()
-	}
-
-	fn update_selection(&mut self, selected_staff: Option<usize>) {
+	fn update_selection(
+		&mut self,
+		selected_staff: Option<usize>,
+		ctx: &mut <Self as actix::Actor>::Context,
+	) {
 		self.selected_staff = selected_staff;
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn delete_selected_staff(&mut self) {
+	fn delete_selected_staff(&mut self, ctx: &mut <Self as actix::Actor>::Context) {
 		if self.selected_staff.is_none() {
 			return;
 		}
 		let staff = self.selected_staff.take().unwrap();
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 
-		self.pages[*self.selected_page.unwrap()].1.remove(staff);
+		self.file.delete_staff(self.selected_page.unwrap(), staff);
 
-		self.editor.try_send(EditorSignal2::LoadPage(unsafe_send_sync::UnsafeSend::new(
-			self.selected_page.map(|page_index| {
-				let (page, bars) = self.pages[*page_index].clone();
-				(page, bars, self.count_staves_before(page_index))
-			})
-		))).unwrap();
+		self.editor
+			.try_send(EditorSignal2::LoadPage(
+				self.selected_page
+					.map(|page_index| {
+						let (page, bars) = self.file.pages[*page_index].clone();
+						(page, bars, self.file.count_staves_before(page_index))
+					})
+					.into(),
+			))
+			.unwrap();
 	}
 
-	fn update_part_name(&mut self, new_name: &str) {
+	fn update_part_name(&mut self, new_name: &str, ctx: &mut <Self as actix::Actor>::Context) {
 		if self.selected_page.is_none() || self.selected_staff.is_none() {
 			return;
 		}
 		let index = StaffIndex(
-			self.count_staves_before(self.selected_page.unwrap())
-			+ self.selected_staff.unwrap()
+			self.file.count_staves_before(self.selected_page.unwrap())
+				+ self.selected_staff.unwrap(),
 		);
 		let name = self
+			.file
 			.piece_starts
 			.get_mut(&index)
 			.expect("You shouldn't be able to set the name on non part starts");
-		*name = Some(new_name.to_string());
+		*name = new_name.to_string();
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn update_section_start(&mut self, selected: bool) {
+	fn update_section_start(&mut self, selected: bool, ctx: &mut <Self as actix::Actor>::Context) {
 		if self.selected_page.is_none() || self.selected_staff.is_none() {
 			return;
 		}
 		let index = StaffIndex(
-			self.count_staves_before(self.selected_page.unwrap())
-			+ self.selected_staff.unwrap()
+			self.file.count_staves_before(self.selected_page.unwrap())
+				+ self.selected_staff.unwrap(),
 		);
 		if selected {
-			self.section_starts
+			self.file
+				.section_starts
 				.entry(index)
 				.or_insert_with(SectionMeta::default);
 		} else {
-			self.section_starts.remove(&index);
+			self.file.section_starts.remove(&index);
 		}
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn update_section_repetition(&mut self, selected: bool) {
+	fn update_section_repetition(
+		&mut self,
+		selected: bool,
+		ctx: &mut <Self as actix::Actor>::Context,
+	) {
 		if self.selected_page.is_none() || self.selected_staff.is_none() {
 			return;
 		}
 		let index = StaffIndex(
-			self.count_staves_before(self.selected_page.unwrap())
-			+ self.selected_staff.unwrap()
+			self.file.count_staves_before(self.selected_page.unwrap())
+				+ self.selected_staff.unwrap(),
 		);
-		self.section_starts
+		self.file
+			.section_starts
 			.get_mut(&index)
 			.expect("You shouldn't be able to click this if there's no section start")
 			.is_repetition = selected;
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn update_section_end(&mut self, selected: bool) {
+	fn update_section_end(&mut self, selected: bool, ctx: &mut <Self as actix::Actor>::Context) {
 		if self.selected_page.is_none() || self.selected_staff.is_none() {
 			return;
 		}
 		let index = StaffIndex(
-			self.count_staves_before(self.selected_page.unwrap())
-			+ self.selected_staff.unwrap()
+			self.file.count_staves_before(self.selected_page.unwrap())
+				+ self.selected_staff.unwrap(),
 		);
-		self.section_starts
+		self.file
+			.section_starts
 			.get_mut(&index)
 			.expect("You shouldn't be able to click this if there's no section start")
 			.section_end = selected;
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn update_part_start(&mut self, selected: bool) {
+	fn update_part_start(&mut self, selected: bool, ctx: &mut <Self as actix::Actor>::Context) {
 		if self.selected_page.is_none() || self.selected_staff.is_none() {
 			return;
 		}
 		let index = StaffIndex(
-			self.count_staves_before(self.selected_page.unwrap())
-			+ self.selected_staff.unwrap()
+			self.file.count_staves_before(self.selected_page.unwrap())
+				+ self.selected_staff.unwrap(),
 		);
 		if selected {
-			self.piece_starts.entry(index).or_insert(None);
+			self.file.piece_starts.entry(index).or_insert("".into());
 			/* When a piece starts, a section must start as well */
-			self.section_starts
+			self.file
+				.section_starts
 				.entry(index)
 				.or_insert_with(SectionMeta::default);
 		} else {
-			self.piece_starts.remove(&index);
+			self.file.piece_starts.remove(&index);
 		}
 
-		self.update_bottom_widgets();
+		self.update_bottom_widgets(ctx);
 	}
 
-	fn update_bottom_widgets(&mut self) {
-		let index = self.selected_page
-			.map(|page| self.count_staves_before(page))
-			.and_then(|staff| {
-				self.selected_staff
-					.map(|s| staff + s)
-			});
+	fn update_bottom_widgets(&mut self, ctx: &mut <Self as actix::Actor>::Context) {
+		let index: Option<usize> = self
+			.selected_page
+			.map(|page| self.file.count_staves_before(page))
+			.and_then(|staff| self.selected_staff.map(|s| staff + s));
+
+		/* Set the selection */
+		let piece_start_active = index
+			.and_then(|i| self.file.piece_starts.get(&StaffIndex(i)))
+			.is_some();
+
+		let piece_name: String = index
+			.and_then(|i: usize| self.file.piece_starts.get(&StaffIndex(i)))
+			.cloned()
+			.unwrap_or_default();
+		let section_start: Option<&SectionMeta> =
+			index.and_then(|i| self.file.section_starts.get(&i.into()));
+		let section_has_repetition = section_start
+			.map(|meta| meta.is_repetition)
+			.unwrap_or(false);
+		let has_section_start = section_start.is_some();
+		let has_section_end = section_start.map(|meta| meta.section_end).unwrap_or(false);
+
+		/* Set the selected_staff to None to implicitly inhibit events */
+		let selected_staff_backup = self.selected_staff.take();
 
 		/* In Swing/JavaFX, "active"=>"selected", "sensitive"=>"enabled"/"not disabled" */
 
-		/* Disable the check box for the first item (it's force selected there) */
-		let piece_start_sensitive = index.map(|i| i > 0).unwrap_or(false);
-		self.widgets.piece_start.set_sensitive(piece_start_sensitive);
-		/* Set the selection */
-		let piece_start_active = index
-			.and_then(|i| self.piece_starts.get(&StaffIndex(i)))
-			.is_some();
-		self.widgets.piece_start.set_active(piece_start_active);
+		let fut = clone!(@strong self.widgets as widgets => move || woab::outside(async move {
+			/* Disable the check box for the first item (it's force selected there) */
+			let piece_start_sensitive = index.map(|i| i > 0).unwrap_or(false);
+			widgets.piece_start.set_sensitive(piece_start_sensitive);
+			widgets.piece_start.set_active(piece_start_active);
 
-		/* You can only enter a name on piece starts */
-		self.widgets.piece_name.set_sensitive(piece_start_active);
-		self.widgets.piece_name.set_text(
-			index
-				.map(|i| self.piece_starts.get(&StaffIndex(i)))
-				.flatten()
-				.map(Option::as_ref)
-				.flatten()
-				.map_or("", String::as_str),
-		);
-		/* When a piece starts, a section must start as well, so it can't be edited */
-		self.widgets.section_start
-			.set_sensitive(!piece_start_active && piece_start_sensitive);
-		let section_start = index.and_then(|i| self.section_starts.get(&i.into()));
-		self.widgets.section_start.set_active(section_start.is_some());
+			/* You can only enter a name on piece starts */
+			widgets.piece_name.set_sensitive(piece_start_active);
+			widgets.piece_name.set_text(&piece_name);
+			/* When a piece starts, a section must start as well, so it can't be edited */
+			widgets.section_start
+				.set_sensitive(!piece_start_active && piece_start_sensitive);
+			widgets.section_start.set_active(has_section_start);
 
-		self.widgets.section_repetition
-			.set_sensitive(section_start.is_some());
-		self.widgets.section_repetition.set_active(
-			section_start
-				.map(|meta| meta.is_repetition)
-				.unwrap_or(false),
-		);
-		self.widgets.section_end.set_sensitive(section_start.is_some());
-		self.widgets.section_end
-			.set_active(section_start.map(|meta| meta.section_end).unwrap_or(false));
+			widgets.section_repetition.set_sensitive(has_section_start);
+			widgets.section_repetition.set_active(section_has_repetition);
+			widgets.section_end.set_sensitive(has_section_start);
+			widgets.section_end.set_active(has_section_end);
+		}))();
+		let fut = fut.into_actor(self);
+		let fut = fut.map(move |result, this: &mut Self, _ctx| {
+			result.unwrap();
+			this.selected_staff = selected_staff_backup;
+		});
+		ctx.spawn(fut);
 	}
-
-
-
-
 
 	fn unload_and_clear(&mut self) {
 		// self.pages_preview.block_signal(&self.pages_preview_callback);
 		self.select_page(None);
-		self.pages.clear();
+		self.file = EditorSongFile::new();
 		self.widgets.pages_preview_data.clear();
-		self.piece_starts.clear();
-		self.piece_starts.insert(0.into(), None);
-		self.section_starts.clear();
-		self.section_starts.insert(0.into(), SectionMeta::default());
 		// self.pages_preview.unblock_signal(&self.pages_preview_callback);
 	}
 
@@ -499,30 +676,30 @@ impl AppActor {
 		if choose.run() == gtk::ResponseType::Accept {
 			if let Some(file) = choose.get_file() {
 				let path = file.get_path().unwrap();
-				let mut song = futures::executor::block_on(SongFile::new(path));
-				self.load(song.load_sheet().into_inner(), song.index);
+				let mut song = SongFile::new(path);
+				self.load(song.load_sheets_raw().unwrap(), song.index);
 			}
 		}
 	}
 
-	fn load(&mut self, pages: poppler::PopplerDocument, song: SongMeta) {
+	fn load(&mut self, pages: Vec<RawPageImage>, song: SongMeta) {
 		self.unload_and_clear();
-		for index in 0..pages.get_n_pages() {
-			self.add_page(pages.get_page(index).unwrap());
+		for (index, page) in pages.into_iter().enumerate() {
+			self.add_page(page);
 			self.add_staves(
 				PageIndex(index),
 				song.staves
 					.iter()
 					.filter(|line| line.page == index.into())
 					.cloned()
-					.collect::<Vec<_>>()
+					.collect::<Vec<_>>(),
 			);
 		}
-		self.piece_starts = song.piece_starts;
-		self.section_starts = song.section_starts;
+		self.file.piece_starts = song.piece_starts;
+		self.file.section_starts = song.section_starts;
 	}
 
-	fn save_with_ui(&mut self) {
+	fn save_with_ui(&self, ctx: &mut <Self as actix::Actor>::Context) {
 		println!("Saving staves");
 
 		let filter = gtk::FileFilter::new();
@@ -534,30 +711,60 @@ impl AppActor {
 			.do_overwrite_confirmation(true)
 			.filter(&filter)
 			.build();
-		if choose.run() == gtk::ResponseType::Accept {
-			if let Some(file) = choose.get_file() {
-				let song = SongMeta {
-					staves: self.get_staves(),
-					piece_starts: self.piece_starts.clone(),
-					section_starts: self.section_starts.clone(),
-					song_uuid: uuid::Uuid::new_v4(), // TODO take that one from somewhere
-					version_uuid: uuid::Uuid::new_v4(),
-					title: None,
-					composer: None,
-				};
-				let iter_pages = || self.pages.iter()
-					.map(|page| &*page.0)
-					.map(From::from);
-				let thumbnail = SongFile::generate_thumbnail(&song, iter_pages());
-				SongFile::save(
-					file.get_path().unwrap(),
-					song,
-					iter_pages(),
-					thumbnail,
-					false,// TODO overwrite?!
-				);
-			}
-		}
+
+		use actix::fut::*;
+		ctx.spawn(
+			woab::outside(async move { (choose.clone(), choose.run()) })
+				.into_actor(self)
+				.map(move |result, this, _ctx| {
+					let (choose, result) = result.unwrap();
+					if result == gtk::ResponseType::Accept {
+						if let Some(file) = choose.get_file() {
+							let song = SongMeta {
+								n_pages: this.file.pages.len(),
+								staves: this.file.get_staves(),
+								piece_starts: this.file.piece_starts.clone(),
+								section_starts: this.file.section_starts.clone(),
+								song_uuid: uuid::Uuid::new_v4(), /* TODO take that one from somewhere */
+								version_uuid: uuid::Uuid::new_v4(),
+								title: None,
+								composer: None,
+							};
+							use std::ops::Deref;
+							let thumbnail = SongFile::generate_thumbnail(
+								&song,
+								this.file.pages.iter().map(|(page, _)| page.deref()),
+							);
+							SongFile::save(
+								file.get_path().unwrap(),
+								song,
+								this.file.pages.iter().map(|(page, _)| page.deref()),
+								thumbnail,
+								true, // TODO overwrite?!
+							)
+							.unwrap();
+						}
+					}
+				}),
+		);
+	}
+}
+
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct RunLater<T: Actor, F: FnOnce(&mut T)>(unsafe_force::Send<(F, std::marker::PhantomData<T>)>);
+
+impl<T: Actor, F: FnOnce(&mut T)> RunLater<T, F> {
+	fn new(closure: F) -> Self {
+		Self(unsafe { unsafe_force::Send::new((closure, std::marker::PhantomData)) })
+	}
+}
+
+impl<F: FnOnce(&mut AppActor)> actix::Handler<RunLater<AppActor, F>> for AppActor {
+	type Result = ();
+
+	fn handle(&mut self, message: RunLater<AppActor, F>, _ctx: &mut Self::Context) -> Self::Result {
+		unsafe { message.0.unwrap() }.0(self);
 	}
 }
 
@@ -568,9 +775,9 @@ struct StaffSelected(Option<usize>);
 impl actix::Handler<StaffSelected> for AppActor {
 	type Result = ();
 
-	fn handle(&mut self, selected_staff: StaffSelected, _ctx: &mut Self::Context) {
+	fn handle(&mut self, selected_staff: StaffSelected, ctx: &mut Self::Context) {
 		let selected_staff = selected_staff.0;
-		self.update_selection(selected_staff);
+		self.update_selection(selected_staff, ctx);
 	}
 }
 
@@ -581,40 +788,30 @@ struct DeleteSelectedStaff;
 impl actix::Handler<DeleteSelectedStaff> for AppActor {
 	type Result = ();
 
-	fn handle(&mut self, _: DeleteSelectedStaff, _ctx: &mut Self::Context) {
-		self.delete_selected_staff();
+	fn handle(&mut self, _: DeleteSelectedStaff, ctx: &mut Self::Context) {
+		self.delete_selected_staff(ctx);
 	}
 }
 
-#[derive(woab::BuilderSignal, Debug)]
-enum AppSignal {
-	/* Menu */
-	NewDocument,
-	OpenDocument,
-	SaveDocument,
-	/* Tool bar */
-	AddPages,
-	AddPages2,
-	SelectPage,
-	Autodetect,
-	/* Side bar */
-	#[signal(inhibit = false)]
-	PreviewKeyPress(gtk::IconView, #[signal(event)] gdk::EventKey),
-	/* Editor */
-	PieceStartUpdate(gtk::CheckButton, glib::ParamSpec),
-	PieceNameUpdate(gtk::Entry),
-	SectionStartUpdate(gtk::CheckButton, glib::ParamSpec),
-	SectionEndUpdate(gtk::CheckButton, glib::ParamSpec),
-	SectionRepetitionUpdate(gtk::CheckButton, glib::ParamSpec),
-}
+impl actix::Handler<woab::Signal> for AppActor {
+	type Result = woab::SignalResult;
 
-impl actix::StreamHandler<AppSignal> for AppActor {
-	fn handle(&mut self, signal: AppSignal, ctx: &mut Self::Context) {
-		println!("Signal: {:?}", signal);
-		match signal {
-			AppSignal::AddPages => self.add_pages(),
-			AppSignal::AddPages2 => { /* TODO */ },
-			AppSignal::SelectPage => {
+	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
+		println!("Signal: {:?}", signal.name());
+		signal!(match (signal) {
+			/* Menu */
+			"OpenDocument" => {self.load_with_dialog()},
+			"NewDocument" => {self.unload_and_clear()},
+			"SaveDocument" => {self.save_with_ui(ctx)},
+			"PieceStartUpdate" => |piece_start = gtk::CheckButton| {
+				self.update_part_start(piece_start.get_active(), ctx)
+			},
+			/* Tool bar */
+			"add_pages" => {
+				self.add_pages(ctx)
+			},
+			"add_pages2" => { /* TODO */ },
+			"SelectPage" => {
 				let selected_items = self.widgets.pages_preview.get_selected_items();
 				self.select_page(match selected_items.len() {
 					0 => None,
@@ -622,16 +819,13 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 					_ => None,
 				});
 			},
-			AppSignal::Autodetect => self.autodetect(ctx),
-			AppSignal::PieceStartUpdate(piece_start, _) => self.update_part_start(piece_start.get_active()),
-			AppSignal::PieceNameUpdate(piece_name) => self.update_part_name(&piece_name.get_text()),
-			AppSignal::SectionStartUpdate(section_start, _) => self.update_section_start(section_start.get_active()),
-			AppSignal::SectionEndUpdate(section_end, _) => self.update_section_end(section_end.get_active()),
-			AppSignal::SectionRepetitionUpdate(section_repetition, _) => self.update_section_repetition(section_repetition.get_active()),
-			AppSignal::OpenDocument => self.load_with_dialog(),
-			AppSignal::NewDocument => self.unload_and_clear(),
-			AppSignal::SaveDocument => self.save_with_ui(),
-			AppSignal::PreviewKeyPress(pages_preview, event) => {
+			"autodetect" => {
+				self.autodetect(ctx)
+			},
+			/* Side bar */
+			"key_press" => |pages_preview = gtk::IconView, event = gdk::Event| {
+				let event: gdk::EventKey = event.downcast().unwrap();
+
 				if event.get_keyval() == gdk::keys::constants::Delete
 				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
 					let selected_items = pages_preview.get_selected_items();
@@ -640,13 +834,39 @@ impl actix::StreamHandler<AppSignal> for AppActor {
 						.for_each(|i| {
 							self.remove_page(PageIndex(i));
 						});
+					return Ok(Some(Inhibit(true)))
+				} else {
+					return Ok(Some(Inhibit(false)))
 				}
 			},
-		}
+			/* Editor */
+			"piece_start_update" => {
+				first_arg!(signal, piece_start: gtk::CheckButton);
+				self.update_part_start(piece_start.get_active(), ctx)
+			},
+			"piece_name_update" => {
+				first_arg!(signal, piece_name: gtk::Entry);
+				self.update_part_name(&piece_name.get_text(), ctx)
+			},
+			"section_start_update" => {
+				first_arg!(signal, section_start: gtk::CheckButton);
+				self.update_section_start(section_start.get_active(), ctx)
+			},
+			"section_end_update" => {
+				first_arg!(signal, section_end: gtk::CheckButton);
+				self.update_section_end(section_end.get_active(), ctx)
+			},
+			"section_repetition_update" => {
+				first_arg!(signal, section_repetition: gtk::CheckButton);
+				self.update_section_repetition(section_repetition.get_active(), ctx)
+			},
+			_ => {unreachable!()},
+		});
+		Ok(None)
 	}
 }
 
-
+#[allow(clippy::all)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let orig_hook = std::panic::take_hook();
 	std::panic::set_hook(Box::new(move |panic_info| {
@@ -665,7 +885,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
-		woab::run_actix_inside_gtk_event_loop("DiNoScore").unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
 	});
 	println!("D: {:?}", std::thread::current().id());
 
@@ -673,73 +893,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let builder = gtk::Builder::from_file("res/editor.glade");
 		let builder = woab::BuilderConnector::from(builder);
 
-		let app_builder = builder.actor::<AppActor>()
-			.connect_signals(AppSignal::connector());
-
-		use woab::BuilderSignal;
-		let editor = builder.actor()
-			.connect_signals(EditorSignal::connector())
-			.start(EditorActor::new(app_builder.actor_context().address(), builder.widgets().unwrap()));
-
-		app_builder.create(
-			clone!(@weak application => @default-panic, move |ctx| {
-				AppActor::new(ctx.widgets().unwrap(), application, editor)
-			})
-		);
-
-		builder.finish();
+		woab::block_on(async {
+			AppActor::create(clone!(@weak application => @default-panic, move |ctx1| {
+				let widgets = builder.widgets().unwrap();
+				let editor = EditorActor::create(|ctx2| {
+					let builder = builder.connect_to(woab::NamespacedSignalRouter::default()
+						.route(ctx1.address())
+						.route(ctx2.address())
+					);
+					EditorActor::new(ctx1.address(), builder.widgets().unwrap())
+				});
+				AppActor::new(widgets, application, editor)
+			}));
+		});
 	});
 
 	application.run(&[]);
 	Ok(())
-}
-
-
-/* #### Library foo #### */
-
-
-/// Create a PDF Document with a single page that wraps a raster image
-fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> poppler::PopplerDocument {
-	let pdf_binary: Vec<u8> = Vec::new();
-	let surface = cairo::PdfSurface::for_stream(
-		image.get_width() as f64,
-		image.get_height() as f64,
-		pdf_binary,
-	)
-	.unwrap();
-
-	let context = cairo::Context::new(&surface);
-	context.set_source_pixbuf(image, 0.0, 0.0);
-	context.paint();
-
-	surface.flush();
-
-	let pdf_binary = surface
-		.finish_output_stream()
-		.unwrap()
-		.downcast::<Vec<u8>>()
-		.unwrap();
-	let pdf_binary: &mut [u8] = &mut *Box::leak(pdf_binary); // TODO: absolutely remove this
-
-	poppler::PopplerDocument::new_from_data(pdf_binary, "").unwrap()
-}
-
-/// Render a PDF page to a preview image with fixed width
-fn pdf_to_pixbuf(page: &poppler::PopplerPage, width: i32) -> gdk_pixbuf::Pixbuf {
-	let surface = cairo::ImageSurface::create(
-		cairo::Format::Rgb24,
-		width,
-		(width as f64 * page.get_size().1 / page.get_size().0) as i32,
-	)
-	.unwrap();
-	let context = cairo::Context::new(&surface);
-	let scale = width as f64 / page.get_size().0;
-	context.set_antialias(cairo::Antialias::Best);
-	context.scale(scale, scale);
-	context.set_source_rgb(1.0, 1.0, 1.0);
-	context.paint();
-	page.render(&context);
-	surface.flush();
-
-	gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.get_width(), surface.get_height()).unwrap()
 }
