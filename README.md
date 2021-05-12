@@ -10,6 +10,7 @@ If you've installed Nix, simply type `nix-shell` and you're good to go. Power us
 
 - **Run the application**: `cargo run --locked --release`
 - Run the editor: `cargo run --locked --release --bin editor`
+	- You need to download the models first: `cd res && wget "https://github.com/OMR-Research/MeasureDetector/releases/download/v1.0/2019-05-16_faster-rcnn-inception-resnet-v2.pb"`
 
 Songs are packed as zip files. The program lists everything in `$XDG_DATA_DIRS/dinoscore/songs`, so simply put your songs into `$XDG_DATA_HOME/dinoscore/songs`. If youd don't know what `XDG_DATA_HOME` is, use `~/.local/share/dinoscore/songs` instead.
 

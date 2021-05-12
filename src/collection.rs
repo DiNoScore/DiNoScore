@@ -256,7 +256,7 @@ impl SongFile {
 		let mut writer = zip::ZipWriter::new(file);
 
 		writer.start_file("staves.json", zip::write::FileOptions::default())?;
-		serde_json::to_writer(&mut writer, &SongMetaVersioned::from(metadata))?;
+		serde_json::to_writer_pretty(&mut writer, &SongMetaVersioned::from(metadata))?;
 
 		println!("Saving sheets");
 		for (index, page) in pages.enumerate() {

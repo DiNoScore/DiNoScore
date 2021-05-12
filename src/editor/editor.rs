@@ -71,15 +71,6 @@ impl actix::Actor for EditorActor {
 	}
 }
 
-// #[allow(clippy::enum_variant_names)]
-// #[derive(woab::BuilderSignal, Debug)]
-// pub enum EditorSignal {
-// 	EditorKeyPress(gtk::DrawingArea, #[signal(event)] gdk::EventKey),
-// 	EditorKeyRelease,
-// 	EditorButtonPress(gtk::DrawingArea, #[signal(event)] gdk::EventButton),
-// 	EditorButtonRelease,
-// }
-
 impl actix::Handler<woab::Signal> for EditorActor {
 	type Result = woab::SignalResult;
 

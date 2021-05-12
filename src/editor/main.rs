@@ -119,6 +119,32 @@ impl EditorSongFile {
 		self.shift_items(self.count_staves_before(page_index) + staff, -1);
 		self.pages[*page_index].1.remove(staff);
 	}
+
+	fn save(&self, file: std::path::PathBuf) -> anyhow::Result<()> {
+		let song = SongMeta {
+			n_pages: self.pages.len(),
+			staves: self.get_staves(),
+			piece_starts: self.piece_starts.clone(),
+			section_starts: self.section_starts.clone(),
+			song_uuid: self.song_uuid,
+			version_uuid: uuid::Uuid::new_v4(),
+			title: None,
+			composer: None,
+		};
+		use std::ops::Deref;
+		let thumbnail = SongFile::generate_thumbnail(
+			&song,
+			self.pages.iter().map(|(page, _)| page.deref()),
+		);
+		SongFile::save(
+			file,
+			song,
+			self.pages.iter().map(|(page, _)| page.deref()),
+			thumbnail,
+			true, // TODO overwrite?!
+		)?;
+		Ok(())
+	}
 }
 
 struct AppActor {
@@ -588,7 +614,7 @@ impl AppActor {
 				+ self.selected_staff.unwrap(),
 		);
 		if selected {
-			self.file.piece_starts.entry(index).or_insert("".into());
+			self.file.piece_starts.entry(index).or_insert_with(|| "".into());
 			/* When a piece starts, a section must start as well */
 			self.file
 				.section_starts
@@ -720,29 +746,7 @@ impl AppActor {
 					let (choose, result) = result.unwrap();
 					if result == gtk::ResponseType::Accept {
 						if let Some(file) = choose.get_file() {
-							let song = SongMeta {
-								n_pages: this.file.pages.len(),
-								staves: this.file.get_staves(),
-								piece_starts: this.file.piece_starts.clone(),
-								section_starts: this.file.section_starts.clone(),
-								song_uuid: uuid::Uuid::new_v4(), /* TODO take that one from somewhere */
-								version_uuid: uuid::Uuid::new_v4(),
-								title: None,
-								composer: None,
-							};
-							use std::ops::Deref;
-							let thumbnail = SongFile::generate_thumbnail(
-								&song,
-								this.file.pages.iter().map(|(page, _)| page.deref()),
-							);
-							SongFile::save(
-								file.get_path().unwrap(),
-								song,
-								this.file.pages.iter().map(|(page, _)| page.deref()),
-								thumbnail,
-								true, // TODO overwrite?!
-							)
-							.unwrap();
+							this.file.save(file.get_path().unwrap()).unwrap();
 						}
 					}
 				}),

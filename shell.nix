@@ -1,9 +1,9 @@
 let
   # Pin nixpkgs
   pkgs = import (builtins.fetchTarball {
-    name = "nixpkgs-unstable-2021-03-08";
-    url = "https://github.com/nixos/nixpkgs/archive/d9fd71fe516aedea33673e39f05daea22e7a1b61.tar.gz";
-    sha256 = "07a3fldxvilphnm7blirfwkw2zzkvx47h1lai38z2ynilpjh6015";
+    name = "nixpkgs-unstable-2021-05-11";
+    url = "https://github.com/nixos/nixpkgs/archive/93123faae0281d2e97d12641a7cfad07c8028aff.tar.gz";
+    sha256 = "0kc8rwsfsirr784hh2w143cy2yaqq7in7n5rzjx3j77z7nwsab26";
   }) {
     overlays = [(self: super: {
       # Forked packaging of libhandy with Glade dependency patched out
@@ -105,7 +105,7 @@ mkShell rec {
     cairo
   ];
   shellHook = ''
-    export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}:$${LD_LIBRARY_PATH}";
+    export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}:''${LD_LIBRARY_PATH}";
     export LIBCLANG_PATH="${llvmPackages.libclang}/lib"
     export GDK_DPI_SCALE=1.3
     export RUST_BACKTRACE=1
