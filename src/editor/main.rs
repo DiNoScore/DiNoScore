@@ -24,8 +24,8 @@ struct EditorSongFile {
 
 	/// A unique identifier for this song that is stable across file modifications
 	song_uuid: Uuid,
-	/// Effectively a random string generated on each save. Useful for caching
-	version_uuid: Uuid,
+	// /// Effectively a random string generated on each save. Useful for caching
+	// version_uuid: Uuid,
 }
 
 impl EditorSongFile {
@@ -43,7 +43,6 @@ impl EditorSongFile {
 				map
 			},
 			song_uuid: Uuid::new_v4(),
-			version_uuid: Uuid::new_v4(),
 		}
 	}
 

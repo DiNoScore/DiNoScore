@@ -57,7 +57,8 @@ fn main() -> anyhow::Result<()> {
 			let sheets: Vec<RawPageImage> =
 				song.load_sheets_raw().context("Failed to load sheets")?;
 			let thumbnail = song.thumbnail().cloned();
-			let meta = song.index;
+			let mut meta = song.index;
+			meta.version_uuid = uuid::Uuid::new_v4();
 			let thumbnail =
 				thumbnail.or_else(|| collection::SongFile::generate_thumbnail(&meta, &sheets));
 			collection::SongFile::save(output_path, meta, &sheets, thumbnail, overwrite)?;
