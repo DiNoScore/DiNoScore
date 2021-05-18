@@ -15,17 +15,20 @@ use std::{
 use uuid::Uuid;
 
 pub fn load() -> HashMap<Uuid, SongFile> {
-	use futures::StreamExt;
+	use itertools::Itertools;
 
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
-	xdg.list_data_files("songs")
-		.into_iter()
-		.filter(|path| path.is_file())
-		.map(|path| {
+	xdg.find_data_files("songs")
+		.flat_map(|dir| walkdir::WalkDir::new(dir).follow_links(true))
+		.filter_ok(|entry| entry.file_type().is_file())
+		.map_ok(walkdir::DirEntry::into_path)
+		.filter_ok(|path| path.extension() == Some(std::ffi::OsStr::new("zip")))
+		.map_ok(|path| {
 			let song = SongFile::new(&path);
 			(*song.uuid(), song)
 		})
-		.collect()
+		.collect::<Result<_, walkdir::Error>>()
+		.unwrap()
 }
 
 #[derive(Debug)]

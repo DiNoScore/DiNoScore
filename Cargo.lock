@@ -703,6 +703,7 @@ dependencies = [
  "serde_with",
  "tensorflow",
  "uuid",
+ "walkdir",
  "woab",
  "xdg",
  "zip",
