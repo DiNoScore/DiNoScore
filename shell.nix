@@ -80,25 +80,31 @@ let
 in with pkgs;
 mkShell rec {
   buildInputs = [
+    # Tools
     cargo
-    rustc
+    curl.out
+    lld
 
+    # Native
+    rustc
+    pkg-config
+    llvmPackages.clang
+    llvmPackages.libclang
+    (python39.withPackages (pypkgs: [
+      pypkgs.pikepdf
+    ]))
+
+    # Dependencies
     poppler
     poppler_data
-    pkg-config
     gnome3.gtk3
     gdk-pixbuf
     atk
     libhandy
     pango
     opencv
-    llvmPackages.clang
-    llvmPackages.libclang
     portmidi
     libtensorflow-bin
-    curl.out
-    lld
-
     stdenv.cc.cc.lib
     bzip2
     glib
