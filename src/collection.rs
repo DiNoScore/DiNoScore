@@ -24,7 +24,9 @@ pub fn load() -> HashMap<Uuid, SongFile> {
 		.map_ok(walkdir::DirEntry::into_path)
 		.filter_ok(|path| path.extension() == Some(std::ffi::OsStr::new("zip")))
 		.map_ok(|path| {
-			let song = SongFile::new(&path);
+			let song = SongFile::new(&path)
+				.context(anyhow::format_err!("Could not load '{}'", path.display()))
+				.unwrap();
 			(*song.uuid(), song)
 		})
 		.collect::<Result<_, walkdir::Error>>()
@@ -43,24 +45,24 @@ impl SongFile {
 		&self.index.song_uuid
 	}
 
-	pub fn new(path: impl AsRef<Path>) -> Self {
+	pub fn new(path: impl AsRef<Path>) -> anyhow::Result<Self> {
 		let path = path.as_ref();
-		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path)?)?;
 
 		let (mut index, mut song): (SongMeta, _) = {
 			let index: SongMetaVersioned =
-				serde_json::from_reader(song.by_name("staves.json").unwrap()).unwrap();
+				serde_json::from_reader(song.by_name("staves.json")?)?;
 			/* Backwards compatibility handling */
 			let index: SongMeta = match index.update() {
 				either::Either::Left(index) => index,
 				either::Either::Right(index) => {
 					let pdf = {
-						let mut pages = song.by_name("sheet.pdf").unwrap();
+						let mut pages = song.by_name("sheet.pdf")?;
 						let mut data: Vec<u8> = vec![];
-						std::io::copy(&mut pages, &mut data).unwrap();
+						std::io::copy(&mut pages, &mut data)?;
 						let data = glib::Bytes::from_owned(data);
 						std::mem::drop(pages);
-						poppler::PopplerDocument::new_from_bytes(data, "").unwrap()
+						poppler::PopplerDocument::new_from_bytes(data, "")?
 					};
 					index.update(&pdf)
 				},
@@ -74,36 +76,32 @@ impl SongFile {
 				.map(|name| name.to_string_lossy().to_string());
 		}
 
-		let thumbnail = {
-			let pixbuf: Option<gdk_pixbuf::Pixbuf> = song
-				.by_name("thumbnail")
-				.map(Option::Some)
-				.or_else(|e| match e {
-					zip::result::ZipError::FileNotFound => Ok(None),
-					e => Err(e),
-				})
-				.transpose()
-				.map(|opt| {
-					opt.map(|mut stream| {
-						let mut bytes = Vec::new();
-						std::io::copy(&mut stream, &mut bytes).unwrap();
-						let pixbuf = gdk_pixbuf::Pixbuf::from_stream(
-							&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(bytes)),
-							Option::<&gio::Cancellable>::None,
-						)
-						.unwrap();
-						pixbuf
-					})
-				})
-				.map(Result::unwrap);
-			pixbuf
-		};
+		let thumbnail: Option<gdk_pixbuf::Pixbuf> = song
+			.by_name("thumbnail")
+			.map(Option::Some)
+			.or_else(|e| match e {
+				zip::result::ZipError::FileNotFound => Ok(None),
+				e => Err(e),
+			})
+			.transpose() /* Option<Result<_>> */
+			.map(|stream| {
+				let mut stream = stream?;
+				let mut bytes = Vec::new();
+				std::io::copy(&mut stream, &mut bytes)?;
+				let pixbuf = gdk_pixbuf::Pixbuf::from_stream(
+					&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(bytes)),
+					Option::<&gio::Cancellable>::None,
+				)?;
+				anyhow::Result::<_>::Ok(pixbuf)
+			})
+			.transpose() /* Result<Option<_>> */
+			.context("Could not load thumbnail")?;
 
-		SongFile {
+		Ok(SongFile {
 			file: song,
 			index,
 			thumbnail,
-		}
+		})
 	}
 
 	fn load_sheets_legacy<T>(
@@ -356,7 +354,9 @@ pub struct StaffIndex(pub usize);
 	AsMut,
 	Deref,
 	Add,
+	AddAssign,
 	Sub,
+	SubAssign,
 	PartialEq,
 	Eq,
 	PartialOrd,
@@ -397,18 +397,20 @@ impl<'de> Deserialize<'de> for SongMeta {
 	{
 		let unchecked = SongMeta::deserialize(deserializer)?;
 		if unchecked.staves.is_empty() {
-			return Err(de::Error::custom("song must have at least one staff"));
+			return Err(de::Error::custom("Invalid data: Song must have at least one staff"));
 		}
 		for staff in &unchecked.staves {
 			if staff.page > PageIndex(unchecked.n_pages) {
-				return Err(de::Error::custom("page index out of bounds"));
+				return Err(de::Error::custom(
+					format!("Invalid data: Page index out of bounds: {}, len {}", staff.page, unchecked.n_pages)
+				));
 			}
 		}
 		if !unchecked.piece_starts.contains_key(&0.into()) {
-			return Err(de::Error::custom("song must start with a piece"));
+			return Err(de::Error::custom("Invalid data: Song must start with a piece"));
 		}
 		if !unchecked.section_starts.contains_key(&0.into()) {
-			return Err(de::Error::custom("song must start with a section"));
+			return Err(de::Error::custom("Invalid data: Song must start with a section"));
 		}
 		Ok(unchecked)
 	}

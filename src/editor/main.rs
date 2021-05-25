@@ -103,6 +103,11 @@ impl EditorSongFile {
 			self.count_staves_before(page_index),
 			-(staves.len() as isize),
 		);
+		self.pages[*page_index..].iter_mut()
+			.flat_map(|(page, staves)| staves)
+			.for_each(|staff| {
+				staff.page -= PageIndex(1);
+			});
 	}
 
 	fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
@@ -701,7 +706,7 @@ impl AppActor {
 		if choose.run() == gtk::ResponseType::Accept {
 			if let Some(file) = choose.get_file() {
 				let path = file.get_path().unwrap();
-				let mut song = SongFile::new(path);
+				let mut song = SongFile::new(path).unwrap();
 				self.load(song.load_sheets_raw().unwrap(), song.index);
 			}
 		}
