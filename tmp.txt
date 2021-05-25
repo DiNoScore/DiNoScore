@@ -1,0 +1,56 @@
+TODO:
+
+- Image caching
+- [x] Keep current page
+	- Reuse the DrawingAreas
+	- Fix the DrawingArea state
+- Allow for different layouts
+- [x] Prioritize rendering current page
+- Fix inhibits
+- Fix events
+	- Left/Right in library
+	- Don't go left/right when swiping
+- [x] Do WoAB stuff
+- Usage tracking
+
+- [x] Keep visible page constant while scaling
+- [ ] Track layout changes that change staves, and render them accordingly
+- [x] Quick buttons for scaling
+- [x] Slider for scaling
+- [GTK4] Fix part dropdown size ("menubutton + popover perhaps")
+- [ ] Add "restart" button
+
+Collection:
+
+SongFile {
+	path,
+	thumbnail,
+	SongFileIndex {
+		stave positions, title, uuid, sections, repetitions, ...
+	}
+}
+
+Library:
+
+SongStats {
+	last used, uuid
+}
+
+Active:
+
+LoadedSong {
+	&mut SongStats
+	&SongFile
+
+	uuid,
+	raw_pages,
+	staves,
+	sections,
+	repetitions,
+}
+
+LoadedStaff {
+	render_position,
+}
+
+UI:
