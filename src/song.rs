@@ -60,7 +60,7 @@ impl Staff {
 			context.paint();
 			stuff.flush();
 		} else {
-			println!("Rendering small thumbnail");
+			log::info!("Rendering small thumbnail");
 			let scale = stuff.get_width() as f64 / line_width;
 			context.scale(scale, scale);
 			context.translate(

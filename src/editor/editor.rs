@@ -57,7 +57,7 @@ impl actix::Actor for EditorActor {
 						context.paint();
 					}
 
-					println!("Queuing surface redraw");
+					log::debug!("Queuing surface redraw");
 					// tx.clone().try_send(EditorSignal::Redraw).unwrap();
 					addr.try_send(EditorSignal2::Redraw).unwrap();
 				}
@@ -67,7 +67,7 @@ impl actix::Actor for EditorActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("Editor Quit");
+		log::debug!("Editor Quit");
 	}
 }
 
@@ -75,7 +75,7 @@ impl actix::Handler<woab::Signal> for EditorActor {
 	type Result = woab::SignalResult;
 
 	fn handle(&mut self, signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
-		println!("Editor signal: {:?}", signal.name());
+		log::debug!("Editor signal: {:?}", signal.name());
 		signal!(match (signal) {
 			"button_press" => |editor = gtk::DrawingArea, event = gdk::Event| {
 				let event: gdk::EventButton = event.downcast().unwrap();
@@ -173,7 +173,7 @@ impl EditorActor {
 			Some(selected_page) => selected_page,
 			None => return,
 		};
-		println!("Drawing");
+		log::debug!("Drawing");
 		// let staves_before: usize = self.staves_before;//pages.borrow().pages[0..selection as usize].iter().map(|(p, b)| b.len()).sum();
 		// let page = &self.pages[selected_page.0];
 		// let bars = state.staves;

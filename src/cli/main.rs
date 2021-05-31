@@ -2,6 +2,11 @@ use anyhow::Context;
 use dinoscore::*;
 
 fn main() -> anyhow::Result<()> {
+	simple_logger::SimpleLogger::new()
+		.with_level(log::LevelFilter::Debug)
+		.init()
+		.context("Failed to initialize logger")?;
+
 	gtk::init().unwrap();
 
 	use clap::*;
@@ -50,7 +55,7 @@ fn main() -> anyhow::Result<()> {
 
 		for input in inputs {
 			let input: &std::path::Path = input.as_ref();
-			println!("Upgrading '{}'", input.display());
+			log::info!("Upgrading '{}'", input.display());
 
 			let output_path = output_dir.join(input.file_name().unwrap());
 			let mut song = collection::SongFile::new(input)

@@ -57,18 +57,18 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	let (num_detections, detection_boxes, detection_scores) = {
 		use tensorflow as tf;
 
-		println!("A");
+		log::trace!("A");
 		let detection_graph = &DETECTION_GRAPH;
 
 		let image_tensor = tf::Tensor::new(&[1, image_height as u64, image_width as u64, 3])
 			.with_values(&image_bytes)
 			.unwrap();
-		println!("A2");
+		log::trace!("A2");
 
 		let mut session = tf::Session::new(&tf::SessionOptions::new(), &detection_graph).unwrap();
-		println!("A3");
+		log::trace!("A3");
 		let mut session_args = tf::SessionRunArgs::new();
-		println!("A4");
+		log::trace!("A4");
 		session_args.add_feed::<u8>(
 			&detection_graph
 				.operation_by_name("image_tensor")
@@ -77,7 +77,7 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 			0,
 			&image_tensor,
 		);
-		println!("B");
+		log::trace!("B");
 
 		let num_detections = session_args.request_fetch(
 			&detection_graph
@@ -108,9 +108,9 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 			0,
 		);
 
-		println!("C");
+		log::trace!("C");
 		session.run(&mut session_args).unwrap();
-		println!("D");
+		log::trace!("D");
 
 		/* We could probably extract better results by making more use of all that information */
 		let num_detections = session_args.fetch::<f32>(num_detections).unwrap();
@@ -118,13 +118,13 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 		let detection_scores = session_args.fetch::<f32>(detection_scores).unwrap();
 		let _detection_classes = session_args.fetch::<f32>(detection_classes).unwrap();
 
-		println!("E");
+		log::trace!("E");
 		session.close().unwrap();
-		println!("F");
+		log::trace!("F");
 
 		(num_detections, detection_boxes, detection_scores)
 	};
-	println!("Checkpoint");
+	log::trace!("Checkpoint");
 
 	let mut bars = Vec::<RelativeStaff>::new();
 
@@ -233,6 +233,6 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 		}
 	}
 
-	println!("Done");
+	log::debug!("Done");
 	staves
 }

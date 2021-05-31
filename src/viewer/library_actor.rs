@@ -42,7 +42,7 @@ impl actix::Actor for LibraryActor {
 	type Context = actix::Context<Self>;
 
 	fn started(&mut self, _ctx: &mut Self::Context) {
-		println!("Starting LibraryActor");
+		log::info!("Starting LibraryActor");
 		/* TODO add a true loading spinner */
 		let library = &self.library;
 		let store_songs = &self.widgets.store_songs;
@@ -68,13 +68,13 @@ impl actix::Actor for LibraryActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("Library Quit");
+		log::debug!("Library Quit");
 	}
 }
 
 impl LibraryActor {
 	fn load_song(&mut self, song: uuid::Uuid) {
-		println!("Loading song: {}", song);
+		log::info!("Loading song: {}", song);
 
 		let mut library = self.library.borrow_mut();
 		library.stats.get_mut(&song).unwrap().on_load();
@@ -114,7 +114,7 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 				self.widgets.sidebar_revealer.set_reveal_child(song.is_some());
 			},
 			"PlaySelected" => {
-				println!("Activated");
+				log::debug!("Activated");
 				let uuid = {
 					/* There is exactly one item */
 					let song = self.widgets.library_grid.get_selected_items().into_iter().next().unwrap();

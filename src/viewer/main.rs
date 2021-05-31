@@ -12,6 +12,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use dinoscore::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
+use anyhow::Context;
 
 mod fullscreen_actor;
 mod library_actor;
@@ -50,14 +51,14 @@ impl actix::Actor for AppActor {
 		let quit = gio::SimpleAction::new("quit", None);
 		quit.connect_activate(
 			clone!(@weak application => @default-panic, move |_action, _parameter| {
-				println!("Quit for real");
+				log::debug!("Quit for real");
 				application.quit();
 			}),
 		);
 		application.add_action(&quit);
 		application.set_accels_for_action("app.quit", &["<Primary>Q"]);
 		window.connect_destroy(clone!(@weak application => @default-panic, move |_| {
-			println!("Destroy quit");
+			log::debug!("Destroy quit");
 			application.quit();
 		}));
 
@@ -68,9 +69,9 @@ impl actix::Actor for AppActor {
 		/* Spawn library actor once library is loaded */
 		// std::thread::spawn(move || {
 		// let addr = addr;
-		// println!("Loading library");
+		// log::debug!("Loading library");
 		// let library = futures::executor::block_on(library::Library::load()).unwrap();
-		// println!("Loaded library");
+		// log::debug!("Loaded library");
 		// addr.try_send(CreateLibraryActor(library)).unwrap();
 		// });
 		// use actix::Handler;
@@ -78,7 +79,7 @@ impl actix::Actor for AppActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("Actor Quit");
+		log::debug!("Actor Quit");
 		// gtk::main_quit();
 	}
 }
@@ -105,7 +106,11 @@ impl actix::Handler<woab::Signal> for AppActor {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
+	simple_logger::SimpleLogger::new()
+		.with_level(log::LevelFilter::Trace)
+		.init()
+		.context("Failed to initialize logger")?;
 	let orig_hook = std::panic::take_hook();
 	std::panic::set_hook(Box::new(move |panic_info| {
 		// invoke the default handler and exit the process
@@ -117,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Some("de.piegames.dinoscore.viewer"),
 		gio::ApplicationFlags::NON_UNIQUE,
 	)
-	.expect("Initialization failed...");
+	.context("Initialization failed")?;
 
 	application.connect_startup(|application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
@@ -125,7 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		libhandy::init();
 
 		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
-		println!("Woab started");
+		log::info!("Woab started");
 
 		application.inhibit(
 			Option::<&gtk::Window>::None,
@@ -183,8 +188,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				SongActor::new(builder.widgets().unwrap(), application.clone(), library_actor)
 			});
 		});
+		log::info!("Application started");
 	});
 
 	application.run(&[]);
+	log::info!("Thanks for using DiNoScore.");
 	Ok(())
 }

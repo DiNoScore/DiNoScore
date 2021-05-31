@@ -21,11 +21,11 @@ pub fn run(midi_tx: Sender<PageEvent>) -> Result<Box<dyn Any>, Box<dyn Error>> {
 			.into_iter()
 			.filter(|d| d.direction() == portmidi::Direction::Input)
 			.filter(|d| !d.name().contains("Through"))
-			.inspect(|d| println!("Listening for MIDI pedals on {:?}", d))
+			.inspect(|d| log::info!("Listening for MIDI pedals on {:?}", d))
 			.map(|d| pm.input_port(d, 12).unwrap())
 			.collect::<Vec<_>>();
 		if suitable_ports.is_empty() {
-			println!("No midi ports found to listen on");
+			log::info!("No midi ports found to listen on");
 		}
 
 		loop {

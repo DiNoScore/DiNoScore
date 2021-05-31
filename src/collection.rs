@@ -108,7 +108,7 @@ impl SongFile {
 		pages: &mut zip::read::ZipFile<'_>,
 		mapper: impl Fn(Vec<u8>, poppler::PopplerPage) -> T,
 	) -> anyhow::Result<Vec<T>> {
-		println!("Loading legacy sheets");
+		log::debug!("Loading legacy sheets");
 		let mut data: Vec<u8> = vec![];
 		std::io::copy(pages, &mut data).context("Failed to load data")?;
 		page_image::explode_pdf_full(&data, mapper)
@@ -259,7 +259,7 @@ impl SongFile {
 		writer.start_file("staves.json", zip::write::FileOptions::default())?;
 		serde_json::to_writer_pretty(&mut writer, &SongMetaVersioned::from(metadata))?;
 
-		println!("Saving sheets");
+		log::info!("Saving sheets");
 		for (index, page) in pages.enumerate() {
 			writer
 				.start_file(
@@ -272,7 +272,7 @@ impl SongFile {
 		}
 
 		if let Some(thumbnail) = thumbnail {
-			println!("Saving thumbnail");
+			log::info!("Saving thumbnail");
 			writer.start_file("thumbnail", zip::write::FileOptions::default())?;
 
 			let buffer = thumbnail.save_to_bufferv("png", &[])?;

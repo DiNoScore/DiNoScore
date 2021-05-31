@@ -4,6 +4,7 @@ use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
 use uuid::Uuid;
+use anyhow::Context;
 
 use std::{collections::BTreeMap, rc::Rc};
 
@@ -213,14 +214,14 @@ impl actix::Actor for AppActor {
 		let quit = gio::SimpleAction::new("quit", None);
 		quit.connect_activate(
 			clone!(@weak application => @default-panic, move |_action, _parameter| {
-				println!("Quit for real");
+				log::debug!("Quit for real");
 				application.quit();
 			}),
 		);
 		application.add_action(&quit);
 		application.set_accels_for_action("app.quit", &["<Primary>Q"]);
 		window.connect_destroy(clone!(@weak application => @default-panic, move |_| {
-			println!("Destroy quit");
+			log::debug!("Destroy quit");
 			application.quit();
 		}));
 
@@ -236,7 +237,7 @@ impl actix::Actor for AppActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("Actor Quit");
+		log::debug!("Actor Quit");
 		// gtk::main_quit();
 	}
 }
@@ -472,7 +473,7 @@ impl AppActor {
 
 				let data = unsafe { unsafe_force::Send::new(data) };
 				let (page, bars_inner) = blocking::unblock(move || {
-					println!("Autodetecting {} ({}/{})", page, i, total_work);
+					log::info!("Autodetecting {} ({}/{})", page, i, total_work);
 					let page = PageIndex(page);
 					let bars_inner: Vec<Staff> =
 						recognition::recognize_staves(&unsafe { data.unwrap() })
@@ -497,7 +498,7 @@ impl AppActor {
 			async_std::task::sleep(std::time::Duration::from_millis(350)).await;
 			progress_dialog.emit_close();
 			async_std::task::yield_now().await;
-			println!("Autodetected");
+			log::info!("Autodetected");
 		}));
 	}
 
@@ -730,7 +731,7 @@ impl AppActor {
 	}
 
 	fn save_with_ui(&self, ctx: &mut <Self as actix::Actor>::Context) {
-		println!("Saving staves");
+		log::info!("Saving staves");
 
 		let filter = gtk::FileFilter::new();
 		filter.add_mime_type("application/zip");
@@ -805,7 +806,7 @@ impl actix::Handler<woab::Signal> for AppActor {
 	type Result = woab::SignalResult;
 
 	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
-		println!("Signal: {:?}", signal.name());
+		log::debug!("Signal: {:?}", signal.name());
 		signal!(match (signal) {
 			/* Menu */
 			"OpenDocument" => {self.load_with_dialog()},
@@ -875,7 +876,11 @@ impl actix::Handler<woab::Signal> for AppActor {
 }
 
 #[allow(clippy::all)]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
+	simple_logger::SimpleLogger::new()
+		.with_level(log::LevelFilter::Trace)
+		.init()
+		.context("Failed to initialize logger")?;
 	let orig_hook = std::panic::take_hook();
 	std::panic::set_hook(Box::new(move |panic_info| {
 		// invoke the default handler and exit the process
@@ -887,15 +892,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Some("de.piegames.dinoscore.editor"),
 		gio::ApplicationFlags::NON_UNIQUE,
 	)
-	.expect("Initialization failed...");
+	.context("Initialization failed")?;
 
 	application.connect_startup(|_application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
 		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
+		log::info!("Woab started");
 	});
-	println!("D: {:?}", std::thread::current().id());
 
 	application.connect_activate(move |application| {
 		let builder = gtk::Builder::from_file("res/editor.glade");
@@ -914,8 +919,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				AppActor::new(widgets, application, editor)
 			}));
 		});
+
+		log::info!("Application started");
 	});
 
 	application.run(&[]);
+	log::info!("Thanks for using DiNoScore.");
 	Ok(())
 }

@@ -59,7 +59,7 @@ impl actix::Actor for FullscreenActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("Fullscreen Quit");
+		log::debug!("Fullscreen Quit");
 	}
 }
 
@@ -69,15 +69,15 @@ impl actix::Handler<woab::Signal> for FullscreenActor {
 	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
 		signal!(match (signal) {
 			"enter_fullscreen" => {
-				println!("Enter fullscreen");
+				log::info!("Enter fullscreen");
 				self.widgets.window.fullscreen();
 			},
 			"leave_fullscreen" => {
-				println!("Leave fullscreen");
+				log::info!("Leave fullscreen");
 				self.widgets.window.unfullscreen();
 			},
 			"toggle_fullscreen" => {
-				println!("Toggle fullscreen");
+				log::info!("Toggle fullscreen");
 				if self.is_fullscreen {
 					self.widgets.window.unfullscreen();
 				} else {
@@ -94,7 +94,7 @@ impl actix::Handler<woab::Signal> for FullscreenActor {
 						.get_new_window_state()
 						.contains(gdk::WindowState::FULLSCREEN)
 					{
-						println!("Going fullscreen");
+						log::debug!("Going fullscreen");
 						self.is_fullscreen = true;
 						self.widgets.fullscreen_button.set_visible(false);
 						self.widgets.restore_button.set_visible(true);
@@ -102,7 +102,7 @@ impl actix::Handler<woab::Signal> for FullscreenActor {
 	
 						window.queue_draw();
 					} else {
-						println!("Going unfullscreen");
+						log::debug!("Going unfullscreen");
 						self.is_fullscreen = false;
 						self.widgets.restore_button.set_visible(false);
 						self.widgets.fullscreen_button.set_visible(true);

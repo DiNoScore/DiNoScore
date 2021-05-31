@@ -103,7 +103,7 @@ impl SongRenderer {
 		 * We will never scale an image up and never scale it down more than 2/3
 		 */
 		let rendered_width = (1.5f64).powf(width.log(1.5).ceil()).ceil();
-		// println!("Input width {}, output width {}", width, rendered_width);
+		// log::debug!("Input width {}, output width {}", width, rendered_width);
 		let cache_key = {
 			let mut key = std::ffi::OsString::new();
 			key.push(self.song.version_uuid.to_string());
@@ -114,16 +114,16 @@ impl SongRenderer {
 			key
 		};
 		if self.image_cache.contains_key(&cache_key) {
-			// println!("Cache hit for {}", cache_key.to_string_lossy());
+			// log::debug!("Cache hit for {}", cache_key.to_string_lossy());
 			let mut read = self.image_cache.get(&cache_key).unwrap();
 			cairo::ImageSurface::create_from_png(&mut read).unwrap_or_else(|e| {
-				println!("That cache image seems to be corrupt {}", e);
+				log::warn!("That cache image seems to be corrupt {}", e);
 				/* Remove the corrupt entry and try again */
 				self.image_cache.remove(&cache_key).unwrap();
 				self.render_staff(staff, width)
 			})
 		} else {
-			// println!("Cache miss for {}", cache_key.to_string_lossy());
+			// log::warn!("Cache miss for {}", cache_key.to_string_lossy());
 			let staff = &self.song.staves[*staff];
 			let page = &self.pages[*staff.page];
 
@@ -150,7 +150,7 @@ impl SongRenderer {
 			self.image_cache
 				.insert_with(&cache_key, |mut file| {
 					surface.write_to_png(&mut file).unwrap_or_else(|e| {
-						println!("Could not write image to cache, {}", e);
+						log::warn!("Could not write image to cache, {}", e);
 					});
 					Ok(())
 				})
@@ -473,7 +473,7 @@ impl actix::Actor for SongActor {
 	}
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		println!("SongActor Quit");
+		log::debug!("SongActor Quit");
 	}
 }
 
@@ -693,7 +693,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 			if page.layout_id != song.layout.random_id {
 				return;
 			}
-			// println!("Updating page {}", page.index);
+			// log::debug!("Updating page {}", page.index);
 			let area = &self.widgets.carousel.get_children()[*page.index];
 			let area: &gtk::DrawingArea = area.downcast_ref().unwrap();
 			let surface = unsafe { page.surface.unwrap() };
@@ -861,19 +861,19 @@ impl actix::Handler<woab::Signal> for SongActor {
 
 			/* Events from the zoom gesture */
 			"ZoomBegin" => {
-				println!("Begin");
+				log::debug!("Begin");
 				if let Some(song) = self.song.as_mut() {
 					song.zoom_before_gesture = Some(song.zoom);
 				}
 			},
 			"ZoomEnd" => {
-				println!("End");
+				log::debug!("End");
 				if let Some(song) = self.song.as_mut() {
 					song.zoom_before_gesture = None;
 				}
 			},
 			"ZoomCancel" => {
-				println!("Cancel");
+				log::debug!("Cancel");
 				self.update_manual_zoom(|song| {
 					song.zoom_before_gesture.take()
 						//.expect("Should always be Some within after gesture started");
