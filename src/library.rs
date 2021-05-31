@@ -15,7 +15,7 @@ pub enum Song {}
 pub struct LibrarySong {
 	pub song: Uuid,
 	pub times_played: u32,
-	pub seconds_played: u32,
+	pub seconds_played: u64,
 	pub last_played: Option<std::time::SystemTime>,
 	pub usage_score: f32,
 }
@@ -36,7 +36,7 @@ impl LibrarySong {
 		self.last_played = Some(std::time::SystemTime::now());
 	}
 
-	pub fn on_update(&mut self, add_seconds: u32) {
+	pub fn on_update(&mut self, add_seconds: u64) {
 		self.seconds_played += add_seconds;
 		self.last_played = Some(std::time::SystemTime::now());
 	}

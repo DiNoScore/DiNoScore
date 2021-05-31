@@ -14,8 +14,9 @@ use std::sync::mpsc::*;
 pub fn create(
 	builder: &woab::BuilderConnector,
 	application: gtk::Application,
+	library_actor: actix::Addr<library_actor::LibraryActor>,
 ) -> actix::Addr<SongActor> {
-	SongActor::create(move |_ctx| SongActor::new(builder.widgets().unwrap(), application))
+	SongActor::create(move |_ctx| SongActor::new(builder.widgets().unwrap(), application, library_actor))
 }
 
 struct SongRenderer {
@@ -362,10 +363,12 @@ pub struct SongActor {
 	previous: gio::SimpleAction,
 	zoom_gesture: gtk::GestureZoom,
 	sizing_mode_action: gio::SimpleAction,
+	last_interaction: std::time::Instant,
+	library_actor: actix::Addr<LibraryActor>,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
-struct SongWidgets {
+pub struct SongWidgets {
 	header: libhandy::HeaderBar,
 	carousel: libhandy::Carousel,
 	carousel_box: gtk::Box,
@@ -475,7 +478,11 @@ impl actix::Actor for SongActor {
 }
 
 impl SongActor {
-	fn new(widgets: SongWidgets, application: gtk::Application) -> Self {
+	pub fn new(
+		widgets: SongWidgets,
+		application: gtk::Application,
+		library_actor: actix::Addr<LibraryActor>
+	) -> Self {
 		let next = gio::SimpleAction::new("next_page", None);
 		let previous = gio::SimpleAction::new("previous_page", None);
 		Self {
@@ -492,6 +499,8 @@ impl SongActor {
 				Some(&String::static_variant_type()),
 				&"manual".to_variant(),
 			),
+			last_interaction: std::time::Instant::now(),
+			library_actor,
 		}
 	}
 
@@ -652,6 +661,19 @@ impl SongActor {
 			})
 			.unwrap();
 	}
+
+	fn update_timer(&mut self) {
+		let last_interaction = std::time::Instant::now();
+		let diff = last_interaction.duration_since(self.last_interaction)
+			.as_secs()
+			/* Consider everything about 3 minutes as "idle" */
+			.min(180);
+		self.library_actor.try_send(library_actor::UpdateSongUsage {
+			seconds_elapsed: diff,
+			song: self.song.as_ref().unwrap().song.song_uuid,
+		}).unwrap();
+		self.last_interaction = last_interaction;
+	}
 }
 
 #[derive(actix::Message)]
@@ -737,6 +759,10 @@ impl actix::Handler<woab::Signal> for SongActor {
 	type Result = woab::SignalResult;
 
 	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
+		if self.song.as_ref().is_some() {
+			self.update_timer();
+		}
+
 		let carousel = &self.widgets.carousel;
 		signal!(match (signal) {
 			/* Switch pages */

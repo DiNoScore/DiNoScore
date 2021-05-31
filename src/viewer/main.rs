@@ -139,30 +139,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let builder = woab::BuilderConnector::from(builder);
 
 		woab::block_on(async {
-			let song_actor = song_actor::create(&builder, application.clone());
+			use actix::AsyncContext;
+
 			let fullscreen_actor = fullscreen_actor::create(&builder, application.clone());
 			let library = library::Library::load().unwrap();
-			let library_actor = library_actor::create(&builder, song_actor.clone(), library);
 
-			let widgets: AppWidgets = builder.widgets().unwrap();
-			let app_actor = AppActor::create(
-				clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
-					widgets.window.set_application(Some(&application));
-					AppActor {
-						widgets,
-						application,
+			/* TODO clean this up once we figured out a less messy way to initialize
+			 * cross-dependent actors. Don't forget to make the unused types private again
+			 * after cleanup.
+			 */
+			song_actor::SongActor::create(move |ctx1| {
+				let song_actor = ctx1.address();
+				let library_actor = {
+					let builder = &builder;
+					let song_actor = song_actor.clone();
+					LibraryActor::create(move |_ctx| LibraryActor {
+						widgets: builder.widgets().unwrap(),
+						library: Rc::new(RefCell::new(library)),
 						song_actor,
-					}
-				}),
-			);
+					})
+				};
 
-			builder.connect_to(
-				woab::NamespacedSignalRouter::default()
-					.route(song_actor)
-					.route(library_actor)
-					.route(app_actor)
-					.route(fullscreen_actor),
-			);
+				let widgets: AppWidgets = builder.widgets().unwrap();
+				let app_actor = AppActor::create(
+					clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
+						widgets.window.set_application(Some(&application));
+						AppActor {
+							widgets,
+							application,
+							song_actor,
+						}
+					}),
+				);
+
+				let builder = builder.connect_to(
+					woab::NamespacedSignalRouter::default()
+						.route(song_actor)
+						.route(library_actor.clone())
+						.route(app_actor)
+						.route(fullscreen_actor),
+				);
+
+				SongActor::new(builder.widgets().unwrap(), application.clone(), library_actor)
+			});
 		});
 	});
 

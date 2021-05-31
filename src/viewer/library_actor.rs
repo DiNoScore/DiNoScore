@@ -25,13 +25,13 @@ pub fn create(
 }
 
 pub struct LibraryActor {
-	widgets: LibraryWidgets,
-	library: Rc<RefCell<library::Library>>,
-	song_actor: actix::Addr<SongActor>,
+	pub widgets: LibraryWidgets,
+	pub library: Rc<RefCell<library::Library>>,
+	pub song_actor: actix::Addr<SongActor>,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
-struct LibraryWidgets {
+pub struct LibraryWidgets {
 	store_songs: gtk::ListStore,
 	library_grid: gtk::IconView,
 	deck: libhandy::Deck,
@@ -77,6 +77,7 @@ impl LibraryActor {
 		println!("Loading song: {}", song);
 
 		let mut library = self.library.borrow_mut();
+		library.stats.get_mut(&song).unwrap().on_load();
 		let song = library.songs.get_mut(&song).unwrap();
 
 		self.widgets
@@ -133,5 +134,24 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 		});
 
 		Ok(None)
+	}
+}
+
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+pub struct UpdateSongUsage {
+	pub seconds_elapsed: u64,
+	pub song: uuid::Uuid,
+}
+
+impl actix::Handler<UpdateSongUsage> for LibraryActor {
+	type Result = ();
+
+	fn handle(&mut self, message: UpdateSongUsage, _ctx: &mut Self::Context) {
+		self.library.borrow_mut()
+			.stats
+			.get_mut(&message.song)
+			.unwrap()
+			.on_update(message.seconds_elapsed);
 	}
 }
