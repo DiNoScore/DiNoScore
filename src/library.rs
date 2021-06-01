@@ -8,6 +8,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
 use std::collections::HashMap;
 use uuid::Uuid;
+use anyhow::Context;
 
 pub enum Song {}
 
@@ -44,9 +45,11 @@ impl LibrarySong {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "version")]
-enum LibraryFile {
+enum LibraryFile<'a> {
 	#[serde(rename = "0")]
-	V0 { songs: HashMap<Uuid, LibrarySong> },
+	V0 {
+		songs: maybe_owned::MaybeOwned<'a, HashMap<Uuid, LibrarySong>>
+	},
 }
 
 #[derive(Debug)]
@@ -66,7 +69,7 @@ impl Library {
 					let stats: LibraryFile =
 						serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
 					match stats {
-						LibraryFile::V0 { songs } => songs,
+						LibraryFile::V0 { songs } => songs.into_owned(),
 					}
 				},
 				None => HashMap::new(),
@@ -80,5 +83,30 @@ impl Library {
 			stats.insert(*uuid, LibrarySong::new(*uuid));
 		}
 		Ok(Library { songs, stats })
+	}
+
+	/* Spawning a background thread is reasonably safe because our file operations are atomic.
+	 * Our own worry is if a background write is very slow and finishes after some later ones,
+	 * overwriting the file with older data. But eeh.
+	 * TODO maybe a mutex would help? And also maybe debounce?
+	 */
+	pub fn save_in_background(&self) {
+		let stats = self.stats.clone();
+		std::thread::spawn(move || {
+			// TODO don't hardcode here
+			log::info!("Saving database file (library.json)");
+			let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
+			let songs = collection::load();
+			let path = xdg.place_data_file("library.json").unwrap();
+			let file = atomicwrites::AtomicFile::new(path, atomicwrites::AllowOverwrite);
+			file.write(|file| {
+				serde_json::to_writer_pretty(
+					file,
+					&LibraryFile::V0 { songs: stats.into() }
+				)
+			})
+			.context("Could not save database (library.json)")
+			.unwrap();
+		});
 	}
 }

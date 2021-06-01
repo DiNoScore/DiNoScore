@@ -69,6 +69,7 @@ impl actix::Actor for LibraryActor {
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
 		log::debug!("Library Quit");
+		self.library.borrow_mut().save_in_background();
 	}
 }
 
@@ -78,6 +79,7 @@ impl LibraryActor {
 
 		let mut library = self.library.borrow_mut();
 		library.stats.get_mut(&song).unwrap().on_load();
+		library.save_in_background();
 		let song = library.songs.get_mut(&song).unwrap();
 
 		self.widgets
