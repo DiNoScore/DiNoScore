@@ -21,6 +21,7 @@ pub fn create(
 		widgets: builder.widgets().unwrap(),
 		library: Rc::new(RefCell::new(library)),
 		song_actor,
+		reference_time: std::time::SystemTime::now(),
 	})
 }
 
@@ -28,6 +29,12 @@ pub struct LibraryActor {
 	pub widgets: LibraryWidgets,
 	pub library: Rc<RefCell<library::Library>>,
 	pub song_actor: actix::Addr<SongActor>,
+	/**
+	 * Our scores decay over time, so we need to fix a point in time for the values to be comparable.
+	 * This weakly depends on the assumption that the application won't be running for months, and that
+	 * no time traveling or clock fuckery will occur in that order of magnitude.
+	 */
+	pub reference_time: std::time::SystemTime,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -46,21 +53,23 @@ impl actix::Actor for LibraryActor {
 		/* TODO add a true loading spinner */
 		let library = &self.library;
 		let store_songs = &self.widgets.store_songs;
-		store_songs.set_sort_column_id(gtk::SortColumn::Index(1), gtk::SortType::Ascending);
+		// store_songs.set_sort_column_id(gtk::SortColumn::Index(1), gtk::SortType::Ascending);
+		store_songs.set_sort_column_id(gtk::SortColumn::Index(3), gtk::SortType::Descending);
 
-		for (_uuid, song) in library.borrow().songs.iter() {
+		for (uuid, song) in library.borrow().songs.iter() {
 			// TODO clean this up
 			/* Add an item with the name and UUID
 			 * Index, column, value
-			 * The columns are: thumbnail, title, UUID
+			 * The columns are: thumbnail, title, UUID, usage_score
 			 */
 			store_songs.set(
 				&store_songs.append(),
-				&[0, 1, 2],
+				&[0, 1, 2, 3],
 				&[
 					&song.thumbnail(),
 					&song.title().unwrap_or("<no title>").to_value(),
-					&song.uuid().to_string().to_value(),
+					&uuid.to_string().to_value(),
+					&self.library.borrow().stats[uuid].usage_score(&self.reference_time).to_value(),
 				],
 			);
 		}
@@ -69,7 +78,8 @@ impl actix::Actor for LibraryActor {
 
 	fn stopped(&mut self, _ctx: &mut Self::Context) {
 		log::debug!("Library Quit");
-		self.library.borrow_mut().save_in_background();
+		// TODO also this won't work on quit because who's going to wait for that thread to finish?
+		// self.library.borrow_mut().save_in_background();
 	}
 }
 
@@ -80,6 +90,24 @@ impl LibraryActor {
 		let mut library = self.library.borrow_mut();
 		library.stats.get_mut(&song).unwrap().on_load();
 		library.save_in_background();
+
+		/* Find our song and update it. */
+		let store_songs = &self.widgets.store_songs;
+		store_songs.foreach(|_model, _path, iter| {
+			let uuid2: String = store_songs.get_value(iter, 2).get::<String>().unwrap().unwrap();
+			let uuid2: uuid::Uuid = uuid::Uuid::parse_str(&uuid2).unwrap();
+			if uuid2 == song {
+				store_songs.set_value(
+					iter,
+					3,
+					&library.stats[&song].usage_score(&self.reference_time).to_value(),
+				);
+				true
+			} else {
+				false
+			}
+		});
+
 		let song = library.songs.get_mut(&song).unwrap();
 
 		self.widgets

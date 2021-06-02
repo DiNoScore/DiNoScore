@@ -19,6 +19,8 @@
       <column type="gchararray"/>
       <!-- column-name UUID -->
       <column type="gchararray"/>
+      <!-- column-name score -->
+      <column type="gfloat"/>
     </columns>
   </object>
   <object class="HdyApplicationWindow" id="window">

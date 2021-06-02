@@ -162,6 +162,7 @@ fn main() -> anyhow::Result<()> {
 						widgets: builder.widgets().unwrap(),
 						library: Rc::new(RefCell::new(library)),
 						song_actor,
+						reference_time: std::time::SystemTime::now(),
 					})
 				};
 
