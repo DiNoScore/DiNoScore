@@ -66,7 +66,7 @@ impl actix::Actor for FullscreenActor {
 impl actix::Handler<woab::Signal> for FullscreenActor {
 	type Result = woab::SignalResult;
 
-	fn handle(&mut self, signal: woab::Signal, ctx: &mut Self::Context) -> woab::SignalResult {
+	fn handle(&mut self, signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
 		signal!(match (signal) {
 			"enter_fullscreen" => {
 				log::info!("Enter fullscreen");

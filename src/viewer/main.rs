@@ -158,11 +158,14 @@ fn main() -> anyhow::Result<()> {
 				let library_actor = {
 					let builder = &builder;
 					let song_actor = song_actor.clone();
+					let application = application.clone();
 					LibraryActor::create(move |_ctx| LibraryActor {
 						widgets: builder.widgets().unwrap(),
+						application,
 						library: Rc::new(RefCell::new(library)),
 						song_actor,
 						reference_time: std::time::SystemTime::now(),
+						song_filter: Box::new(|_| true),
 					})
 				};
 

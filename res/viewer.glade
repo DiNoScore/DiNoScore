@@ -51,9 +51,13 @@
                 <property name="title" translatable="yes">DiNoScore</property>
                 <property name="spacing">10</property>
                 <child>
-                  <object class="GtkSearchEntry">
+                  <object class="GtkSearchEntry" id="search_entry">
                     <property name="width-chars">20</property>
                     <property name="placeholder-text" translatable="yes">Search songs</property>
+                    <signal name="search-changed" handler="LibraryActor::on_search_entry_changed" swapped="no"/>
+                    <signal name="next-match" handler="LibraryActor::on_search_entry_next" swapped="no"/>
+                    <signal name="previous-match" handler="LibraryActor::on_search_entry_previous" swapped="no"/>
+                    <signal name="stop-search" handler="LibraryActor::on_search_stopped" swapped="no"/>
                   </object>
                 </child>
                 <child>
