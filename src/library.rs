@@ -28,6 +28,30 @@ pub struct LibrarySong {
 	 * New songs start with a score of 1, which means `now`.
 	 */
 	usage_score: SystemTime,
+	pub scale_options: Option<ScaleMode>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum ScaleMode {
+	FitStaves(u32),
+	FitPages(u32),
+	Zoom(f32),
+}
+
+impl Default for ScaleMode {
+	fn default() -> Self {
+		Self::Zoom(1.0)
+	}
+}
+
+impl ScaleMode {
+	pub fn action_string(&self) -> &'static str {
+		match self {
+			Self::FitStaves(_) => "fit-staves",
+			Self::FitPages(_) => "fit-columns",
+			Self::Zoom(_) => "manual",
+		}
+	}
 }
 
 impl LibrarySong {
@@ -44,6 +68,7 @@ impl LibrarySong {
 			seconds_played: 0,
 			last_played: None,
 			usage_score: SystemTime::now(),
+			scale_options: None,
 		}
 	}
 

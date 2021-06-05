@@ -111,11 +111,11 @@ impl LibraryActor {
 		}
 	}
 
-	fn load_song(&mut self, song: uuid::Uuid) {
-		log::info!("Loading song: {}", song);
+	fn load_song(&mut self, uuid: uuid::Uuid) {
+		log::info!("Loading song: {}", uuid);
 
 		let mut library = self.library.borrow_mut();
-		library.stats.get_mut(&song).unwrap().on_load();
+		library.stats.get_mut(&uuid).unwrap().on_load();
 		library.save_in_background();
 
 		/* Find our song and update it. */
@@ -123,11 +123,11 @@ impl LibraryActor {
 		store_songs.foreach(|_model, _path, iter| {
 			let uuid2: String = store_songs.get_value(iter, 2).get::<String>().unwrap().unwrap();
 			let uuid2: uuid::Uuid = uuid::Uuid::parse_str(&uuid2).unwrap();
-			if uuid2 == song {
+			if uuid2 == uuid {
 				store_songs.set_value(
 					iter,
 					3,
-					&library.stats[&song].usage_score(&self.reference_time).to_value(),
+					&library.stats[&uuid].usage_score(&self.reference_time).to_value(),
 				);
 				true
 			} else {
@@ -135,7 +135,7 @@ impl LibraryActor {
 			}
 		});
 
-		let song = library.songs.get_mut(&song).unwrap();
+		let song = library.songs.get_mut(&uuid).unwrap();
 
 		self.widgets
 			.deck
@@ -145,6 +145,8 @@ impl LibraryActor {
 		let mut event = Some(LoadSong {
 			meta: song.index.clone(),
 			pages: unsafe { unsafe_force::Send::new(song.load_sheets().unwrap()) },
+			scale_mode: library.stats.get_mut(&uuid).unwrap()
+				.scale_options.as_ref().copied().unwrap_or_default(),
 		});
 		/* Hack to get the event processed in the correct order */
 		glib::timeout_add_local(50, move || {
@@ -250,18 +252,21 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 #[derive(actix::Message)]
 #[rtype(result = "()")]
 pub struct UpdateSongUsage {
-	pub seconds_elapsed: u64,
 	pub song: uuid::Uuid,
+	pub seconds_elapsed: u64,
+	pub scale_mode: library::ScaleMode,
 }
 
 impl actix::Handler<UpdateSongUsage> for LibraryActor {
 	type Result = ();
 
 	fn handle(&mut self, message: UpdateSongUsage, _ctx: &mut Self::Context) {
-		self.library.borrow_mut()
+		let library = &mut self.library.borrow_mut();
+		let stats = library
 			.stats
 			.get_mut(&message.song)
-			.unwrap()
-			.on_update(message.seconds_elapsed);
+			.unwrap();
+		stats.on_update(message.seconds_elapsed);
+		stats.scale_options = Some(message.scale_mode);
 	}
 }

@@ -1,3 +1,4 @@
+use dinoscore::library::ScaleMode;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
@@ -209,13 +210,6 @@ struct UpdateLayout {
 }
 
 #[derive(Debug)]
-enum ScaleMode {
-	FitStaves(u32),
-	FitPages(u32),
-	Zoom(f32),
-}
-
-#[derive(Debug)]
 struct SongState {
 	song: Arc<collection::SongMeta>,
 	page: collection::PageIndex,
@@ -239,6 +233,7 @@ impl SongState {
 		width: f64,
 		height: f64,
 		pdf_page_width: f64,
+		scale_mode: ScaleMode,
 	) -> Self {
 		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, 10.0));
 		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height));
@@ -258,7 +253,7 @@ impl SongState {
 			layout,
 			renderer,
 			zoom: 1.0,
-			scale_mode: ScaleMode::Zoom(1.0),
+			scale_mode,
 			zoom_before_gesture: None,
 			pdf_page_width,
 		}
@@ -311,7 +306,7 @@ impl SongState {
 					*k,
 					v.is_empty()
 						.then(|| format!("({})", k))
-						.unwrap_or(v.clone()),
+						.unwrap_or_else(|| v.clone()),
 				)
 			})
 			.collect()
@@ -509,6 +504,7 @@ impl SongActor {
 		ctx: &mut actix::Context<Self>,
 		song: collection::SongMeta,
 		pages: Vec<PageImageBox>,
+		scale_mode: ScaleMode,
 	) {
 		use actix::AsyncContext;
 
@@ -528,7 +524,14 @@ impl SongActor {
 		);
 		self.widgets.carousel_box.grab_focus();
 
-		let song = SongState::new(renderer, song, width as f64, height as f64, pdf_page_width);
+		let song = SongState::new(
+			renderer,
+			song,
+			width as f64,
+			height as f64,
+			pdf_page_width,
+			scale_mode,
+		);
 
 		let parts = song.get_parts();
 		self.widgets.part_selection.remove_all();
@@ -537,9 +540,14 @@ impl SongActor {
 		}
 		let relevant = parts.len() > 1;
 		woab::spawn_outside(
-			clone!(@weak self.widgets.part_selection as part_selection => @default-panic, move || {async move{
+			clone!(
+				@weak self.widgets.part_selection as part_selection,
+				@weak self.sizing_mode_action as sizing_mode_action
+			=> @default-panic, move || {async move{
 				part_selection.set_active(if relevant {Some(0)} else {None});
 				part_selection.set_sensitive(relevant);
+
+				sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
 			}})(),
 		);
 
@@ -557,6 +565,7 @@ impl SongActor {
 			song.zoom = modify_zoom(song);
 			song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
 			self.update_content(ctx);
+			self.update_timer();
 		}
 	}
 
@@ -671,6 +680,7 @@ impl SongActor {
 		self.library_actor.try_send(library_actor::UpdateSongUsage {
 			seconds_elapsed: diff,
 			song: self.song.as_ref().unwrap().song.song_uuid,
+			scale_mode: self.song.as_ref().unwrap().scale_mode,
 		}).unwrap();
 		self.last_interaction = last_interaction;
 	}
@@ -730,13 +740,14 @@ impl actix::Handler<UpdatePage> for SongActor {
 pub struct LoadSong {
 	pub meta: collection::SongMeta,
 	pub pages: unsafe_force::Send<Vec<PageImageBox>>,
+	pub scale_mode: ScaleMode,
 }
 
 impl actix::Handler<LoadSong> for SongActor {
 	type Result = ();
 
 	fn handle(&mut self, song: LoadSong, ctx: &mut Self::Context) -> Self::Result {
-		self.load_song(ctx, song.meta, unsafe { song.pages.unwrap() });
+		self.load_song(ctx, song.meta, unsafe { song.pages.unwrap() }, song.scale_mode);
 	}
 }
 
@@ -916,6 +927,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 						invalid => unreachable!(format!("Invalid value: '{}'", invalid)),
 					};
 					self.update_content(ctx);
+					self.update_timer();
 				}
 			}
 		});
