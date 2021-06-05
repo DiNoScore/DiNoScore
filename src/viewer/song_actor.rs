@@ -226,6 +226,8 @@ struct SongState {
 	 * synchronize the view on layout changes
 	 */
 	current_staves: Vec<collection::StaffIndex>,
+	/* GTK stuff */
+	inhibit_cookie: u32,
 }
 
 impl SongState {
@@ -236,6 +238,7 @@ impl SongState {
 		height: f64,
 		pdf_page_width: f64,
 		scale_mode: ScaleMode,
+		inhibit_cookie: u32,
 	) -> Self {
 		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, 10.0));
 		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height));
@@ -258,6 +261,7 @@ impl SongState {
 			scale_mode,
 			zoom_before_gesture: None,
 			pdf_page_width,
+			inhibit_cookie,
 		}
 	}
 
@@ -508,6 +512,12 @@ impl SongActor {
 		pages: Vec<PageImageBox>,
 		scale_mode: ScaleMode,
 	) {
+		let inhibit_cookie = self.application.inhibit(
+			Option::<&gtk::Window>::None,
+			gtk::ApplicationInhibitFlags::IDLE,
+			Some("You wouldn't want your screen go blank while playing an instrument"),
+		);
+
 		use actix::AsyncContext;
 
 		let song = Arc::new(song);
@@ -533,6 +543,7 @@ impl SongActor {
 			height as f64,
 			pdf_page_width,
 			scale_mode,
+			inhibit_cookie,
 		);
 
 		let parts = song.get_parts();
@@ -800,7 +811,9 @@ impl actix::Handler<woab::Signal> for SongActor {
 			},
 			/* Unload the song */
 			"go_back" => {
-				std::mem::drop(self.song.take());
+				let song = self.song.take().unwrap();
+				self.application.uninhibit(song.inhibit_cookie);
+				std::mem::drop(song);
 				self.widgets.carousel.foreach(|p| self.widgets.carousel.remove(p));
 
 				woab::spawn_outside(clone!(

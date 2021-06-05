@@ -131,12 +131,6 @@ fn main() -> anyhow::Result<()> {
 
 		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
 		log::info!("Woab started");
-
-		application.inhibit(
-			Option::<&gtk::Window>::None,
-			gtk::ApplicationInhibitFlags::IDLE,
-			Some("You wouldn't want your screen go blank while playing an instrument"),
-		);
 	});
 
 	application.connect_activate(move |application| {
