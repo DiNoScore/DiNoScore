@@ -99,7 +99,7 @@ impl actix::Handler<woab::Signal> for FullscreenActor {
 						self.widgets.fullscreen_button.set_visible(false);
 						self.widgets.restore_button.set_visible(true);
 						self.widgets.header.set_show_close_button(false);
-	
+
 						window.queue_draw();
 					} else {
 						log::debug!("Going unfullscreen");

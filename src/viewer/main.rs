@@ -9,10 +9,10 @@ use gtk::prelude::*;
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
+use anyhow::Context;
 use dinoscore::*;
 use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
-use anyhow::Context;
 
 mod fullscreen_actor;
 mod library_actor;
@@ -189,7 +189,11 @@ fn main() -> anyhow::Result<()> {
 						.route(fullscreen_actor),
 				);
 
-				SongActor::new(builder.widgets().unwrap(), application.clone(), library_actor)
+				SongActor::new(
+					builder.widgets().unwrap(),
+					application.clone(),
+					library_actor,
+				)
 			});
 		});
 		log::info!("Application started");

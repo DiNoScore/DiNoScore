@@ -58,8 +58,7 @@ fn main() -> anyhow::Result<()> {
 			log::info!("Upgrading '{}'", input.display());
 
 			let output_path = output_dir.join(input.file_name().unwrap());
-			let mut song = collection::SongFile::new(input)
-				.context("Corrupt song file")?;
+			let mut song = collection::SongFile::new(input).context("Corrupt song file")?;
 			let sheets: Vec<RawPageImage> =
 				song.load_sheets_raw().context("Failed to load sheets")?;
 			let thumbnail = song.thumbnail().cloned();

@@ -1,10 +1,10 @@
 use actix::prelude::*;
+use anyhow::Context;
 use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
 use uuid::Uuid;
-use anyhow::Context;
 
 use std::{collections::BTreeMap, rc::Rc};
 
@@ -25,8 +25,8 @@ struct EditorSongFile {
 
 	/// A unique identifier for this song that is stable across file modifications
 	song_uuid: Uuid,
-	// /// Effectively a random string generated on each save. Useful for caching
-	// version_uuid: Uuid,
+	/* /// Effectively a random string generated on each save. Useful for caching
+	 * version_uuid: Uuid, */
 }
 
 impl EditorSongFile {
@@ -104,7 +104,8 @@ impl EditorSongFile {
 			self.count_staves_before(page_index),
 			-(staves.len() as isize),
 		);
-		self.pages[*page_index..].iter_mut()
+		self.pages[*page_index..]
+			.iter_mut()
 			.flat_map(|(page, staves)| staves)
 			.for_each(|staff| {
 				staff.page -= PageIndex(1);
@@ -137,10 +138,8 @@ impl EditorSongFile {
 			composer: None,
 		};
 		use std::ops::Deref;
-		let thumbnail = SongFile::generate_thumbnail(
-			&song,
-			self.pages.iter().map(|(page, _)| page.deref()),
-		);
+		let thumbnail =
+			SongFile::generate_thumbnail(&song, self.pages.iter().map(|(page, _)| page.deref()));
 		SongFile::save(
 			file,
 			song,
@@ -619,7 +618,10 @@ impl AppActor {
 				+ self.selected_staff.unwrap(),
 		);
 		if selected {
-			self.file.piece_starts.entry(index).or_insert_with(|| "".into());
+			self.file
+				.piece_starts
+				.entry(index)
+				.or_insert_with(|| "".into());
 			/* When a piece starts, a section must start as well */
 			self.file
 				.section_starts

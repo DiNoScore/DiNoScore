@@ -17,7 +17,9 @@ pub fn create(
 	application: gtk::Application,
 	library_actor: actix::Addr<library_actor::LibraryActor>,
 ) -> actix::Addr<SongActor> {
-	SongActor::create(move |_ctx| SongActor::new(builder.widgets().unwrap(), application, library_actor))
+	SongActor::create(move |_ctx| {
+		SongActor::new(builder.widgets().unwrap(), application, library_actor)
+	})
 }
 
 struct SongRenderer {
@@ -476,7 +478,7 @@ impl SongActor {
 	pub fn new(
 		widgets: SongWidgets,
 		application: gtk::Application,
-		library_actor: actix::Addr<LibraryActor>
+		library_actor: actix::Addr<LibraryActor>,
 	) -> Self {
 		let next = gio::SimpleAction::new("next_page", None);
 		let previous = gio::SimpleAction::new("previous_page", None);
@@ -539,17 +541,15 @@ impl SongActor {
 			self.widgets.part_selection.append(Some(&k.to_string()), p);
 		}
 		let relevant = parts.len() > 1;
-		woab::spawn_outside(
-			clone!(
-				@weak self.widgets.part_selection as part_selection,
-				@weak self.sizing_mode_action as sizing_mode_action
-			=> @default-panic, move || {async move{
-				part_selection.set_active(if relevant {Some(0)} else {None});
-				part_selection.set_sensitive(relevant);
+		woab::spawn_outside(clone!(
+			@weak self.widgets.part_selection as part_selection,
+			@weak self.sizing_mode_action as sizing_mode_action
+		=> @default-panic, move || {async move{
+			part_selection.set_active(if relevant {Some(0)} else {None});
+			part_selection.set_sensitive(relevant);
 
-				sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
-			}})(),
-		);
+			sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
+		}})());
 
 		self.song = Some(song);
 		self.update_content(ctx);
@@ -673,15 +673,18 @@ impl SongActor {
 
 	fn update_timer(&mut self) {
 		let last_interaction = std::time::Instant::now();
-		let diff = last_interaction.duration_since(self.last_interaction)
+		let diff = last_interaction
+			.duration_since(self.last_interaction)
 			.as_secs()
 			/* Consider everything about 3 minutes as "idle" */
 			.min(180);
-		self.library_actor.try_send(library_actor::UpdateSongUsage {
-			seconds_elapsed: diff,
-			song: self.song.as_ref().unwrap().song.song_uuid,
-			scale_mode: self.song.as_ref().unwrap().scale_mode,
-		}).unwrap();
+		self.library_actor
+			.try_send(library_actor::UpdateSongUsage {
+				seconds_elapsed: diff,
+				song: self.song.as_ref().unwrap().song.song_uuid,
+				scale_mode: self.song.as_ref().unwrap().scale_mode,
+			})
+			.unwrap();
 		self.last_interaction = last_interaction;
 	}
 }
@@ -747,7 +750,12 @@ impl actix::Handler<LoadSong> for SongActor {
 	type Result = ();
 
 	fn handle(&mut self, song: LoadSong, ctx: &mut Self::Context) -> Self::Result {
-		self.load_song(ctx, song.meta, unsafe { song.pages.unwrap() }, song.scale_mode);
+		self.load_song(
+			ctx,
+			song.meta,
+			unsafe { song.pages.unwrap() },
+			song.scale_mode,
+		);
 	}
 }
 

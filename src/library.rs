@@ -4,13 +4,15 @@
  * Nevertheless, this is the primary thing a user manages and of uttermost importance.
  */
 use super::*;
+use anyhow::Context;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	ops::{Add, Neg, Sub},
+	time::*,
+};
 use uuid::Uuid;
-use anyhow::Context;
-use std::time::*;
-use std::ops::{Add, Sub, Neg};
 
 pub enum Song {}
 
@@ -56,9 +58,9 @@ impl ScaleMode {
 
 impl LibrarySong {
 	/**
-     * The exponential decay factor for the usage score. This corresponding
-     * to all scores halving every month when using one second as unit.
-     */
+	 * The exponential decay factor for the usage score. This corresponding
+	 * to all scores halving every month when using one second as unit.
+	 */
 	const DECAY_FACTOR: f64 = std::f64::consts::LN_2 / (30.0 * 24.0 * 3600.0);
 
 	pub fn new(song: Uuid) -> Self {
@@ -77,10 +79,7 @@ impl LibrarySong {
 
 		self.times_played += 1;
 		/* Add 5.0 to the score */
-		self.usage_score = Self::usage_score_to_timestamp(
-			self.usage_score(&now) + 5.0,
-			&now
-		);
+		self.usage_score = Self::usage_score_to_timestamp(self.usage_score(&now) + 5.0, &now);
 		self.last_played = Some(now);
 	}
 
@@ -92,7 +91,7 @@ impl LibrarySong {
 
 	fn usage_score_to_timestamp(score: f64, now: &SystemTime) -> SystemTime {
 		let t = f64::ln(score) / Self::DECAY_FACTOR;
-		/* This could be less ugly with negative durations, for example from the Chrono crate*/
+		/* This could be less ugly with negative durations, for example from the Chrono crate */
 		if t >= 0.0 {
 			(*now).add(Duration::from_secs_f64(t))
 		} else {
@@ -100,18 +99,19 @@ impl LibrarySong {
 		}
 	}
 
-	/**/
+	/*  */
 	pub fn usage_score(&self, now: &SystemTime) -> f64 {
-		let t = self.usage_score.duration_since(*now)
+		let t = self
+			.usage_score
+			.duration_since(*now)
 			.map(|d| d.as_secs_f64())
 			.or_else(|_|
 				/* If one is not before the other, then the other is before the one. */
 				now.duration_since(self.usage_score)
-					.map(|d| d.as_secs_f64().neg())
-			)
+					.map(|d| d.as_secs_f64().neg()))
 			.unwrap();
 		f64::exp(Self::DECAY_FACTOR * t)
-	} 
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -119,7 +119,7 @@ impl LibrarySong {
 enum LibraryFile<'a> {
 	#[serde(rename = "0")]
 	V0 {
-		songs: maybe_owned::MaybeOwned<'a, HashMap<Uuid, LibrarySong>>
+		songs: maybe_owned::MaybeOwned<'a, HashMap<Uuid, LibrarySong>>,
 	},
 }
 
@@ -173,7 +173,9 @@ impl Library {
 			file.write(|file| {
 				serde_json::to_writer_pretty(
 					file,
-					&LibraryFile::V0 { songs: stats.into() }
+					&LibraryFile::V0 {
+						songs: stats.into(),
+					},
 				)
 			})
 			.context("Could not save database (library.json)")

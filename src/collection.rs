@@ -50,8 +50,7 @@ impl SongFile {
 		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path)?)?;
 
 		let (mut index, mut song): (SongMeta, _) = {
-			let index: SongMetaVersioned =
-				serde_json::from_reader(song.by_name("staves.json")?)?;
+			let index: SongMetaVersioned = serde_json::from_reader(song.by_name("staves.json")?)?;
 			/* Backwards compatibility handling */
 			let index: SongMeta = match index.update() {
 				either::Either::Left(index) => index,
@@ -397,20 +396,27 @@ impl<'de> Deserialize<'de> for SongMeta {
 	{
 		let unchecked = SongMeta::deserialize(deserializer)?;
 		if unchecked.staves.is_empty() {
-			return Err(de::Error::custom("Invalid data: Song must have at least one staff"));
+			return Err(de::Error::custom(
+				"Invalid data: Song must have at least one staff",
+			));
 		}
 		for staff in &unchecked.staves {
 			if staff.page > PageIndex(unchecked.n_pages) {
-				return Err(de::Error::custom(
-					format!("Invalid data: Page index out of bounds: {}, len {}", staff.page, unchecked.n_pages)
-				));
+				return Err(de::Error::custom(format!(
+					"Invalid data: Page index out of bounds: {}, len {}",
+					staff.page, unchecked.n_pages
+				)));
 			}
 		}
 		if !unchecked.piece_starts.contains_key(&0.into()) {
-			return Err(de::Error::custom("Invalid data: Song must start with a piece"));
+			return Err(de::Error::custom(
+				"Invalid data: Song must start with a piece",
+			));
 		}
 		if !unchecked.section_starts.contains_key(&0.into()) {
-			return Err(de::Error::custom("Invalid data: Song must start with a section"));
+			return Err(de::Error::custom(
+				"Invalid data: Song must start with a section",
+			));
 		}
 		Ok(unchecked)
 	}

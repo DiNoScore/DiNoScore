@@ -69,7 +69,8 @@ impl actix::Actor for LibraryActor {
 
 		let focus_search = gio::SimpleAction::new("focus_search", None);
 		self.application.add_action(&focus_search);
-		self.application.set_accels_for_action("app.focus_search", &["<Ctrl>F"]);
+		self.application
+			.set_accels_for_action("app.focus_search", &["<Ctrl>F"]);
 		woab::route_action(&focus_search, ctx.address()).unwrap();
 	}
 
@@ -90,15 +91,17 @@ impl LibraryActor {
 		for (uuid, song) in library.songs.iter() {
 			if (*self.song_filter)(&song.index) {
 				/* Add an item with the name and UUID
-				* Index, column, value
-				* The columns are: thumbnail, title, UUID, usage_score
-				*/
+				 * Index, column, value
+				 * The columns are: thumbnail, title, UUID, usage_score
+				 */
 				let store_songs = self.widgets.store_songs.clone();
 				let row_data: [glib::Value; 4] = [
 					song.thumbnail().to_value(),
 					song.title().unwrap_or("<no title>").to_value(),
 					uuid.to_string().to_value(),
-					self.library.borrow().stats[uuid].usage_score(&self.reference_time).to_value(),
+					self.library.borrow().stats[uuid]
+						.usage_score(&self.reference_time)
+						.to_value(),
 				];
 				woab::spawn_outside(async move {
 					store_songs.set(
@@ -121,13 +124,19 @@ impl LibraryActor {
 		/* Find our song and update it. */
 		let store_songs = &self.widgets.store_songs;
 		store_songs.foreach(|_model, _path, iter| {
-			let uuid2: String = store_songs.get_value(iter, 2).get::<String>().unwrap().unwrap();
+			let uuid2: String = store_songs
+				.get_value(iter, 2)
+				.get::<String>()
+				.unwrap()
+				.unwrap();
 			let uuid2: uuid::Uuid = uuid::Uuid::parse_str(&uuid2).unwrap();
 			if uuid2 == uuid {
 				store_songs.set_value(
 					iter,
 					3,
-					&library.stats[&uuid].usage_score(&self.reference_time).to_value(),
+					&library.stats[&uuid]
+						.usage_score(&self.reference_time)
+						.to_value(),
 				);
 				true
 			} else {
@@ -145,8 +154,14 @@ impl LibraryActor {
 		let mut event = Some(LoadSong {
 			meta: song.index.clone(),
 			pages: unsafe { unsafe_force::Send::new(song.load_sheets().unwrap()) },
-			scale_mode: library.stats.get_mut(&uuid).unwrap()
-				.scale_options.as_ref().copied().unwrap_or_default(),
+			scale_mode: library
+				.stats
+				.get_mut(&uuid)
+				.unwrap()
+				.scale_options
+				.as_ref()
+				.copied()
+				.unwrap_or_default(),
 		});
 		/* Hack to get the event processed in the correct order */
 		glib::timeout_add_local(50, move || {
@@ -262,10 +277,7 @@ impl actix::Handler<UpdateSongUsage> for LibraryActor {
 
 	fn handle(&mut self, message: UpdateSongUsage, _ctx: &mut Self::Context) {
 		let library = &mut self.library.borrow_mut();
-		let stats = library
-			.stats
-			.get_mut(&message.song)
-			.unwrap();
+		let stats = library.stats.get_mut(&message.song).unwrap();
 		stats.on_update(message.seconds_elapsed);
 		stats.scale_options = Some(message.scale_mode);
 	}

@@ -2,6 +2,6 @@ unstable_features = true
 edition = "2018"
 
 match_block_trailing_comma = true
-merge_imports = true
+imports_granularity = "Crate"
 format_code_in_doc_comments = true
 hard_tabs = true
