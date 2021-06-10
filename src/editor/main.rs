@@ -316,7 +316,7 @@ impl AppActor {
 						}))
 						.unwrap();
 					}
-					async_std::task::sleep(std::time::Duration::from_millis(350)).await;
+					tokio::time::sleep(std::time::Duration::from_millis(350)).await;
 					progress_dialog.emit_close();
 				}
 			},
@@ -446,7 +446,7 @@ impl AppActor {
 			let (progress_dialog, progress) =
 				dinoscore::create_progress_bar_dialog("Detecting staves …");
 			let total_work = selected_items.len();
-			async_std::task::yield_now().await;
+			tokio::task::yield_now().await;
 
 			for (i, page) in selected_items
 				.into_iter()
@@ -494,9 +494,9 @@ impl AppActor {
 					.unwrap();
 			}
 
-			async_std::task::sleep(std::time::Duration::from_millis(350)).await;
+			tokio::time::sleep(std::time::Duration::from_millis(350)).await;
 			progress_dialog.emit_close();
-			async_std::task::yield_now().await;
+			tokio::task::yield_now().await;
 			log::info!("Autodetected");
 		}));
 	}
