@@ -63,6 +63,7 @@ noisy_float = "0.1.13"
 xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
 async-std = { version = "1.9.0", features = [ "unstable" ] }
+tokio = "1.6.1"
 lru-disk-cache = "0.4.1"
 woab = { git = "https://github.com/idanarye/woab.git" }
 actix = { version = "0.11.1" }

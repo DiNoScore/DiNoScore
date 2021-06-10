@@ -247,12 +247,19 @@
               </object>
             </child>
             <child>
-              <object class="HdyCarousel" id="carousel">
-                <property name="allow-mouse-drag">True</property>
-                <signal name="button-press-event" handler="SongActor::CarouselButtonPress" />
-                <signal name="button-release-event" handler="SongActor::CarouselButtonRelease" />
-                <signal name="page-changed" handler="SongActor::CarouselPageChanged" />
-                <signal name="size-allocate" handler="SongActor::CarouselSizeChanged" swapped="no" />
+              <object class="GtkEventBox" id="carousel_events">
+                <signal name="motion-notify-event" handler="HideMouseActor::on_motion" />
+                <signal name="enter-notify-event" handler="HideMouseActor::on_enter" />
+                <signal name="leave-notify-event" handler="HideMouseActor::on_leave" />
+                <child>
+                  <object class="HdyCarousel" id="carousel">
+                    <property name="allow-mouse-drag">True</property>
+                    <signal name="button-press-event" handler="SongActor::CarouselButtonPress" />
+                    <signal name="button-release-event" handler="SongActor::CarouselButtonRelease" />
+                    <signal name="page-changed" handler="SongActor::CarouselPageChanged" />
+                    <signal name="size-allocate" handler="SongActor::CarouselSizeChanged" swapped="no" />
+                  </object>
+                </child>
               </object>
               <packing>
                 <property name="expand">True</property>

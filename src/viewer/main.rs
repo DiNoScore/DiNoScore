@@ -16,6 +16,7 @@ use std::sync::mpsc::*;
 
 mod fullscreen_actor;
 mod library_actor;
+mod mouse_actor;
 mod pedal;
 mod song_actor;
 
@@ -46,7 +47,11 @@ impl actix::Actor for AppActor {
 		let window = &self.widgets.window;
 		// window.set_application(Some(&self.application)); // <-- This line segfaults
 		window.set_position(gtk::WindowPosition::Center);
-		window.add_events(gdk::EventMask::STRUCTURE_MASK | gdk::EventMask::BUTTON_PRESS_MASK);
+		window.add_events(
+			gdk::EventMask::STRUCTURE_MASK
+				| gdk::EventMask::BUTTON_PRESS_MASK
+				| gdk::EventMask::POINTER_MOTION_MASK,
+		);
 
 		let quit = gio::SimpleAction::new("quit", None);
 		quit.connect_activate(
@@ -143,6 +148,8 @@ fn main() -> anyhow::Result<()> {
 			let fullscreen_actor = fullscreen_actor::create(&builder, application.clone());
 			let library = library::Library::load().unwrap();
 
+			let hide_mouse_actor = mouse_actor::create(&builder);
+
 			/* TODO clean this up once we figured out a less messy way to initialize
 			 * cross-dependent actors. Don't forget to make the unused types private again
 			 * after cleanup.
@@ -180,7 +187,8 @@ fn main() -> anyhow::Result<()> {
 						.route(song_actor)
 						.route(library_actor.clone())
 						.route(app_actor)
-						.route(fullscreen_actor),
+						.route(fullscreen_actor)
+						.route(hide_mouse_actor),
 				);
 
 				SongActor::new(
