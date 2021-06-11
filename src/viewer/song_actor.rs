@@ -165,7 +165,7 @@ impl SongRenderer {
 
 	fn render_page(
 		&mut self,
-		page: &Vec<layout::StaffLayout>,
+		page: &[layout::StaffLayout],
 		width: i32,
 		height: i32,
 	) -> cairo::ImageSurface {
@@ -188,12 +188,13 @@ impl SongRenderer {
 			context.paint();
 			context.restore();
 
-			/* Staff number */
+			/* Page/Staff number */
 			context.save();
 			context.set_font_size(20.0);
 			context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
 			context.move_to(10.0, 16.0);
-			context.show_text(&staff_layout.index.to_string());
+			let (page_index, staff_index) = self.song.page_of_piece(staff_layout.index);
+			context.show_text(&format!("{}/{}", *page_index + 1, *staff_index));
 			context.restore();
 
 			context.restore();

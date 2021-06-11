@@ -386,6 +386,19 @@ impl SongMeta {
 		}
 		sections
 	}
+
+	/** Convert absolute staff numbers into a (page, staff) pair. Starting to count at 0. */
+	pub fn page_of_piece(&self, index: StaffIndex) -> (PageIndex, StaffIndex) {
+		let piece_start = *self.piece_starts.range(..=&index).next_back().unwrap().0;
+		let page = self.staves[*index].page - self.staves[*piece_start].page;
+		let page_staff = self.staves[*piece_start..=*index]
+			.iter()
+			.rev()
+			.take_while(|staff| staff.page == self.staves[*index].page)
+			.count();
+
+		(page, page_staff.into())
+	}
 }
 
 /* Check invariants after deserialization */
