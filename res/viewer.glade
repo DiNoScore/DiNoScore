@@ -11,6 +11,12 @@
   <object class="GThemedIcon" id="go-back-icon">
     <property name="name">go-previous-symbolic</property>
   </object>
+  <object class="GThemedIcon" id="go-first-icon">
+    <property name="name">go-first-symbolic</property>
+  </object>
+  <object class="GThemedIcon" id="go-last-icon">
+    <property name="name">go-last-symbolic</property>
+  </object>
   <object class="GtkListStore" id="store_songs">
     <columns>
       <!-- column-name gdkpixbuf -->
@@ -178,6 +184,22 @@
                 <child>
                   <object class="GtkComboBoxText" id="part_selection">
                     <!-- <signal name="changed" handler="SongActor::SelectPart" /> -->
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkModelButton">
+                    <property name="tooltip-text" translatable="yes">Previous piece</property>
+                    <property name="action_name">view_actions.previous_piece</property>
+                    <property name="icon">go-first-icon</property>
+                    <property name="iconic">True</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkModelButton">
+                    <property name="tooltip-text" translatable="yes">Next piece</property>
+                    <property name="action_name">view_actions.next_piece</property>
+                    <property name="icon">go-last-icon</property>
+                    <property name="iconic">True</property>
                   </object>
                 </child>
                 <child>

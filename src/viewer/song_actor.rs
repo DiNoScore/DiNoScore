@@ -363,6 +363,8 @@ pub struct SongActor {
 	song: Option<SongState>,
 	next: gio::SimpleAction,
 	previous: gio::SimpleAction,
+	next_piece: gio::SimpleAction,
+	previous_piece: gio::SimpleAction,
 	zoom_gesture: gtk::GestureZoom,
 	sizing_mode_action: gio::SimpleAction,
 	last_interaction: std::time::Instant,
@@ -405,6 +407,16 @@ impl actix::Actor for SongActor {
 		self.application
 			.set_accels_for_action("view_actions.go_back", &["Escape"]);
 		woab::route_action(&go_back_action, ctx.address()).unwrap();
+
+		self.actions.add_action(&self.previous_piece);
+		self.application
+			.set_accels_for_action("view_actions.previous_piece", &[]);
+		woab::route_action(&self.previous_piece, ctx.address()).unwrap();
+
+		self.actions.add_action(&self.next_piece);
+		self.application
+			.set_accels_for_action("view_actions.next_piece", &[]);
+		woab::route_action(&self.next_piece, ctx.address()).unwrap();
 
 		self.part_selection_changed_signal = Some(
 			woab::route_signal(
@@ -487,6 +499,8 @@ impl SongActor {
 	) -> Self {
 		let next = gio::SimpleAction::new("next_page", None);
 		let previous = gio::SimpleAction::new("previous_page", None);
+		let next_piece = gio::SimpleAction::new("next_piece", None);
+		let previous_piece = gio::SimpleAction::new("previous_piece", None);
 		Self {
 			zoom_gesture: gtk::GestureZoom::new(&widgets.carousel),
 			widgets,
@@ -495,6 +509,8 @@ impl SongActor {
 			song: None,
 			next,
 			previous,
+			next_piece,
+			previous_piece,
 			part_selection_changed_signal: None,
 			sizing_mode_action: gio::SimpleAction::new_stateful(
 				"sizing-mode",
@@ -810,6 +826,36 @@ impl actix::Handler<woab::Signal> for SongActor {
 					carousel.scroll_to(&carousel.get_children()[*new_page]);
 				}
 			},
+			"previous_piece" => {
+				if let Some(song) = self.song.as_mut() {
+					let staff = song.current_staves[0] - 1.into();
+					let (previous_piece_staff, _) = song.song.piece_starts.range(..=staff)
+						.next_back()
+						.expect("That button should have been disabled");
+					let page = *song.layout
+						.get_page_of_staff(*previous_piece_staff);
+
+					let carousel = carousel.clone();
+					woab::spawn_outside(async move {
+						carousel.scroll_to(&carousel.get_children()[page]);
+					});
+				}
+			},
+			"next_piece" => {
+				if let Some(song) = self.song.as_mut() {
+					let staff = song.current_staves.iter().next_back().unwrap();
+					let (next_piece_staff, _) = song.song.piece_starts.range(staff..)
+						.next()
+						.expect("That button should have been disabled");
+					let page = *song.layout
+						.get_page_of_staff(*next_piece_staff);
+
+					let carousel = carousel.clone();
+					woab::spawn_outside(async move {
+						carousel.scroll_to(&carousel.get_children()[page]);
+					});
+				}
+			},
 			/* Unload the song */
 			"go_back" => {
 				let song = self.song.take().unwrap();
@@ -870,6 +916,13 @@ impl actix::Handler<woab::Signal> for SongActor {
 					song.page = collection::PageIndex(page as usize);
 					song.current_staves = song.layout.get_staves_of_page(song.page).collect();
 					let active_id = song.part_start(song.page).to_string();
+
+					self.previous_piece.set_enabled(page > 0);
+					self.next_piece.set_enabled(
+						song.song.piece_starts.range(song.current_staves.iter().next_back().unwrap()..)
+							.next()
+							.is_some()
+					);
 
 					/* TODO clean this up a bit */
 					use actix::{WrapFuture, ActorFutureExt, AsyncContext};
