@@ -6,10 +6,6 @@
 use anyhow::Context;
 use gdk::prelude::*;
 
-#[deprecated]
-pub trait PageImageExt: PageImage {}
-impl<T: PageImage> PageImageExt for T {}
-
 pub trait PageImage {
 	fn render(&self, context: &cairo::Context);
 
@@ -193,8 +189,58 @@ pub fn explode_pdf_full<T>(
 		.context("Failed to split legacy PDF into its pages")
 }
 
+pub fn concat_pdfs(pdfs: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {
+	use pyo3::{conversion::IntoPy, types::IntoPyDict};
+	let gil = pyo3::Python::acquire_gil();
+	let py = gil.python();
+
+	let locals = [("pdfs", pdfs.into_py(py))].into_py_dict(py);
+	py.run(
+		r#"
+from pikepdf import Pdf
+from io import BytesIO
+
+out = Pdf.new()
+
+for pdf in pdfs:
+	print(type(pdf))
+	src = Pdf.open(BytesIO(bytes(pdf)))
+	out.pages.extend(src.pages)
+
+buf = BytesIO(bytearray())
+out.save(buf)
+del out
+buf = buf.getvalue()
+"#,
+		None,
+		Some(locals),
+	)?;
+
+	Ok(locals.get_item("buf").unwrap().extract().unwrap())
+}
+
+pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
+	concat_pdfs(
+		pdfs.into_iter()
+			.map(|(file, is_pdf): (Vec<u8>, bool)| {
+				if is_pdf {
+					file
+				} else {
+					let image = gdk_pixbuf::Pixbuf::from_stream(
+						&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(file)),
+						Option::<&gio::Cancellable>::None,
+					)
+					.unwrap();
+					pixbuf_to_pdf_raw(&image)
+				}
+			})
+			.collect(),
+	)
+}
+
 /// Create a PDF Document with a single page that wraps a raster image
-pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> poppler::PopplerDocument {
+#[allow(clippy::box_vec)]
+pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> Vec<u8> {
 	let pdf_binary: Vec<u8> = Vec::new();
 	let surface = cairo::PdfSurface::for_stream(
 		image.get_width() as f64,
@@ -209,14 +255,17 @@ pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> poppler::PopplerDocument {
 
 	surface.flush();
 
-	let pdf_binary = surface
+	*surface
 		.finish_output_stream()
 		.unwrap()
 		.downcast::<Vec<u8>>()
-		.unwrap();
-	let pdf_binary: &mut [u8] = &mut *Box::leak(pdf_binary); // TODO: absolutely remove this
+		.unwrap()
+}
 
-	poppler::PopplerDocument::new_from_data(pdf_binary, "").unwrap()
+/// Create a PDF Document with a single page that wraps a raster image
+pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> poppler::PopplerDocument {
+	poppler::PopplerDocument::new_from_bytes(glib::Bytes::from_owned(pixbuf_to_pdf_raw(image)), "")
+		.unwrap()
 }
 
 /// Render a PDF page to a preview image with fixed width

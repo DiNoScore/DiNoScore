@@ -282,3 +282,30 @@ impl actix::Handler<UpdateSongUsage> for LibraryActor {
 		stats.scale_options = Some(message.scale_mode);
 	}
 }
+
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+pub struct RunEditor {
+	pub song: uuid::Uuid,
+	pub page: collection::PageIndex,
+}
+
+impl actix::Handler<RunEditor> for LibraryActor {
+	type Result = ();
+
+	fn handle(&mut self, message: RunEditor, _ctx: &mut Self::Context) {
+		let library = &mut self.library.borrow_mut();
+		let song = message.song;
+		let song = library.songs.get_mut(&song).unwrap();
+
+		// TODO make async
+		// TODO error handling
+		use anyhow::Context;
+		crate::xournal::run_editor(song, *message.page + 1)
+			.context("Failed to launch editor")
+			.unwrap();
+		self.song_actor
+			.try_send(crate::song_actor::UpdateAnnotations)
+			.unwrap();
+	}
+}

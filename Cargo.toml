@@ -76,6 +76,8 @@ walkdir = "2"
 log = "0.4.14"
 simple_logger = "1.11.0"
 atomicwrites = "0.3.0"
+flate2 = "1.0.20"
+pipeline = { git = "https://github.com/piegamesde/pipeline.rs" }
 
 # Editor dependencies
 tensorflow = { version = "0.16.0", optional = true }

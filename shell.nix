@@ -37,6 +37,8 @@ mkShell rec {
     bzip2
     glib
     cairo
+
+    xournalpp
   ];
   shellHook = ''
     export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}:''${LD_LIBRARY_PATH}";

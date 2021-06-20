@@ -17,6 +17,9 @@
   <object class="GThemedIcon" id="go-last-icon">
     <property name="name">go-last-symbolic</property>
   </object>
+  <object class="GThemedIcon" id="document-edit-icon">
+    <property name="name">document-edit-symbolic</property>
+  </object>
   <object class="GtkListStore" id="store_songs">
     <columns>
       <!-- column-name gdkpixbuf -->
@@ -202,6 +205,7 @@
                     <property name="iconic">True</property>
                   </object>
                 </child>
+
                 <child>
                   <object class="GtkButton" id="fullscreen">
                     <property name="visible">False</property>
@@ -237,7 +241,7 @@
                     <property name="pack-type">end</property>
                   </packing>
                 </child>
-                <!-- <child>
+                <!-- <child> this opens the "…" menu once we have one
                   <object class="GtkMenuButton">
                     <property name="can-focus">True</property>
                     <property name="receives-default">True</property>
@@ -261,6 +265,17 @@
                     <property name="can-focus">True</property>
                     <property name="receives-default">True</property>
                     <property name="label" translatable="no">100%</property>
+                  </object>
+                  <packing>
+                    <property name="pack-type">end</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkModelButton">
+                    <property name="tooltip-text" translatable="yes">Make annotations</property>
+                    <property name="icon">document-edit-icon</property>
+                    <property name="iconic">True</property>
+                    <signal name="clicked" handler="SongActor::annotate" />
                   </object>
                   <packing>
                     <property name="pack-type">end</property>

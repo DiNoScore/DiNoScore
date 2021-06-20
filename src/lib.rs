@@ -17,8 +17,13 @@ use gtk::prelude::*;
 
 use uuid::Uuid;
 
-// pub mod song;
-// use song::*;
+/// Stolen from https://docs.rs/try-block/0.1.0/src/try_block/lib.rs.html#22-29
+#[macro_export]
+macro_rules! catch {
+    { $token:expr } => {
+        (|| $token)()
+    }
+}
 
 #[macro_export]
 macro_rules! first_arg {
@@ -120,7 +125,7 @@ pub mod page_image;
 pub mod recognition;
 pub mod unsafe_force;
 
-pub use page_image::{PageImage, PageImageBox, PageImageExt, RawPageImage};
+pub use page_image::{PageImage, PageImageBox, RawPageImage};
 
 pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {
 	let progress = gtk::Dialog::new();

@@ -19,6 +19,7 @@ mod library_actor;
 mod mouse_actor;
 mod pedal;
 mod song_actor;
+mod xournal;
 
 use fullscreen_actor::FullscreenActor;
 use library_actor::LibraryActor;

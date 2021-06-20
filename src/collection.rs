@@ -83,15 +83,18 @@ impl SongFile {
 				e => Err(e),
 			})
 			.transpose() /* Option<Result<_>> */
-			.map(|stream| {
+			.map(|stream| -> anyhow::Result<_> {
 				let mut stream = stream?;
 				let mut bytes = Vec::new();
 				std::io::copy(&mut stream, &mut bytes)?;
-				let pixbuf = gdk_pixbuf::Pixbuf::from_stream(
-					&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(bytes)),
-					Option::<&gio::Cancellable>::None,
-				)?;
-				anyhow::Result::<_>::Ok(pixbuf)
+
+				pipeline::pipe! {
+					bytes
+					=> &glib::Bytes::from_owned
+					=> &gio::MemoryInputStream::from_bytes
+					=> gdk_pixbuf::Pixbuf::from_stream(_, Option::<&gio::Cancellable>::None)
+					=> _.map_err(Into::into)
+				}
 			})
 			.transpose() /* Result<Option<_>> */
 			.context("Could not load thumbnail")?;
@@ -113,7 +116,7 @@ impl SongFile {
 		page_image::explode_pdf_full(&data, mapper)
 	}
 
-	fn load_pages<T>(
+	pub fn load_pages<T>(
 		&mut self,
 		loader: impl Fn(usize, &str, Vec<u8>) -> anyhow::Result<T>,
 	) -> anyhow::Result<Vec<T>> {
@@ -214,10 +217,12 @@ impl SongFile {
 					.ok_or_else(|| anyhow::format_err!("File name for needs to have an extension"))?
 					.to_owned();
 				Ok(RawPageImage::Raster {
-					image: gdk_pixbuf::Pixbuf::from_stream(
-						&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(data)),
-						Option::<&gio::Cancellable>::None,
-					)
+					image: pipeline::pipe! {
+						data
+						=> &glib::Bytes::from_owned
+						=> &gio::MemoryInputStream::from_bytes
+						=> gdk_pixbuf::Pixbuf::from_stream(_, Option::<&gio::Cancellable>::None)
+					}
 					.context("Failed to load image")?,
 					raw,
 					extension,

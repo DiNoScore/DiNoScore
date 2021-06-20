@@ -369,6 +369,7 @@ pub struct SongActor {
 	sizing_mode_action: gio::SimpleAction,
 	last_interaction: std::time::Instant,
 	library_actor: actix::Addr<LibraryActor>,
+	annotations: Rc<RefCell<Option<poppler::PopplerDocument>>>,
 }
 
 #[derive(woab::WidgetsFromBuilder)]
@@ -519,6 +520,7 @@ impl SongActor {
 			),
 			last_interaction: std::time::Instant::now(),
 			library_actor,
+			annotations: Rc::new(RefCell::new(None)),
 		}
 	}
 
@@ -581,6 +583,7 @@ impl SongActor {
 
 		self.song = Some(song);
 		self.update_content(ctx);
+		self.load_annotations();
 	}
 
 	fn update_manual_zoom(
@@ -715,6 +718,28 @@ impl SongActor {
 			.unwrap();
 		self.last_interaction = last_interaction;
 	}
+
+	fn load_annotations(&mut self) {
+		if let Some(song) = &self.song {
+			log::debug!("Reloading annotations");
+			let uuid = song.song.song_uuid;
+			// TODO don't hardcode here
+			let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
+			let annotations_export = xdg
+				.place_data_file(format!("annotations/{}.pdf", uuid))
+				.unwrap();
+
+			let document = annotations_export
+				.exists()
+				.then(|| poppler::PopplerDocument::new_from_file(annotations_export, "").unwrap());
+			*self.annotations.borrow_mut() = document;
+			let carousel = self.widgets.carousel.clone();
+			woab::spawn_outside(async move {
+				carousel.queue_draw();
+				carousel.foreach(WidgetExt::queue_draw);
+			});
+		}
+	}
 }
 
 #[derive(actix::Message)]
@@ -738,6 +763,10 @@ impl actix::Handler<UpdatePage> for SongActor {
 			let area = &self.widgets.carousel.get_children()[*page.index];
 			let area: &gtk::DrawingArea = area.downcast_ref().unwrap();
 			let surface = unsafe { page.surface.unwrap() };
+			let page = page.index;
+			let layout = song.layout.pages[*page].clone();
+			let song = song.song.clone();
+			let annotations = self.annotations.clone();
 			area.connect_draw(move |area, context| {
 				context.set_source_rgb(1.0, 1.0, 1.0);
 				context.paint();
@@ -758,6 +787,33 @@ impl actix::Handler<UpdatePage> for SongActor {
 					context.set_source_surface(&surface, 0.0, 0.0);
 				}
 				context.paint();
+
+				if let Some(document) = annotations.borrow().as_ref() {
+					/* render annotations */
+					for staff_layout in &layout {
+						let staff = &song.staves[*staff_layout.index];
+						let page = document.get_page(*staff.page).unwrap();
+
+						context.save();
+						context.translate(staff_layout.x, staff_layout.y);
+
+						let scale = staff_layout.width / staff.width();
+						context.scale(scale, scale);
+						context.translate(-staff.start.0, -staff.start.1);
+
+						context.rectangle(
+							staff.start.0,
+							staff.start.1,
+							staff.width(),
+							staff.height(),
+						);
+						context.clip();
+
+						page.render(&context);
+
+						context.restore();
+					}
+				}
 				gtk::Inhibit::default()
 			});
 			area.queue_draw();
@@ -784,6 +840,18 @@ impl actix::Handler<LoadSong> for SongActor {
 			unsafe { song.pages.unwrap() },
 			song.scale_mode,
 		);
+	}
+}
+
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+pub struct UpdateAnnotations;
+
+impl actix::Handler<UpdateAnnotations> for SongActor {
+	type Result = ();
+
+	fn handle(&mut self, _: UpdateAnnotations, _ctx: &mut Self::Context) -> Self::Result {
+		self.load_annotations();
 	}
 }
 
@@ -856,12 +924,22 @@ impl actix::Handler<woab::Signal> for SongActor {
 					});
 				}
 			},
+			"annotate" => {
+				log::debug!("annotate!");
+				if let Some(song) = self.song.as_mut() {
+					self.library_actor.try_send(library_actor::RunEditor {
+						song: song.song.song_uuid,
+						page: song.song.page_of_piece(song.current_staves[0]).0,
+					}).unwrap();
+				}
+			},
 			/* Unload the song */
 			"go_back" => {
 				let song = self.song.take().unwrap();
 				self.application.uninhibit(song.inhibit_cookie);
 				std::mem::drop(song);
 				self.widgets.carousel.foreach(|p| self.widgets.carousel.remove(p));
+				self.annotations.borrow_mut().take();
 
 				woab::spawn_outside(clone!(
 					@weak self.widgets.part_selection as part_selection,
@@ -1004,7 +1082,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 					self.update_content(ctx);
 					self.update_timer();
 				}
-			}
+			},
 		});
 		Ok(None)
 	}
