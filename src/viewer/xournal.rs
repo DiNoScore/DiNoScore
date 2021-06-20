@@ -21,7 +21,7 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 			.next()
 			.ok_or_else(|| anyhow::format_err!("`xournalpp --version` somehow gave weird input, expecting at least one line of text."))?;
 		// TODO
-		anyhow::ensure!(version == "Xournal++ 1.1.0+dev");
+		anyhow::ensure!(version == "Xournal++ 1.1.0+dev", "A Xournal++ version >= 1.1.0+dev is required");
 		Ok(())
 	}).context("Failed to check Xournal++ version")?;
 
