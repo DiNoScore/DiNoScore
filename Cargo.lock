@@ -605,6 +605,7 @@ dependencies = [
  "simple_logger",
  "tensorflow",
  "tokio",
+ "typed-index-collections",
  "uuid",
  "walkdir",
  "woab",
@@ -1594,7 +1595,7 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 [[package]]
 name = "pipeline"
 version = "0.6.0"
-source = "git+https://github.com/piegamesde/pipeline.rs#253488b857c2ae9ce7b6436b331bc42905f904c6"
+source = "git+https://github.com/piegamesde/pipeline.rs#c0c2f6ddf57b49dd628ccfe3d256cf3e4af0cec9"
 dependencies = [
  "pipeline-macro",
  "proc-macro-hack",
@@ -1603,7 +1604,7 @@ dependencies = [
 [[package]]
 name = "pipeline-macro"
 version = "0.6.0"
-source = "git+https://github.com/piegamesde/pipeline.rs#253488b857c2ae9ce7b6436b331bc42905f904c6"
+source = "git+https://github.com/piegamesde/pipeline.rs#c0c2f6ddf57b49dd628ccfe3d256cf3e4af0cec9"
 dependencies = [
  "proc-macro-hack",
  "proc-macro2 1.0.26",
@@ -2318,6 +2319,15 @@ name = "toml"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "typed-index-collections"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed2198514940bb6574216fde5d5c349c3f578fa719b225352f0eaaf45983c930"
 dependencies = [
  "serde",
 ]

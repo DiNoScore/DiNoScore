@@ -1,6 +1,5 @@
 //! Integration with Xournal++ for annotations
 //!
-//!
 use super::*;
 use anyhow::Context;
 use std::{io::Write, process::Command};
@@ -38,6 +37,7 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 		let background_pdf = pipeline::pipe!(
 			song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))))
 				.context("Failed to load pages")?
+			=> Into::into
 			=> page_image::concat_files
 		)
 		.context("Internal error")?;

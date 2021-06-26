@@ -1,6 +1,35 @@
 use super::{collection::*, *};
+use typed_index_collections::{TiSlice, TiVec};
 
+use derive_more::*;
 use noisy_float::prelude::*;
+use serde::{Deserialize, Serialize};
+
+/// As opposed to [`collection::PageIndex`] which is about physical pages in the scanned material
+#[derive(
+	Debug,
+	Display,
+	Serialize,
+	Deserialize,
+	Clone,
+	Copy,
+	From,
+	FromStr,
+	Into,
+	AsRef,
+	AsMut,
+	Deref,
+	Add,
+	AddAssign,
+	Sub,
+	SubAssign,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+)]
+pub struct PageIndex(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct StaffLayout {
@@ -13,7 +42,7 @@ pub struct StaffLayout {
 #[derive(Clone, Debug)]
 pub struct PageLayout {
 	/* Pages[Staves] */
-	pub pages: Vec<Vec<StaffLayout>>,
+	pub pages: TiVec<PageIndex, Vec<StaffLayout>>,
 	/* A random Uuid regenerated for each layout change */
 	pub random_id: uuid::Uuid,
 }
@@ -22,12 +51,15 @@ impl PageLayout {
 	/** Get the index of the staff at the center of the page. */
 	pub fn get_center_staff(&self, page: PageIndex) -> StaffIndex {
 		StaffIndex(
-			self.pages[0..*page].iter().map(Vec::len).sum::<usize>() + self.pages[*page].len() / 2,
+			self.pages[0.into()..page]
+				.iter()
+				.map(Vec::len)
+				.sum::<usize>() + self.pages[page].len() / 2,
 		)
 	}
 
 	pub fn get_staves_of_page(&self, page: PageIndex) -> impl Iterator<Item = StaffIndex> + '_ {
-		self.pages[*page].iter().map(|page| page.index)
+		self.pages[page].iter().map(|page| page.index)
 	}
 
 	pub fn get_page_of_staff(&self, staff: StaffIndex) -> PageIndex {
@@ -141,7 +173,8 @@ pub fn layout_fixed_scale(
 		page.into_iter()
 			.map(|(column_start, column_end, column_width)| {
 				let mut column = Vec::new();
-				let staves: &[Staff] = &song.staves[column_start.into()..column_end.into()];
+				let staves: &TiSlice<_, Staff> =
+					&song.staves[column_start.into()..column_end.into()];
 
 				let staves_total_height = staves
 					.iter()
@@ -255,9 +288,9 @@ pub fn layout_fixed_width(
 		.map(|v| (v[0], v[1]))
 		.map(|(chunk_start, chunk_end)| {
 			let mut column = Vec::new();
-			let staves: &[Staff] = &song.staves[chunk_start.into()..chunk_end.into()];
+			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start.into()..chunk_end.into()];
 			if staves.len() == 1 {
-				let staff = &staves[0];
+				let staff = &staves[StaffIndex(0)];
 				let staff_height = column_width * staff.aspect_ratio();
 				let x;
 				let y;
@@ -355,7 +388,7 @@ pub fn layout_fixed_height(
 		.windows(2)
 		.map(|v| (v[0], v[1]))
 		.map(|(chunk_start, chunk_end)| {
-			let staves: &[Staff] = &song.staves[chunk_start.into()..chunk_end.into()];
+			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start.into()..chunk_end.into()];
 			let max_width: f64 = staves
 				.iter()
 				.map(|staff| r64(row_height / staff.aspect_ratio()))
@@ -385,7 +418,7 @@ pub fn layout_fixed_height(
 				})
 				.collect::<Vec<_>>()
 		})
-		.collect::<Vec<_>>();
+		.collect::<TiVec<_, _>>();
 
 	PageLayout {
 		pages,

@@ -12,6 +12,7 @@ use std::{
 	ops::{Deref, DerefMut, RangeInclusive},
 	path::Path,
 };
+use typed_index_collections::TiVec;
 use uuid::Uuid;
 
 pub fn load() -> HashMap<Uuid, SongFile> {
@@ -109,17 +110,17 @@ impl SongFile {
 	fn load_sheets_legacy<T>(
 		pages: &mut zip::read::ZipFile<'_>,
 		mapper: impl Fn(Vec<u8>, poppler::PopplerPage) -> T,
-	) -> anyhow::Result<Vec<T>> {
+	) -> anyhow::Result<TiVec<PageIndex, T>> {
 		log::debug!("Loading legacy sheets");
 		let mut data: Vec<u8> = vec![];
 		std::io::copy(pages, &mut data).context("Failed to load data")?;
-		page_image::explode_pdf_full(&data, mapper)
+		page_image::explode_pdf_full(&data, mapper).map(Into::into)
 	}
 
 	pub fn load_pages<T>(
 		&mut self,
 		loader: impl Fn(usize, &str, Vec<u8>) -> anyhow::Result<T>,
-	) -> anyhow::Result<Vec<T>> {
+	) -> anyhow::Result<TiVec<PageIndex, T>> {
 		let files_pre_filtered = self
 			.file
 			.file_names()
@@ -155,13 +156,13 @@ impl SongFile {
 			.collect::<anyhow::Result<_>>()
 	}
 
-	pub fn load_sheets(&mut self) -> anyhow::Result<Vec<PageImageBox>> {
+	pub fn load_sheets(&mut self) -> anyhow::Result<TiVec<PageIndex, PageImageBox>> {
 		/* Legacy code path */
 		if let Ok(mut pages) = self.file.by_name("sheet.pdf") {
 			return Self::load_sheets_legacy(&mut pages, |_, page| Box::new(page) as PageImageBox);
 		}
 
-		let pages: Vec<PageImageBox> = self.load_pages(|index, file, data| {
+		let pages: TiVec<PageIndex, PageImageBox> = self.load_pages(|index, file, data| {
 			let data = glib::Bytes::from_owned(data);
 
 			if file == format!("page_{}.pdf", index) {
@@ -187,7 +188,7 @@ impl SongFile {
 		Ok(pages)
 	}
 
-	pub fn load_sheets_raw(&mut self) -> anyhow::Result<Vec<RawPageImage>> {
+	pub fn load_sheets_raw(&mut self) -> anyhow::Result<TiVec<PageIndex, RawPageImage>> {
 		/* Legacy code path */
 		if let Ok(mut pages) = self.file.by_name("sheet.pdf") {
 			return Self::load_sheets_legacy(&mut pages, |raw, page| RawPageImage::Vector {
@@ -196,7 +197,7 @@ impl SongFile {
 			});
 		}
 
-		let pages: Vec<RawPageImage> = self.load_pages(|index, file, raw| {
+		let pages: TiVec<PageIndex, RawPageImage> = self.load_pages(|index, file, raw| {
 			let data = glib::Bytes::from_owned(raw.clone());
 
 			if file == format!("page_{}.pdf", index) {
@@ -395,11 +396,11 @@ impl SongMeta {
 	/** Convert absolute staff numbers into a (page, staff) pair. Starting to count at 0. */
 	pub fn page_of_piece(&self, index: StaffIndex) -> (PageIndex, StaffIndex) {
 		let piece_start = *self.piece_starts.range(..=&index).next_back().unwrap().0;
-		let page = self.staves[*index].page - self.staves[*piece_start].page;
-		let page_staff = self.staves[*piece_start..=*index]
+		let page = self.staves[index].page - self.staves[piece_start].page;
+		let page_staff = self.staves[piece_start..=index]
 			.iter()
 			.rev()
-			.take_while(|staff| staff.page == self.staves[*index].page)
+			.take_while(|staff| staff.page == self.staves[index].page)
 			.count();
 
 		(page, page_staff.into())
@@ -455,7 +456,7 @@ impl Serialize for SongMeta {
 #[serde(remote = "Self")] /* Call custom ser/de for invariants checking */
 pub struct SongMetaV3 {
 	pub n_pages: usize,
-	pub staves: Vec<Staff>,
+	pub staves: TiVec<StaffIndex, Staff>,
 	#[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
 	pub piece_starts: BTreeMap<StaffIndex, String>,
 	/// The bool tells if it is a repetition or not
@@ -518,7 +519,7 @@ impl UpdateSongMeta for SongMetaV2 {
 	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
 		SongMetaV3 {
 			n_pages: pdf.get_n_pages(),
-			staves: self.staves,
+			staves: self.staves.into(),
 			piece_starts: self
 				.piece_starts
 				.into_iter()

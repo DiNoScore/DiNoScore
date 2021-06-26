@@ -47,7 +47,10 @@ mkShell rec {
         rev = "c2cc00432174f00d34e04a969efbe0e09680ae08";
         sha256 = "1sag3ix6p0adm5r3lcabs81y8jqn97f619kzimajl9yjqn6lylz4";
       };
-      buildInputs = old.buildInputs ++ [librsvg];
+      buildInputs = old.buildInputs ++ [
+        librsvg
+        gnome.adwaita-icon-theme
+      ];
     }))
   ];
   shellHook = ''

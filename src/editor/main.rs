@@ -4,6 +4,7 @@ use gdk::prelude::*;
 use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
+use typed_index_collections::TiVec;
 use uuid::Uuid;
 
 use std::{collections::BTreeMap, rc::Rc};
@@ -47,7 +48,7 @@ impl EditorSongFile {
 		}
 	}
 
-	fn get_staves(&self) -> Vec<Staff> {
+	fn get_staves(&self) -> TiVec<StaffIndex, Staff> {
 		self.pages
 			.iter()
 			.enumerate()
@@ -715,7 +716,7 @@ impl AppActor {
 		}
 	}
 
-	fn load(&mut self, pages: Vec<RawPageImage>, song: SongMeta) {
+	fn load(&mut self, pages: TiVec<PageIndex, RawPageImage>, song: SongMeta) {
 		self.unload_and_clear();
 		for (index, page) in pages.into_iter().enumerate() {
 			self.add_page(page);

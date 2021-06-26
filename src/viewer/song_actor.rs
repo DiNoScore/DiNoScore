@@ -5,6 +5,7 @@ use glib::clone;
 use gtk::prelude::*;
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
+use typed_index_collections::TiVec;
 /* Weird that this is required for it to work */
 use super::*;
 use actix::Actor;
@@ -23,7 +24,7 @@ pub fn create(
 }
 
 struct SongRenderer {
-	pages: Vec<PageImageBox>,
+	pages: TiVec<collection::PageIndex, PageImageBox>,
 	song: Arc<collection::SongMeta>,
 	image_cache: lru_disk_cache::LruDiskCache,
 }
@@ -31,7 +32,7 @@ struct SongRenderer {
 impl SongRenderer {
 	fn spawn(
 		song: Arc<collection::SongMeta>,
-		pages: Vec<PageImageBox>,
+		pages: TiVec<collection::PageIndex, PageImageBox>,
 		actor: actix::Addr<SongActor>,
 	) -> Sender<UpdateLayout> {
 		// TODO move that somewhere else
@@ -68,15 +69,19 @@ impl SongRenderer {
 
 		'outer: loop {
 			/* Cannot use iterators here because of borrow checking */
-			for mut num in 0..update.layout.pages.len() {
+			for (index, page) in update.layout.pages.iter_enumerated().map(|(index, page)| {
 				/* Do the currently visible page first, by swapping the indices */
-				if num == 0 {
-					num = *update.current_page;
-				} else if num == *update.current_page {
-					num = 0;
+				if *index == 0 {
+					(
+						update.current_page,
+						&update.layout.pages[update.current_page],
+					)
+				} else if index == update.current_page {
+					(0.into(), &update.layout.pages[layout::PageIndex(0)])
+				} else {
+					(index, page)
 				}
-
-				let page = &update.layout.pages[num];
+			}) {
 				/* Short circuit if there is newer data to be processed */
 				if let Some(new_update) = fetch_latest(&rx) {
 					update = new_update;
@@ -85,7 +90,7 @@ impl SongRenderer {
 				let surface = self.render_page(page, update.width, update.height);
 				actor
 					.try_send(UpdatePage {
-						index: collection::PageIndex(num),
+						index,
 						surface: unsafe { unsafe_force::Send::new(surface) },
 						layout_id: update.layout.random_id,
 					})
@@ -127,8 +132,8 @@ impl SongRenderer {
 			})
 		} else {
 			// log::warn!("Cache miss for {}", cache_key.to_string_lossy());
-			let staff = &self.song.staves[*staff];
-			let page = &self.pages[*staff.page];
+			let staff = &self.song.staves[staff];
+			let page = &self.pages[staff.page];
 
 			let line_width = staff.width();
 			let _line_height = staff.height();
@@ -207,7 +212,7 @@ impl SongRenderer {
 
 struct UpdateLayout {
 	layout: Arc<layout::PageLayout>,
-	current_page: collection::PageIndex,
+	current_page: layout::PageIndex,
 	width: i32,
 	height: i32,
 }
@@ -215,7 +220,7 @@ struct UpdateLayout {
 #[derive(Debug)]
 struct SongState {
 	song: Arc<collection::SongMeta>,
-	page: collection::PageIndex,
+	page: layout::PageIndex,
 	layout: Arc<layout::PageLayout>,
 	renderer: Sender<UpdateLayout>,
 	zoom: f64,
@@ -253,9 +258,7 @@ impl SongState {
 		Self {
 			song,
 			page: 0.into(),
-			current_staves: layout
-				.get_staves_of_page(collection::PageIndex(0))
-				.collect(),
+			current_staves: layout.get_staves_of_page(0.into()).collect(),
 			layout,
 			renderer,
 			zoom: 1.0,
@@ -320,7 +323,7 @@ impl SongState {
 	}
 
 	/* When we're at a given page and want to go back, should we jump to the start of the repetition? */
-	fn go_back(&self, current_page: collection::PageIndex) -> Option<collection::PageIndex> {
+	fn go_back(&self, current_page: layout::PageIndex) -> Option<layout::PageIndex> {
 		/* Find all sections that are repetitions and are visible on the current page.
 		 * Go back to the beginning of the first of them.
 		 */
@@ -338,7 +341,7 @@ impl SongState {
 	}
 
 	/* When we're at a given position, where did the part we are in start? */
-	fn part_start(&self, current_page: collection::PageIndex) -> collection::StaffIndex {
+	fn part_start(&self, current_page: layout::PageIndex) -> collection::StaffIndex {
 		self.song
 			.piece_starts
 			.iter()
@@ -528,7 +531,7 @@ impl SongActor {
 		&mut self,
 		ctx: &mut actix::Context<Self>,
 		song: collection::SongMeta,
-		pages: Vec<PageImageBox>,
+		pages: TiVec<collection::PageIndex, PageImageBox>,
 		scale_mode: ScaleMode,
 	) {
 		let inhibit_cookie = self.application.inhibit(
@@ -541,7 +544,7 @@ impl SongActor {
 
 		let song = Arc::new(song);
 		// TODO make this per page, and less ugly please
-		let pdf_page_width = pages[0].get_width();
+		let pdf_page_width = pages[collection::PageIndex(0)].get_width();
 		let renderer = SongRenderer::spawn(song.clone(), pages, ctx.address());
 		let width = self.widgets.carousel.get_allocated_width();
 		let height = self.widgets.carousel.get_allocated_height();
@@ -666,7 +669,7 @@ impl SongActor {
 			}})(),
 		);
 		/* Calculate the new page, which has the most staves in common with the previous layout/page */
-		let new_page: collection::PageIndex = {
+		let new_page: layout::PageIndex = {
 			use itertools::Itertools;
 
 			song.current_staves
@@ -745,7 +748,7 @@ impl SongActor {
 #[derive(actix::Message)]
 #[rtype(result = "()")]
 struct UpdatePage {
-	index: collection::PageIndex,
+	index: layout::PageIndex,
 	surface: unsafe_force::Send<cairo::ImageSurface>,
 	/// Unique random identifier to ignore old data
 	layout_id: uuid::Uuid,
@@ -764,7 +767,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 			let area: &gtk::DrawingArea = area.downcast_ref().unwrap();
 			let surface = unsafe { page.surface.unwrap() };
 			let page = page.index;
-			let layout = song.layout.pages[*page].clone();
+			let layout = song.layout.pages[page].clone();
 			let song = song.song.clone();
 			let annotations = self.annotations.clone();
 			area.connect_draw(move |area, context| {
@@ -791,7 +794,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 				if let Some(document) = annotations.borrow().as_ref() {
 					/* render annotations */
 					for staff_layout in &layout {
-						let staff = &song.staves[*staff_layout.index];
+						let staff = &song.staves[staff_layout.index];
 						let page = document.get_page(*staff.page).unwrap();
 
 						context.save();
@@ -826,7 +829,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 #[rtype(result = "()")]
 pub struct LoadSong {
 	pub meta: collection::SongMeta,
-	pub pages: unsafe_force::Send<Vec<PageImageBox>>,
+	pub pages: unsafe_force::Send<TiVec<collection::PageIndex, PageImageBox>>,
 	pub scale_mode: ScaleMode,
 }
 
@@ -889,8 +892,8 @@ impl actix::Handler<woab::Signal> for SongActor {
 			},
 			"previous_page" => {
 				if let Some(song) = self.song.as_ref() {
-					let new_page = song.go_back(collection::PageIndex(carousel.get_position() as usize))
-						.unwrap_or_else(|| collection::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1));
+					let new_page = song.go_back(layout::PageIndex(carousel.get_position() as usize))
+						.unwrap_or_else(|| layout::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1));
 					carousel.scroll_to(&carousel.get_children()[*new_page]);
 				}
 			},
@@ -991,7 +994,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 			},
 			"CarouselPageChanged" => |_, page = u32| {
 				if let Some(song) = self.song.as_mut() {
-					song.page = collection::PageIndex(page as usize);
+					song.page = layout::PageIndex(page as usize);
 					song.current_staves = song.layout.get_staves_of_page(song.page).collect();
 					let active_id = song.part_start(song.page).to_string();
 
