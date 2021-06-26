@@ -932,7 +932,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 				if let Some(song) = self.song.as_mut() {
 					self.library_actor.try_send(library_actor::RunEditor {
 						song: song.song.song_uuid,
-						page: song.song.page_of_piece(song.current_staves[0]).0,
+						page: song.song.staves[song.current_staves[0]].page,
 					}).unwrap();
 				}
 			},

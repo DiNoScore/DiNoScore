@@ -203,7 +203,6 @@ from io import BytesIO
 out = Pdf.new()
 
 for pdf in pdfs:
-	print(type(pdf))
 	src = Pdf.open(BytesIO(bytes(pdf)))
 	out.pages.extend(src.pages)
 
