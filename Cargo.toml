@@ -32,18 +32,13 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-gtk = { version = "0.9.2", features = ["v3_20"] }
-gio = { version = "0.9.1" }
-gdk = { version = "0.13.2" }
-gdk-pixbuf = { version = "0.9.0", features = [ "v2_36" ] }
-glib = { version = "0.10.3" }
-# poppler = { version = "0.3.0" }
-# poppler = { path = "./poppler-rs" }
+gtk = { version = "0.14", features = ["v3_20"]}#, git = "https://github.com/gtk-rs/gtk3-rs.git" }
+gdk-pixbuf = { version = "*", features = [ "v2_36" ]}#, git = "https://github.com/gtk-rs/gtk-rs-core.git" }
+# poppler = { path = "../poppler-rs" }
 poppler = { git = "https://github.com/piegamesde/poppler-rs" }
-cairo-rs =  { version = "0.9.1", features = ["v1_16", "use_glib", "png", "pdf"] }
-# libhandy = "1.0.0-alpha" # 
-libhandy = { git = "https://gitlab.gnome.org/World/Rust/libhandy-rs" }
-# libhandy = { path = "./libhandy-rs/libhandy" }
+# libhandy = { git = "https://gitlab.gnome.org/World/Rust/libhandy-rs", features = ["v1_2"] }
+libhandy = { version = "0.8", features = ["v1_2"] }
+woab = { git = "https://github.com/idanarye/woab.git" }
 
 itertools = "0.10.0"
 maplit = "1.0.2"
@@ -64,7 +59,6 @@ xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
 tokio = "1.6.1"
 lru-disk-cache = "0.4.1"
-woab = { git = "https://github.com/idanarye/woab.git" }
 actix = { version = "0.11.1" }
 # tokio = "1.4"
 fragile = "1.0.0"

@@ -3,10 +3,7 @@
  */
 
 use super::*;
-use gdk::prelude::*;
-use gio::prelude::*;
-use glib::clone;
-use gtk::prelude::*;
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use libhandy::prelude::*;
 
 use actix::{Actor, AsyncContext};
@@ -48,7 +45,7 @@ impl actix::Actor for HideMouseActor {
 
 impl HideMouseActor {
 	fn stop_timer(&mut self) {
-		self.widgets.window.get_window().unwrap().set_cursor(None);
+		self.widgets.window.window().unwrap().set_cursor(None);
 		if let Some(timer) = self.timer.take() {
 			timer.abort();
 		}
@@ -57,13 +54,16 @@ impl HideMouseActor {
 	fn restart_timer(&mut self) {
 		self.stop_timer();
 
-		let window = self.widgets.window.get_window().unwrap();
+		let window = self.widgets.window.window().unwrap();
 
 		let until = actix::clock::Instant::now() + std::time::Duration::from_secs(4);
 		self.timer = Some(actix::spawn(async move {
 			actix::clock::sleep_until(until).await;
 			woab::spawn_outside(async move {
-				window.set_cursor(Some(&gdk::Cursor::new(gdk::CursorType::BlankCursor)));
+				window.set_cursor(Some(&gdk::Cursor::for_display(
+					&gdk::Display::default().unwrap(),
+					gdk::CursorType::BlankCursor,
+				)));
 			});
 		}));
 	}

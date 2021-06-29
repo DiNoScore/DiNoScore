@@ -1,13 +1,10 @@
-use gdk::prelude::*;
-use gio::prelude::*;
-use glib::clone;
-use gtk::prelude::*;
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
 use actix::Actor;
 use dinoscore::*;
-use libhandy::prelude::HeaderBarExt;
+use libhandy::traits::HeaderBarExt;
 use std::sync::mpsc::*;
 
 pub fn create(
@@ -87,11 +84,11 @@ impl actix::Handler<woab::Signal> for FullscreenActor {
 			"WindowState" => |window = gtk::Window, state = gdk::Event| {
 				let state: gdk::EventWindowState = state.downcast().unwrap();
 				if state
-					.get_changed_mask()
+					.changed_mask()
 					.contains(gdk::WindowState::FULLSCREEN)
 				{
 					if state
-						.get_new_window_state()
+						.new_window_state()
 						.contains(gdk::WindowState::FULLSCREEN)
 					{
 						log::debug!("Going fullscreen");

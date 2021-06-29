@@ -1,8 +1,5 @@
 use dinoscore::library::ScaleMode;
-use gdk::prelude::*;
-use gio::prelude::*;
-use glib::clone;
-use gtk::prelude::*;
+use gtk::{cairo, gdk, gio, glib, prelude::*};
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use typed_index_collections::TiVec;
@@ -10,7 +7,7 @@ use typed_index_collections::TiVec;
 use super::*;
 use actix::Actor;
 use dinoscore::*;
-use libhandy::prelude::HeaderBarExt;
+use libhandy::traits::HeaderBarExt;
 use std::sync::mpsc::*;
 
 pub fn create(
@@ -87,7 +84,7 @@ impl SongRenderer {
 					update = new_update;
 					continue 'outer;
 				}
-				let surface = self.render_page(page, update.width, update.height);
+				let surface = self.render_page(page, update.width, update.height).unwrap();
 				actor
 					.try_send(UpdatePage {
 						index,
@@ -105,7 +102,11 @@ impl SongRenderer {
 		}
 	}
 
-	fn render_staff(&mut self, staff: collection::StaffIndex, width: f64) -> cairo::ImageSurface {
+	fn render_staff(
+		&mut self,
+		staff: collection::StaffIndex,
+		width: f64,
+	) -> cair::Result<cairo::ImageSurface> {
 		/*
 		 * MIP mapping. For the given width, calculate the actual width we want this to be rendered.
 		 * We will never scale an image up and never scale it down more than 2/3
@@ -124,12 +125,15 @@ impl SongRenderer {
 		if self.image_cache.contains_key(&cache_key) {
 			// log::debug!("Cache hit for {}", cache_key.to_string_lossy());
 			let mut read = self.image_cache.get(&cache_key).unwrap();
-			cairo::ImageSurface::create_from_png(&mut read).unwrap_or_else(|e| {
-				log::warn!("That cache image seems to be corrupt {}", e);
-				/* Remove the corrupt entry and try again */
-				self.image_cache.remove(&cache_key).unwrap();
-				self.render_staff(staff, width)
-			})
+			cairo::ImageSurface::create_from_png(&mut read).map_or_else(
+				|e| {
+					log::warn!("That cache image seems to be corrupt {}", e);
+					/* Remove the corrupt entry and try again */
+					self.image_cache.remove(&cache_key).unwrap();
+					self.render_staff(staff, width)
+				},
+				cair::Result::Ok,
+			)
 		} else {
 			// log::warn!("Cache miss for {}", cache_key.to_string_lossy());
 			let staff = &self.song.staves[staff];
@@ -145,14 +149,14 @@ impl SongRenderer {
 				(rendered_width * aspect_ratio) as i32,
 			)
 			.unwrap();
-			let context = cairo::Context::new(&surface);
+			let context = cairo::Context::new(&surface)?;
 
-			let scale = surface.get_width() as f64 / line_width;
+			let scale = surface.width() as f64 / line_width;
 			context.scale(scale, scale);
 			context.translate(-staff.start.0, -staff.start.1);
 			context.set_source_rgb(1.0, 1.0, 1.0);
-			context.paint();
-			page.render(&context);
+			context.paint()?;
+			page.render(&context)?;
 
 			surface.flush();
 			self.image_cache
@@ -164,7 +168,7 @@ impl SongRenderer {
 				})
 				.unwrap();
 
-			surface
+			Ok(surface)
 		}
 	}
 
@@ -173,40 +177,41 @@ impl SongRenderer {
 		page: &[layout::StaffLayout],
 		width: i32,
 		height: i32,
-	) -> cairo::ImageSurface {
+	) -> cair::Result<cairo::ImageSurface> {
 		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, width, height).unwrap();
-		let context = cairo::Context::new(&surface);
+		let context = cairo::Context::new(&surface)?;
 		context.set_source_rgb(1.0, 1.0, 1.0);
-		context.paint();
+		context.paint()?;
 
-		page.iter().for_each(|staff_layout| {
-			let img = self.render_staff(staff_layout.index, staff_layout.width);
-			let scale = staff_layout.width / img.get_width() as f64;
+		page.iter().try_for_each(|staff_layout| {
+			let img = self.render_staff(staff_layout.index, staff_layout.width)?;
+			let scale = staff_layout.width / img.width() as f64;
 
-			context.save();
+			context.save()?;
 			context.translate(staff_layout.x, staff_layout.y);
 
 			/* Staff */
-			context.save();
+			context.save()?;
 			context.scale(scale, scale);
-			context.set_source_surface(&img, 0.0, 0.0);
-			context.paint();
-			context.restore();
+			context.set_source_surface(&img, 0.0, 0.0)?;
+			context.paint()?;
+			context.restore()?;
 
 			/* Page/Staff number */
-			context.save();
+			context.save()?;
 			context.set_font_size(20.0);
 			context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
 			context.move_to(10.0, 16.0);
 			let (page_index, staff_index) = self.song.page_of_piece(staff_layout.index);
-			context.show_text(&format!("{}/{}", *page_index + 1, *staff_index));
-			context.restore();
+			context.show_text(&format!("{}/{}", *page_index + 1, *staff_index))?;
+			context.restore()?;
 
-			context.restore();
-		});
+			context.restore()?;
+			cair::Result::Ok(())
+		})?;
 
 		surface.flush();
-		surface
+		Ok(surface)
 	}
 }
 
@@ -546,8 +551,8 @@ impl SongActor {
 		// TODO make this per page, and less ugly please
 		let pdf_page_width = pages[collection::PageIndex(0)].get_width();
 		let renderer = SongRenderer::spawn(song.clone(), pages, ctx.address());
-		let width = self.widgets.carousel.get_allocated_width();
-		let height = self.widgets.carousel.get_allocated_height();
+		let width = self.widgets.carousel.allocated_width();
+		let height = self.widgets.carousel.allocated_height();
 
 		self.widgets.header.set_title(
 			song.title
@@ -604,8 +609,8 @@ impl SongActor {
 	}
 
 	fn update_content(&mut self, ctx: &mut actix::Context<Self>) {
-		let width = self.widgets.carousel.get_allocated_width();
-		let height = self.widgets.carousel.get_allocated_height();
+		let width = self.widgets.carousel.allocated_width();
+		let height = self.widgets.carousel.allocated_height();
 		if width == 1 || height == 1 {
 			return;
 		}
@@ -622,7 +627,7 @@ impl SongActor {
 
 		let carousel = &self.widgets.carousel;
 		let new_pages = song.layout.pages.len();
-		let old_pages = carousel.get_n_pages() as usize;
+		let old_pages = carousel.n_pages() as usize;
 		use std::cmp::Ordering;
 		match new_pages.cmp(&old_pages) {
 			Ordering::Equal => { /* Be happy and do nothing */ },
@@ -641,7 +646,7 @@ impl SongActor {
 
 							// area.connect_draw(move |_area, context| {
 							// 	context.set_source_rgb(1.0, 0.0, 1.0);
-							// 	context.paint();
+							// 	context.paint()?;
 							// 	gtk::Inhibit::default()
 							// });
 
@@ -655,7 +660,7 @@ impl SongActor {
 				/* Remove excess pages */
 				woab::spawn_outside(
 					clone!(@weak carousel => @default-panic, move || {async move {
-						for page in &carousel.get_children()[new_pages..old_pages] {
+						for page in &carousel.children()[new_pages..old_pages] {
 							carousel.remove(page);
 						}
 					}})(),
@@ -689,7 +694,7 @@ impl SongActor {
 		};
 		woab::spawn_outside(
 			clone!(@weak carousel => @default-panic, move || {async move {
-				carousel.scroll_to_full(&carousel.get_children()[*new_page], 0);
+				carousel.scroll_to_full(&carousel.children()[*new_page], 0);
 			}})(),
 		);
 
@@ -734,7 +739,7 @@ impl SongActor {
 
 			let document = annotations_export
 				.exists()
-				.then(|| poppler::PopplerDocument::new_from_file(annotations_export, "").unwrap());
+				.then(|| poppler::PopplerDocument::from_file(annotations_export, "").unwrap());
 			*self.annotations.borrow_mut() = document;
 			let carousel = self.widgets.carousel.clone();
 			woab::spawn_outside(async move {
@@ -763,7 +768,7 @@ impl actix::Handler<UpdatePage> for SongActor {
 				return;
 			}
 			// log::debug!("Updating page {}", page.index);
-			let area = &self.widgets.carousel.get_children()[*page.index];
+			let area = &self.widgets.carousel.children()[*page.index];
 			let area: &gtk::DrawingArea = area.downcast_ref().unwrap();
 			let surface = unsafe { page.surface.unwrap() };
 			let page = page.index;
@@ -772,51 +777,55 @@ impl actix::Handler<UpdatePage> for SongActor {
 			let annotations = self.annotations.clone();
 			area.connect_draw(move |area, context| {
 				context.set_source_rgb(1.0, 1.0, 1.0);
-				context.paint();
-				if surface.get_width() != area.get_allocated_width()
-					|| surface.get_height() != area.get_allocated_height()
-				{
-					/* Scaling is simply too slow */
-					// context.scale(
-					// 	area.get_allocated_width() as f64 / surface.get_width() as f64,
-					// 	area.get_allocated_height() as f64 / surface.get_height() as f64,
-					// );
-					context.set_source_surface(
-						&surface,
-						(area.get_allocated_width() - surface.get_width()) as f64 / 2.0,
-						(area.get_allocated_height() - surface.get_height()) as f64 / 2.0,
-					);
-				} else {
-					context.set_source_surface(&surface, 0.0, 0.0);
-				}
-				context.paint();
-
-				if let Some(document) = annotations.borrow().as_ref() {
-					/* render annotations */
-					for staff_layout in &layout {
-						let staff = &song.staves[staff_layout.index];
-						let page = document.get_page(*staff.page).unwrap();
-
-						context.save();
-						context.translate(staff_layout.x, staff_layout.y);
-
-						let scale = staff_layout.width / staff.width();
-						context.scale(scale, scale);
-						context.translate(-staff.start.0, -staff.start.1);
-
-						context.rectangle(
-							staff.start.0,
-							staff.start.1,
-							staff.width(),
-							staff.height(),
-						);
-						context.clip();
-
-						page.render(&context);
-
-						context.restore();
+				catch!({
+					context.paint()?;
+					if surface.width() != area.allocated_width()
+						|| surface.height() != area.allocated_height()
+					{
+						/* Scaling is simply too slow */
+						// context.scale(
+						// 	area.allocated_width() as f64 / surface.width() as f64,
+						// 	area.allocated_height() as f64 / surface.height() as f64,
+						// );
+						context.set_source_surface(
+							&surface,
+							(area.allocated_width() - surface.width()) as f64 / 2.0,
+							(area.allocated_height() - surface.height()) as f64 / 2.0,
+						)?;
+					} else {
+						context.set_source_surface(&surface, 0.0, 0.0)?;
 					}
-				}
+					context.paint()?;
+
+					if let Some(document) = annotations.borrow().as_ref() {
+						/* render annotations */
+						for staff_layout in &layout {
+							let staff = &song.staves[staff_layout.index];
+							let page = document.page(*staff.page).unwrap();
+
+							context.save()?;
+							context.translate(staff_layout.x, staff_layout.y);
+
+							let scale = staff_layout.width / staff.width();
+							context.scale(scale, scale);
+							context.translate(-staff.start.0, -staff.start.1);
+
+							context.rectangle(
+								staff.start.0,
+								staff.start.1,
+								staff.width(),
+								staff.height(),
+							);
+							context.clip();
+
+							page.render(&context)?;
+
+							context.restore()?;
+						}
+					}
+					cair::Result::Ok(())
+				})
+				.expect("Failed to draw");
 				gtk::Inhibit::default()
 			});
 			area.queue_draw();
@@ -886,15 +895,15 @@ impl actix::Handler<woab::Signal> for SongActor {
 			/* Switch pages */
 			"next_page" => {
 				if self.song.is_some() {
-					let new_page = usize::min(carousel.get_position() as usize + 1, carousel.get_n_pages() as usize - 1);
-					carousel.scroll_to(&carousel.get_children()[new_page]);
+					let new_page = usize::min(carousel.position() as usize + 1, carousel.n_pages() as usize - 1);
+					carousel.scroll_to(&carousel.children()[new_page]);
 				}
 			},
 			"previous_page" => {
 				if let Some(song) = self.song.as_ref() {
-					let new_page = song.go_back(layout::PageIndex(carousel.get_position() as usize))
-						.unwrap_or_else(|| layout::PageIndex(usize::max(carousel.get_position() as usize, 1) - 1));
-					carousel.scroll_to(&carousel.get_children()[*new_page]);
+					let new_page = song.go_back(layout::PageIndex(carousel.position() as usize))
+						.unwrap_or_else(|| layout::PageIndex(usize::max(carousel.position() as usize, 1) - 1));
+					carousel.scroll_to(&carousel.children()[*new_page]);
 				}
 			},
 			"previous_piece" => {
@@ -908,7 +917,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 
 					let carousel = carousel.clone();
 					woab::spawn_outside(async move {
-						carousel.scroll_to(&carousel.get_children()[page]);
+						carousel.scroll_to(&carousel.children()[page]);
 					});
 				}
 			},
@@ -923,7 +932,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 
 					let carousel = carousel.clone();
 					woab::spawn_outside(async move {
-						carousel.scroll_to(&carousel.get_children()[page]);
+						carousel.scroll_to(&carousel.children()[page]);
 					});
 				}
 			},
@@ -957,13 +966,13 @@ impl actix::Handler<woab::Signal> for SongActor {
 			},
 			/* From the dropdown */
 			"SelectPart" => {if self.song.is_some() {
-				let section = self.widgets.part_selection.get_active_id().unwrap();
+				let section = self.widgets.part_selection.active_id().unwrap();
 				let carousel = carousel.clone();
 				let page = *self.song.as_ref().unwrap()
 					.layout
 					.get_page_of_staff(section.parse::<collection::StaffIndex>().unwrap());
 				woab::spawn_outside(async move {
-					carousel.scroll_to(&carousel.get_children()[page]);
+					carousel.scroll_to(&carousel.children()[page]);
 				});
 			}},
 			"CarouselSizeChanged" => {self.update_content(ctx)},
@@ -972,13 +981,13 @@ impl actix::Handler<woab::Signal> for SongActor {
 			"CarouselButtonPress" => |carousel = libhandy::Carousel, event = gdk::Event| {
 				let event: gdk::EventButton = event.downcast().unwrap();
 
-				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
+				let x = event.position().0 / carousel.allocated_width() as f64;
 				return Ok(Some(gtk::Inhibit((0.0..0.3).contains(&x) || (0.6..1.0).contains(&x))));
 			},
 			"CarouselButtonRelease" => |carousel = libhandy::Carousel, event = gdk::Event| {
 				let event: gdk::EventButton = event.downcast().unwrap();
 
-				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
+				let x = event.position().0 / carousel.allocated_width() as f64;
 				if (0.0..0.3).contains(&x) {
 					woab::spawn_outside(clone!(@weak self.previous as previous => @default-panic, move || {async move {
 						previous.activate(None);
@@ -989,7 +998,7 @@ impl actix::Handler<woab::Signal> for SongActor {
 					}})());
 				}
 
-				let x = event.get_position().0 / carousel.get_allocated_width() as f64;
+				let x = event.position().0 / carousel.allocated_width() as f64;
 				return Ok(Some(gtk::Inhibit((0.0..0.3).contains(&x) || (0.6..1.0).contains(&x))));
 			},
 			"CarouselPageChanged" => |_, page = u32| {
@@ -1058,14 +1067,14 @@ impl actix::Handler<woab::Signal> for SongActor {
 			/* Scroll events on the page, for zooming */
 			"AreaScroll" => |_ = gtk::DrawingArea, event = gdk::Event| {
 				let event: gdk::EventScroll = event.downcast().unwrap();
-				if event.get_state().contains(gdk::ModifierType::CONTROL_MASK) {
+				if event.state().contains(gdk::ModifierType::CONTROL_MASK) {
 					self.update_manual_zoom(|song| {
-						let zoom = song.zoom * (if event.get_direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
+						let zoom = song.zoom * (if event.direction() == gdk::ScrollDirection::Down {0.95} else {1.0/0.95});
 						zoom.clamp(0.6, 3.0)
 					}, ctx);
 				}
 				// return Some(Inhibit(false));
-				return Ok(Some(gtk::Inhibit(event.get_state().contains(gdk::ModifierType::CONTROL_MASK))));
+				return Ok(Some(gtk::Inhibit(event.state().contains(gdk::ModifierType::CONTROL_MASK))));
 			},
 
 			/* Generic zoom events */

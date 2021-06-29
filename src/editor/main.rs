@@ -1,9 +1,7 @@
 use actix::prelude::*;
 use anyhow::Context;
-use gdk::prelude::*;
-use gio::prelude::*;
 use glib::clone;
-use gtk::prelude::*;
+use gtk::{gdk, gio, glib, prelude::*};
 use typed_index_collections::TiVec;
 use uuid::Uuid;
 
@@ -140,7 +138,8 @@ impl EditorSongFile {
 		};
 		use std::ops::Deref;
 		let thumbnail =
-			SongFile::generate_thumbnail(&song, self.pages.iter().map(|(page, _)| page.deref()));
+			SongFile::generate_thumbnail(&song, self.pages.iter().map(|(page, _)| page.deref()))
+				.expect("Failed to generate thumbnail");
 		SongFile::save(
 			file,
 			song,
@@ -281,10 +280,10 @@ impl AppActor {
 				if choose.run() == gtk::ResponseType::Accept {
 					let (progress_dialog, progress) =
 						dinoscore::create_progress_bar_dialog("Loading pages …");
-					let total_work = choose.get_files().len();
+					let total_work = choose.files().len();
 
-					for (i, file) in choose.get_files().iter().enumerate() {
-						let path = file.get_path().unwrap();
+					for (i, file) in choose.files().iter().enumerate() {
+						let path = file.path().unwrap();
 
 						let pages = blocking::unblock(move || {
 							let raw = std::fs::read(path.as_path()).unwrap();
@@ -382,14 +381,12 @@ impl AppActor {
 	}
 
 	fn add_page(&mut self, page: RawPageImage) {
-		let pixbuf = page.render_to_thumbnail(400);
+		let pixbuf = page.render_to_thumbnail(400).unwrap();
 		self.file.add_page(page);
 
-		self.widgets.pages_preview_data.set(
-			&self.widgets.pages_preview_data.append(),
-			&[0],
-			&[&pixbuf],
-		);
+		self.widgets
+			.pages_preview_data
+			.set(&self.widgets.pages_preview_data.append(), &[(0, &pixbuf)]);
 	}
 
 	fn remove_page(&mut self, page: PageIndex) {
@@ -400,7 +397,7 @@ impl AppActor {
 
 		clone!(@strong self.widgets as widgets => move || woab::spawn_outside(async move {
 			widgets.pages_preview_data.remove(
-				&widgets.pages_preview_data.get_iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
+				&widgets.pages_preview_data.iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
 			);
 		}))();
 	}
@@ -437,7 +434,7 @@ impl AppActor {
 	}
 
 	pub fn autodetect(&mut self, ctx: &mut <Self as actix::Actor>::Context) {
-		let selected_items = self.widgets.pages_preview.get_selected_items();
+		let selected_items = self.widgets.pages_preview.selected_items();
 
 		let widgets = self.widgets.clone();
 		let pdf_pages = self.file.get_pages();
@@ -451,20 +448,18 @@ impl AppActor {
 
 			for (i, page) in selected_items
 				.into_iter()
-				.map(|selected| selected.get_indices()[0] as usize)
+				.map(|selected| selected.indices()[0] as usize)
 				.enumerate()
 			{
-				let data = widgets
+				let data: gdk_pixbuf::Pixbuf = widgets
 					.pages_preview_data
-					.get_value(
+					.value(
 						&widgets
 							.pages_preview_data
 							.iter_nth_child(None, page as i32)
 							.unwrap(),
 						0,
 					)
-					.downcast::<gdk_pixbuf::Pixbuf>()
-					.unwrap()
 					.get()
 					.unwrap();
 				let pdf_page = &pdf_pages[page];
@@ -708,8 +703,8 @@ impl AppActor {
 			.filter(&filter)
 			.build();
 		if choose.run() == gtk::ResponseType::Accept {
-			if let Some(file) = choose.get_file() {
-				let path = file.get_path().unwrap();
+			if let Some(file) = choose.file() {
+				let path = file.path().unwrap();
 				let mut song = SongFile::new(path).unwrap();
 				self.load(song.load_sheets_raw().unwrap(), song.index);
 			}
@@ -753,8 +748,8 @@ impl AppActor {
 				.map(move |result, this, _ctx| {
 					let (choose, result) = result.unwrap();
 					if result == gtk::ResponseType::Accept {
-						if let Some(file) = choose.get_file() {
-							this.file.save(file.get_path().unwrap()).unwrap();
+						if let Some(file) = choose.file() {
+							this.file.save(file.path().unwrap()).unwrap();
 						}
 					}
 				}),
@@ -816,7 +811,7 @@ impl actix::Handler<woab::Signal> for AppActor {
 			"NewDocument" => {self.unload_and_clear()},
 			"SaveDocument" => {self.save_with_ui(ctx)},
 			"PieceStartUpdate" => |piece_start = gtk::CheckButton| {
-				self.update_part_start(piece_start.get_active(), ctx)
+				self.update_part_start(piece_start.is_active(), ctx)
 			},
 			/* Tool bar */
 			"add_pages" => {
@@ -824,10 +819,10 @@ impl actix::Handler<woab::Signal> for AppActor {
 			},
 			"add_pages2" => { /* TODO */ },
 			"SelectPage" => {
-				let selected_items = self.widgets.pages_preview.get_selected_items();
+				let selected_items = self.widgets.pages_preview.selected_items();
 				self.select_page(match selected_items.len() {
 					0 => None,
-					1 => Some(PageIndex(selected_items[0].get_indices()[0] as usize)),
+					1 => Some(PageIndex(selected_items[0].indices()[0] as usize)),
 					_ => None,
 				});
 			},
@@ -838,11 +833,11 @@ impl actix::Handler<woab::Signal> for AppActor {
 			"key_press" => |pages_preview = gtk::IconView, event = gdk::Event| {
 				let event: gdk::EventKey = event.downcast().unwrap();
 
-				if event.get_keyval() == gdk::keys::constants::Delete
-				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
-					let selected_items = pages_preview.get_selected_items();
+				if event.keyval() == gdk::keys::constants::Delete
+				|| event.keyval() == gdk::keys::constants::KP_Delete {
+					let selected_items = pages_preview.selected_items();
 					selected_items.iter()
-						.map(|selected| selected.get_indices()[0] as usize)
+						.map(|selected| selected.indices()[0] as usize)
 						.for_each(|i| {
 							self.remove_page(PageIndex(i));
 						});
@@ -854,23 +849,23 @@ impl actix::Handler<woab::Signal> for AppActor {
 			/* Editor */
 			"piece_start_update" => {
 				first_arg!(signal, piece_start: gtk::CheckButton);
-				self.update_part_start(piece_start.get_active(), ctx)
+				self.update_part_start(piece_start.is_active(), ctx)
 			},
 			"piece_name_update" => {
 				first_arg!(signal, piece_name: gtk::Entry);
-				self.update_part_name(&piece_name.get_text(), ctx)
+				self.update_part_name(&piece_name.text(), ctx)
 			},
 			"section_start_update" => {
 				first_arg!(signal, section_start: gtk::CheckButton);
-				self.update_section_start(section_start.get_active(), ctx)
+				self.update_section_start(section_start.is_active(), ctx)
 			},
 			"section_end_update" => {
 				first_arg!(signal, section_end: gtk::CheckButton);
-				self.update_section_end(section_end.get_active(), ctx)
+				self.update_section_end(section_end.is_active(), ctx)
 			},
 			"section_repetition_update" => {
 				first_arg!(signal, section_repetition: gtk::CheckButton);
-				self.update_section_repetition(section_repetition.get_active(), ctx)
+				self.update_section_repetition(section_repetition.is_active(), ctx)
 			},
 			_ => {unreachable!()},
 		});
@@ -894,8 +889,7 @@ fn main() -> anyhow::Result<()> {
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.editor"),
 		gio::ApplicationFlags::NON_UNIQUE,
-	)
-	.context("Initialization failed")?;
+	);
 
 	application.connect_startup(|_application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
@@ -926,7 +920,7 @@ fn main() -> anyhow::Result<()> {
 		log::info!("Application started");
 	});
 
-	application.run(&[]);
+	application.run();
 	log::info!("Thanks for using DiNoScore.");
 	Ok(())
 }

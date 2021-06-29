@@ -1,4 +1,4 @@
-use glib::Sender;
+use gtk::glib::Sender;
 use std::{any::Any, error::Error};
 
 use midi_event::*;

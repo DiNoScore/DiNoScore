@@ -1,13 +1,10 @@
-use gdk::prelude::*;
-use gio::prelude::*;
-use glib::clone;
-use gtk::prelude::*;
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
 use actix::Actor;
 use dinoscore::*;
-use libhandy::prelude::HeaderBarExt;
+use libhandy::traits::HeaderBarExt;
 use std::sync::mpsc::*;
 
 use super::song_actor::{LoadSong, SongActor};
@@ -90,24 +87,19 @@ impl LibraryActor {
 		});
 		for (uuid, song) in library.songs.iter() {
 			if (*self.song_filter)(&song.index) {
-				/* Add an item with the name and UUID
-				 * Index, column, value
-				 * The columns are: thumbnail, title, UUID, usage_score
-				 */
+				/* Add an item with the name and UUID */
+				// TODO cleanup once glib::Value implements ToValue
 				let store_songs = self.widgets.store_songs.clone();
-				let row_data: [glib::Value; 4] = [
-					song.thumbnail().to_value(),
-					song.title().unwrap_or("<no title>").to_value(),
-					uuid.to_string().to_value(),
-					self.library.borrow().stats[uuid]
-						.usage_score(&self.reference_time)
-						.to_value(),
-				];
+				let thumbnail = song.thumbnail().cloned();
+				let title = song.title().unwrap_or("<no title>").to_owned();
+				let score = self.library.borrow().stats[uuid].usage_score(&self.reference_time);
+				let uuid = uuid.to_string();
+
 				woab::spawn_outside(async move {
 					store_songs.set(
 						&store_songs.append(),
-						&[0, 1, 2, 3],
-						&[&row_data[0], &row_data[1], &row_data[2], &row_data[3]],
+						/* The columns are: thumbnail, title, UUID, usage_score */
+						&[(0, &thumbnail), (1, &title), (2, &uuid), (3, &score)],
 					);
 				});
 			}
@@ -124,11 +116,7 @@ impl LibraryActor {
 		/* Find our song and update it. */
 		let store_songs = &self.widgets.store_songs;
 		store_songs.foreach(|_model, _path, iter| {
-			let uuid2: String = store_songs
-				.get_value(iter, 2)
-				.get::<String>()
-				.unwrap()
-				.unwrap();
+			let uuid2: String = store_songs.value(iter, 2).get::<String>().unwrap();
 			let uuid2: uuid::Uuid = uuid::Uuid::parse_str(&uuid2).unwrap();
 			if uuid2 == uuid {
 				store_songs.set_value(
@@ -164,7 +152,7 @@ impl LibraryActor {
 				.unwrap_or_default(),
 		});
 		/* Hack to get the event processed in the correct order */
-		glib::timeout_add_local(50, move || {
+		glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
 			song_actor.try_send(event.take().unwrap()).unwrap();
 			Continue(false)
 		});
@@ -178,11 +166,11 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 		signal!(match (signal) {
 			"SongSelected" => {
 				let song: Option<uuid::Uuid> = {
-					self.widgets.library_grid.get_selected_items()
+					self.widgets.library_grid.selected_items()
 						.into_iter()
 						.next() /* There is at most one item */
-						.map(|song| self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&song).unwrap(), 2))
-						.map(|uuid: glib::Value| uuid.get::<glib::GString>().unwrap().unwrap())
+						.map(|song| self.widgets.store_songs.value(&self.widgets.store_songs.iter(&song).unwrap(), 2))
+						.map(|uuid: glib::Value| uuid.get::<glib::GString>().unwrap())
 						.map(|uuid| uuid::Uuid::parse_str(uuid.as_str()).unwrap())
 				};
 				self.widgets.sidebar_revealer.set_reveal_child(song.is_some());
@@ -191,23 +179,22 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 				log::debug!("Activated");
 				let uuid = {
 					/* There is exactly one item */
-					let song = self.widgets.library_grid.get_selected_items().into_iter().next().unwrap();
-					let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&song).unwrap(), 2);
-					uuid::Uuid::parse_str(uuid.get::<glib::GString>().unwrap().unwrap().as_str()).unwrap()
+					let song = self.widgets.library_grid.selected_items().into_iter().next().unwrap();
+					let uuid = self.widgets.store_songs.value(&self.widgets.store_songs.iter(&song).unwrap(), 2);
+					uuid::Uuid::parse_str(uuid.get::<glib::GString>().unwrap().as_str()).unwrap()
 				};
 				self.load_song(uuid);
 			},
 			"LoadSong" => |_ = gtk::IconView, item = gtk::TreePath | {
-				let uuid = self.widgets.store_songs.get_value(&self.widgets.store_songs.get_iter(&item).unwrap(), 2)
+				let uuid = self.widgets.store_songs.value(&self.widgets.store_songs.iter(&item).unwrap(), 2)
 					.get::<glib::GString>()
-					.unwrap()
 					.unwrap();
 				let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
 				self.load_song(uuid);
 			},
 			"on_search_entry_changed" => |entry = gtk::SearchEntry| {
 				/* TODO use unicase crate instead. And maybe also a fuzzy matcher */
-				let query = entry.get_text().to_string().trim().to_lowercase();
+				let query = entry.text().to_string().trim().to_lowercase();
 				self.song_filter = if query.is_empty() {
 					Box::new(|_| true)
 				} else {
@@ -226,7 +213,7 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 			},
 			"on_search_entry_next" => {
 				let selected = self.widgets.library_grid
-					.get_selected_items()
+					.selected_items()
 					.into_iter()
 					.next()
 					.map(|mut path| {path.next(); path})
@@ -238,7 +225,7 @@ impl actix::Handler<woab::Signal> for LibraryActor {
 			},
 			"on_search_entry_previous" => {
 				let selected = self.widgets.library_grid
-					.get_selected_items()
+					.selected_items()
 					.into_iter()
 					.next()
 					.map(|mut path| {path.prev(); path})

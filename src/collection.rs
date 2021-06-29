@@ -5,6 +5,7 @@
 use crate::*;
 use anyhow::Context;
 use derive_more::*;
+use gtk::{cairo, gdk, gio, glib, prelude::*};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
 use std::{
@@ -62,7 +63,7 @@ impl SongFile {
 						std::io::copy(&mut pages, &mut data)?;
 						let data = glib::Bytes::from_owned(data);
 						std::mem::drop(pages);
-						poppler::PopplerDocument::new_from_bytes(data, "")?
+						poppler::PopplerDocument::from_bytes(data, "")?
 					};
 					index.update(&pdf)
 				},
@@ -166,13 +167,13 @@ impl SongFile {
 			let data = glib::Bytes::from_owned(data);
 
 			if file == format!("page_{}.pdf", index) {
-				let pdf = poppler::PopplerDocument::new_from_bytes(data, "")
-					.context("Failed to load PDF")?;
+				let pdf =
+					poppler::PopplerDocument::from_bytes(data, "").context("Failed to load PDF")?;
 				anyhow::ensure!(
-					pdf.get_n_pages() == 1,
+					pdf.n_pages() == 1,
 					"Each PDF file must have exactly one page"
 				);
-				Ok(Box::new(pdf.get_page(0).unwrap()) as PageImageBox)
+				Ok(Box::new(pdf.page(0).unwrap()) as PageImageBox)
 			} else {
 				Ok(Box::new(
 					gdk_pixbuf::Pixbuf::from_stream(
@@ -201,14 +202,14 @@ impl SongFile {
 			let data = glib::Bytes::from_owned(raw.clone());
 
 			if file == format!("page_{}.pdf", index) {
-				let pdf = poppler::PopplerDocument::new_from_bytes(data, "")
-					.context("Failed to load PDF")?;
+				let pdf =
+					poppler::PopplerDocument::from_bytes(data, "").context("Failed to load PDF")?;
 				anyhow::ensure!(
-					pdf.get_n_pages() == 1,
+					pdf.n_pages() == 1,
 					"Each PDF file must have exactly one page"
 				);
 				Ok(RawPageImage::Vector {
-					page: pdf.get_page(0).unwrap(),
+					page: pdf.page(0).unwrap(),
 					raw,
 				})
 			} else {
@@ -292,28 +293,36 @@ impl SongFile {
 	pub fn generate_thumbnail<'a>(
 		song: &SongMeta,
 		pages: impl IntoIterator<Item = &'a (impl PageImage + 'a)>,
-	) -> Option<gdk_pixbuf::Pixbuf> {
+	) -> cair::Result<Option<gdk_pixbuf::Pixbuf>> {
 		let mut pages = pages.into_iter();
-		let staff = song.staves.first()?;
-		let page: &dyn PageImage = pages.nth(*staff.page)?;
+		let staff = if let Some(staff) = song.staves.first() {
+			staff
+		} else {
+			return Ok(None);
+		};
+		let page: &dyn PageImage = if let Some(page) = pages.nth(*staff.page) {
+			page
+		} else {
+			return Ok(None);
+		};
 
 		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100).unwrap();
-		let context = cairo::Context::new(&surface);
+		let context = cairo::Context::new(&surface)?;
 
-		let scale = surface.get_width() as f64 / staff.width();
+		let scale = surface.width() as f64 / staff.width();
 		context.scale(scale, scale);
 
 		context.translate(-staff.left(), -staff.top());
 		context.set_source_rgb(1.0, 1.0, 1.0);
-		context.paint();
-		page.render(&context);
+		context.paint()?;
+		page.render(&context)?;
 
 		surface.flush();
 
-		Some(
-			gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.get_width(), surface.get_height())
+		Ok(Some(
+			gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.width(), surface.height())
 				.unwrap(),
-		)
+		))
 	}
 }
 
@@ -518,7 +527,7 @@ trait UpdateSongMeta {
 impl UpdateSongMeta for SongMetaV2 {
 	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
 		SongMetaV3 {
-			n_pages: pdf.get_n_pages(),
+			n_pages: pdf.n_pages(),
 			staves: self.staves.into(),
 			piece_starts: self
 				.piece_starts
@@ -541,10 +550,10 @@ impl UpdateSongMeta for SongMetaV1 {
 				.staves
 				.iter()
 				.map(|staff| {
-					let page = pdf.get_page(staff.page.0).unwrap();
+					let page = pdf.page(staff.page.0).unwrap();
 					// Convert from relative sizes back to pixels
-					let scale_x = page.get_size().0 as f64;
-					let scale_y = page.get_size().1 as f64;
+					let scale_x = page.size().0 as f64;
+					let scale_y = page.size().1 as f64;
 
 					StaffV2 {
 						page: staff.page,

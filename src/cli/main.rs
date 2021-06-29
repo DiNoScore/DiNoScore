@@ -1,6 +1,6 @@
-use typed_index_collections::TiVec;
 use anyhow::Context;
 use dinoscore::*;
+use typed_index_collections::TiVec;
 
 fn main() -> anyhow::Result<()> {
 	simple_logger::SimpleLogger::new()
@@ -65,8 +65,10 @@ fn main() -> anyhow::Result<()> {
 			let thumbnail = song.thumbnail().cloned();
 			let mut meta = song.index;
 			meta.version_uuid = uuid::Uuid::new_v4();
-			let thumbnail =
-				thumbnail.or_else(|| collection::SongFile::generate_thumbnail(&meta, &sheets));
+			let thumbnail = thumbnail.or_else(|| {
+				collection::SongFile::generate_thumbnail(&meta, &sheets)
+					.expect("Failed to generate thumbnail")
+			});
 			collection::SongFile::save(output_path, meta, &sheets, thumbnail, overwrite)?;
 		}
 	}

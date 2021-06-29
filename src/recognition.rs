@@ -46,9 +46,9 @@ impl RelativeStaff {
 
 #[cfg(feature = "editor")]
 pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
-	assert!(!image.get_has_alpha());
-	assert!(image.get_n_channels() == 3);
-	assert!(image.get_colorspace() == gdk_pixbuf::Colorspace::Rgb);
+	assert!(!image.has_alpha());
+	assert!(image.n_channels() == 3);
+	assert!(image.colorspace() == gdk_pixbuf::Colorspace::Rgb);
 
 	let image_bytes = image.read_pixel_bytes().unwrap();
 	let image_height = image.get_height();

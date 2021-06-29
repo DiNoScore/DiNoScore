@@ -35,7 +35,7 @@ jobs:
         os:
           - ubuntu-latest
         rust:
-          #- 1.50.0 # MSRV
+          #- 1.51.0 # MSRV
           - stable
           #- nightly
     steps:

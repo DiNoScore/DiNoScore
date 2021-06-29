@@ -2,16 +2,13 @@
 #![allow(dead_code)]
 
 use actix::Actor;
-use gdk::prelude::*;
-use gio::prelude::*;
-use glib::clone;
-use gtk::prelude::*;
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use libhandy::prelude::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 /* Weird that this is required for it to work */
 use anyhow::Context;
 use dinoscore::*;
-use libhandy::prelude::HeaderBarExt;
+// use libhandy::prelude::HeaderBarExt;
 use std::sync::mpsc::*;
 
 mod fullscreen_actor;
@@ -127,10 +124,9 @@ fn main() -> anyhow::Result<()> {
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.viewer"),
 		gio::ApplicationFlags::NON_UNIQUE,
-	)
-	.context("Initialization failed")?;
+	);
 
-	application.connect_startup(|application| {
+	application.connect_startup(|_application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
@@ -202,7 +198,7 @@ fn main() -> anyhow::Result<()> {
 		log::info!("Application started");
 	});
 
-	application.run(&[]);
+	application.run();
 	log::info!("Thanks for using DiNoScore.");
 	Ok(())
 }

@@ -11,8 +11,6 @@ use std::{
 };
 
 use futures::prelude::*;
-use gdk::prelude::*;
-use gio::prelude::*;
 use gtk::prelude::*;
 
 use uuid::Uuid;
@@ -123,6 +121,11 @@ pub mod page_image;
 pub mod recognition;
 pub mod unsafe_force;
 
+/// This is a workaround until there is a proper type alias upstream
+pub mod cair {
+	pub type Result<T> = std::result::Result<T, gtk::cairo::Error>;
+}
+
 pub use page_image::{PageImage, PageImageBox, RawPageImage};
 
 pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {
@@ -134,7 +137,7 @@ pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar)
 	let bar = gtk::ProgressBar::new();
 	bar.set_show_text(true);
 	bar.set_text(Some(text));
-	progress.get_content_area().add(&bar);
+	progress.content_area().add(&bar);
 	progress.set_title("Loading…");
 	progress.set_deletable(false);
 	progress.show_all();

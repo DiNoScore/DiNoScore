@@ -1,7 +1,7 @@
 //! Integration with Xournal++ for annotations
-//!
 use super::*;
 use anyhow::Context;
+use gtk::glib;
 use std::{io::Write, process::Command};
 
 pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Result<()> {
@@ -53,10 +53,8 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 		catch!({
 			let xopp = std::fs::File::create(&annotations_file)?;
 			let mut xopp = flate2::write::GzEncoder::new(xopp, Default::default());
-			let pdf = poppler::PopplerDocument::new_from_bytes(
-				glib::Bytes::from_owned(background_pdf),
-				"",
-			)?;
+			let pdf =
+				poppler::PopplerDocument::from_bytes(glib::Bytes::from_owned(background_pdf), "")?;
 
 			writeln!(
 				xopp,
@@ -66,9 +64,9 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 "#
 			)?;
 
-			for index in 0..pdf.get_n_pages() {
-				let page = pdf.get_page(index).unwrap();
-				let (width, height) = page.get_size();
+			for index in 0..pdf.n_pages() {
+				let page = pdf.page(index).unwrap();
+				let (width, height) = page.size();
 				writeln!(xopp, r#"<page width="{}" height="{}">"#, width, height)?;
 				if index == 0 {
 					writeln!(

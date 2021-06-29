@@ -1,8 +1,6 @@
 use actix::prelude::*;
-use gdk::prelude::*;
-use gio::prelude::*;
 use glib::clone;
-use gtk::prelude::*;
+use gtk::{cairo, gdk, glib, prelude::*};
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -44,8 +42,8 @@ impl actix::Actor for EditorActor {
 			editor.connect_draw(clone!(@weak self.editor_content as editor_content => @default-panic, move |editor, context| {
 				let (surface, _is_valid) = &mut *editor_content.borrow_mut();
 
-				let (source_width, source_height) = (surface.get_width(), surface.get_height());
-				let (target_width, target_height) = (editor.get_allocated_width(), editor.get_allocated_height());
+				let (source_width, source_height) = (surface.width(), surface.height());
+				let (target_width, target_height) = (editor.allocated_width(), editor.allocated_height());
 				if (target_width, target_height) == (source_width, source_height) {
 					context.set_source_surface(&surface, 0.0, 0.0);
 					context.paint();
@@ -86,9 +84,9 @@ impl actix::Handler<woab::Signal> for EditorActor {
 					None => return Ok(Some(Inhibit(false))),
 				};
 
-				let scale = editor.get_allocated_height() as f64 / page.get_height();
-				let x = event.get_position().0 / scale;
-				let y = event.get_position().1 / scale;
+				let scale = editor.allocated_height() as f64 / page.get_height();
+				let x = event.position().0 / scale;
+				let y = event.position().1 / scale;
 				let mut selected_staff = None;
 				for (i, bar) in bars.iter().enumerate() {
 					if x > bar.left() && x < bar.right() && y > bar.top() && y < bar.bottom() {
@@ -104,8 +102,8 @@ impl actix::Handler<woab::Signal> for EditorActor {
 			},
 			"key_press" => |_editor = gtk::DrawingArea, event = gdk::Event| {
 				let event: gdk::EventKey = event.downcast().unwrap();
-				if event.get_keyval() == gdk::keys::constants::Delete
-				|| event.get_keyval() == gdk::keys::constants::KP_Delete {
+				if event.keyval() == gdk::keys::constants::Delete
+				|| event.keyval() == gdk::keys::constants::KP_Delete {
 					self.selected_staff = None;
 					self.render_page();
 					self.app.try_send(DeleteSelectedStaff).unwrap();
@@ -134,9 +132,10 @@ impl actix::Handler<EditorSignal2> for EditorActor {
 				self.current_page = current_page.into_inner();
 				self.selected_staff = None;
 				self.app.try_send(StaffSelected(None)).unwrap();
-				self.render_page();
+				self.render_page()
 			},
 		}
+		.expect("Failed to render page")
 	}
 }
 
@@ -155,23 +154,23 @@ impl EditorActor {
 		}
 	}
 
-	fn render_page(&self) {
+	fn render_page(&self) -> cair::Result<()> {
 		let editor = &self.widgets.editor;
 		editor.queue_draw();
 		let (surface, _is_valid) = &mut *self.editor_content.borrow_mut();
 		*surface = cairo::ImageSurface::create(
 			cairo::Format::Rgb24,
-			editor.get_allocated_width(),
-			editor.get_allocated_height(),
+			editor.allocated_width(),
+			editor.allocated_height(),
 		)
 		.unwrap();
-		let context = cairo::Context::new(&surface);
+		let context = cairo::Context::new(&surface)?;
 		context.set_source_rgb(1.0, 1.0, 1.0);
-		context.paint();
+		context.paint()?;
 
 		let (page, bars, staff_index_offset) = match &self.current_page {
 			Some(selected_page) => selected_page,
-			None => return,
+			None => return Ok(()),
 		};
 		log::debug!("Drawing");
 		// let staves_before: usize = self.staves_before;//pages.borrow().pages[0..selection as usize].iter().map(|(p, b)| b.len()).sum();
@@ -180,8 +179,7 @@ impl EditorActor {
 		// let bars = &page.1;
 		// let page = &page.0;
 
-		let scale = editor.get_allocated_height() as f64 / page.get_height();
-		dbg!(scale);
+		let scale = editor.allocated_height() as f64 / page.get_height();
 		context.scale(scale, scale);
 		page.render(&context);
 
@@ -207,7 +205,7 @@ impl EditorActor {
 					0.0,
 					2.0 * std::f64::consts::PI,
 				);
-				context.fill();
+				context.fill()?;
 				context.arc(
 					staff.right(),
 					staff.top(),
@@ -215,7 +213,7 @@ impl EditorActor {
 					0.0,
 					2.0 * std::f64::consts::PI,
 				);
-				context.fill();
+				context.fill()?;
 				context.arc(
 					staff.left(),
 					staff.bottom(),
@@ -223,7 +221,7 @@ impl EditorActor {
 					0.0,
 					2.0 * std::f64::consts::PI,
 				);
-				context.fill();
+				context.fill()?;
 				context.arc(
 					staff.right(),
 					staff.bottom(),
@@ -231,7 +229,7 @@ impl EditorActor {
 					0.0,
 					2.0 * std::f64::consts::PI,
 				);
-				context.fill();
+				context.fill()?;
 
 				context.restore();
 			} else {
@@ -249,5 +247,6 @@ impl EditorActor {
 		context.restore();
 
 		surface.flush();
+		Ok(())
 	}
 }
