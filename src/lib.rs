@@ -118,8 +118,6 @@ macro_rules! signal {
 pub mod collection;
 pub mod layout;
 pub mod library;
-#[deprecated]
-pub mod owned;
 pub mod page_image;
 #[cfg(feature = "editor")]
 pub mod recognition;
