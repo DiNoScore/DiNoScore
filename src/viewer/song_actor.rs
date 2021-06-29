@@ -585,6 +585,7 @@ impl SongActor {
 		=> @default-panic, move || {async move{
 			part_selection.set_active(if relevant {Some(0)} else {None});
 			part_selection.set_sensitive(relevant);
+			part_selection.set_visible(relevant);
 
 			sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
 		}})());
