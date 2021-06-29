@@ -582,13 +582,13 @@ impl SongActor {
 		woab::spawn_outside(clone!(
 			@weak self.widgets.part_selection as part_selection,
 			@weak self.sizing_mode_action as sizing_mode_action
-		=> @default-panic, move || {async move{
+		=> @default-panic, async move {
 			part_selection.set_active(if relevant {Some(0)} else {None});
 			part_selection.set_sensitive(relevant);
 			part_selection.set_visible(relevant);
 
 			sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
-		}})());
+		}));
 
 		self.song = Some(song);
 		self.update_content(ctx);
@@ -640,40 +640,34 @@ impl SongActor {
 					area.add_events(gdk::EventMask::SCROLL_MASK);
 					woab::route_signal(&area, "scroll-event", "AreaScroll", ctx.address()).unwrap();
 
-					woab::spawn_outside(
-						clone!(@weak carousel => @default-panic, move || {async move {
-							area.set_hexpand(true);
-							area.set_vexpand(true);
+					woab::spawn_outside(clone!(@weak carousel => @default-panic, async move {
+						area.set_hexpand(true);
+						area.set_vexpand(true);
 
-							// area.connect_draw(move |_area, context| {
-							// 	context.set_source_rgb(1.0, 0.0, 1.0);
-							// 	context.paint()?;
-							// 	gtk::Inhibit::default()
-							// });
+						// area.connect_draw(move |_area, context| {
+						// 	context.set_source_rgb(1.0, 0.0, 1.0);
+						// 	context.paint()?;
+						// 	gtk::Inhibit::default()
+						// });
 
-							carousel.add(&area);
-							area.show();
-						}})(),
-					);
+						carousel.add(&area);
+						area.show();
+					}));
 				}
 			},
 			Ordering::Less => {
 				/* Remove excess pages */
-				woab::spawn_outside(
-					clone!(@weak carousel => @default-panic, move || {async move {
-						for page in &carousel.children()[new_pages..old_pages] {
-							carousel.remove(page);
-						}
-					}})(),
-				);
+				woab::spawn_outside(clone!(@weak carousel => @default-panic, async move {
+					for page in &carousel.children()[new_pages..old_pages] {
+						carousel.remove(page);
+					}
+				}));
 			},
 		}
 
-		woab::spawn_outside(
-			clone!(@weak carousel => @default-panic, move || {async move {
-				carousel.queue_draw();
-			}})(),
-		);
+		woab::spawn_outside(clone!(@weak carousel => @default-panic, async move {
+			carousel.queue_draw();
+		}));
 		/* Calculate the new page, which has the most staves in common with the previous layout/page */
 		let new_page: layout::PageIndex = {
 			use itertools::Itertools;
@@ -693,11 +687,9 @@ impl SongActor {
 				.map(|(page, _count)| *page)
 				.unwrap()
 		};
-		woab::spawn_outside(
-			clone!(@weak carousel => @default-panic, move || {async move {
-				carousel.scroll_to_full(&carousel.children()[*new_page], 0);
-			}})(),
-		);
+		woab::spawn_outside(clone!(@weak carousel => @default-panic, async move {
+			carousel.scroll_to_full(&carousel.children()[*new_page], 0);
+		}));
 
 		song.page = new_page;
 
@@ -957,13 +949,13 @@ impl actix::Handler<woab::Signal> for SongActor {
 				woab::spawn_outside(clone!(
 					@weak self.widgets.part_selection as part_selection,
 					@weak self.widgets.deck as deck
-				=> @default-panic, move || {async move {
+				=> @default-panic, async move {
 					part_selection.set_active(None);
 					part_selection.set_sensitive(false);
 					part_selection.remove_all();
 
 					deck.navigate(libhandy::NavigationDirection::Back);
-				}})());
+				}));
 			},
 			/* From the dropdown */
 			"SelectPart" => {if self.song.is_some() {
@@ -990,13 +982,13 @@ impl actix::Handler<woab::Signal> for SongActor {
 
 				let x = event.position().0 / carousel.allocated_width() as f64;
 				if (0.0..0.3).contains(&x) {
-					woab::spawn_outside(clone!(@weak self.previous as previous => @default-panic, move || {async move {
+					woab::spawn_outside(clone!(@weak self.previous as previous => @default-panic, async move {
 						previous.activate(None);
-					}})());
+					}));
 				} else if (0.6..1.0).contains(&x) {
-					woab::spawn_outside(clone!(@weak self.next as next => @default-panic, move || {async move {
+					woab::spawn_outside(clone!(@weak self.next as next => @default-panic, async move {
 						next.activate(None);
-					}})());
+					}));
 				}
 
 				let x = event.position().0 / carousel.allocated_width() as f64;
@@ -1019,11 +1011,11 @@ impl actix::Handler<woab::Signal> for SongActor {
 					use actix::{WrapFuture, ActorFutureExt, AsyncContext};
 					let part_selection_changed_signal = self.part_selection_changed_signal.as_ref().unwrap();
 					self.widgets.part_selection.block_signal(part_selection_changed_signal);
-					let fut = clone!(
+					let fut = woab::outside(clone!(
 						@weak self.widgets.part_selection as part_selection
-					=> @default-panic, move || woab::outside(async move {
+					=> @default-panic, async move {
 						part_selection.set_active_id(Some(&active_id));
-					}))();
+					}));
 					let fut = fut
 					.into_actor(self)
 					.map(move |result, this: &mut Self, _ctx| {

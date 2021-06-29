@@ -38,7 +38,7 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 			song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))))
 				.context("Failed to load pages")?
 			=> Into::into
-			=> page_image::concat_files
+			=> image_util::concat_files
 		)
 		.context("Internal error")?;
 		std::fs::write(&annotations_background_file, &background_pdf)

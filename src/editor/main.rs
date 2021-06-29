@@ -290,7 +290,7 @@ impl AppActor {
 							let extension =
 								path.as_path().extension().and_then(std::ffi::OsStr::to_str);
 							let pages = if let Some("pdf") = extension {
-								page_image::explode_pdf_full(&raw, |raw, page| {
+								image_util::explode_pdf_full(&raw, |raw, page| {
 									RawPageImage::Vector { page, raw }
 								})
 								.unwrap()
@@ -395,11 +395,11 @@ impl AppActor {
 		}
 		self.file.remove_page(page);
 
-		clone!(@strong self.widgets as widgets => move || woab::spawn_outside(async move {
+		woab::spawn_outside(clone!(@strong self.widgets as widgets => async move {
 			widgets.pages_preview_data.remove(
 				&widgets.pages_preview_data.iter(&gtk::TreePath::from_indicesv(&[*page as i32])).unwrap()
 			);
-		}))();
+		}));
 	}
 
 	fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
@@ -658,7 +658,7 @@ impl AppActor {
 
 		/* In Swing/JavaFX, "active"=>"selected", "sensitive"=>"enabled"/"not disabled" */
 
-		let fut = clone!(@strong self.widgets as widgets => move || woab::outside(async move {
+		let fut = woab::outside(clone!(@strong self.widgets as widgets => async move {
 			/* Disable the check box for the first item (it's force selected there) */
 			let piece_start_sensitive = index.map(|i| i > 0).unwrap_or(false);
 			widgets.piece_start.set_sensitive(piece_start_sensitive);
@@ -676,9 +676,9 @@ impl AppActor {
 			widgets.section_repetition.set_active(section_has_repetition);
 			widgets.section_end.set_sensitive(has_section_start);
 			widgets.section_end.set_active(has_section_end);
-		}))();
-		let fut = fut.into_actor(self);
-		let fut = fut.map(move |result, this: &mut Self, _ctx| {
+		}))
+		.into_actor(self)
+		.map(move |result, this: &mut Self, _ctx| {
 			result.unwrap();
 			this.selected_staff = selected_staff_backup;
 		});

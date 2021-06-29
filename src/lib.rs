@@ -116,7 +116,7 @@ macro_rules! signal {
 pub mod collection;
 pub mod layout;
 pub mod library;
-pub mod page_image;
+pub mod image_util;
 #[cfg(feature = "editor")]
 pub mod recognition;
 pub mod unsafe_force;
@@ -126,7 +126,7 @@ pub mod cair {
 	pub type Result<T> = std::result::Result<T, gtk::cairo::Error>;
 }
 
-pub use page_image::{PageImage, PageImageBox, RawPageImage};
+pub use image_util::{PageImage, PageImageBox, RawPageImage};
 
 pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {
 	let progress = gtk::Dialog::new();

@@ -173,8 +173,7 @@ pub fn layout_fixed_scale(
 		page.into_iter()
 			.map(|(column_start, column_end, column_width)| {
 				let mut column = Vec::new();
-				let staves: &TiSlice<_, Staff> =
-					&song.staves[column_start.into()..column_end.into()];
+				let staves: &TiSlice<_, Staff> = &song.staves[column_start..column_end];
 
 				let staves_total_height = staves
 					.iter()
@@ -288,7 +287,7 @@ pub fn layout_fixed_width(
 		.map(|v| (v[0], v[1]))
 		.map(|(chunk_start, chunk_end)| {
 			let mut column = Vec::new();
-			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start.into()..chunk_end.into()];
+			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start..chunk_end];
 			if staves.len() == 1 {
 				let staff = &staves[StaffIndex(0)];
 				let staff_height = column_width * staff.aspect_ratio();
@@ -388,7 +387,7 @@ pub fn layout_fixed_height(
 		.windows(2)
 		.map(|v| (v[0], v[1]))
 		.map(|(chunk_start, chunk_end)| {
-			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start.into()..chunk_end.into()];
+			let staves: &TiSlice<_, Staff> = &song.staves[chunk_start..chunk_end];
 			let max_width: f64 = staves
 				.iter()
 				.map(|staff| r64(row_height / staff.aspect_ratio()))

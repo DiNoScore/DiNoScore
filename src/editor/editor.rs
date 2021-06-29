@@ -40,25 +40,29 @@ impl actix::Actor for EditorActor {
 			/* DrawingArea rendering */
 			let addr = ctx.address();
 			editor.connect_draw(clone!(@weak self.editor_content as editor_content => @default-panic, move |editor, context| {
-				let (surface, _is_valid) = &mut *editor_content.borrow_mut();
+				catch!({
+					let (surface, _is_valid) = &mut *editor_content.borrow_mut();
 
-				let (source_width, source_height) = (surface.width(), surface.height());
-				let (target_width, target_height) = (editor.allocated_width(), editor.allocated_height());
-				if (target_width, target_height) == (source_width, source_height) {
-					context.set_source_surface(&surface, 0.0, 0.0);
-					context.paint();
-				} else {
-					// TODO replace with optional
-					if source_width > 0 && source_height > 0 {
-						context.scale(target_width as f64 / source_width as f64, target_height as f64 / source_height as f64);
-						context.set_source_surface(&surface, 0.0, 0.0);
-						context.paint();
+					let (source_width, source_height) = (surface.width(), surface.height());
+					let (target_width, target_height) = (editor.allocated_width(), editor.allocated_height());
+					if (target_width, target_height) == (source_width, source_height) {
+						context.set_source_surface(&surface, 0.0, 0.0)?;
+						context.paint()?;
+					} else {
+						// TODO replace with optional
+						if source_width > 0 && source_height > 0 {
+							context.scale(target_width as f64 / source_width as f64, target_height as f64 / source_height as f64);
+							context.set_source_surface(&surface, 0.0, 0.0)?;
+							context.paint()?;
+						}
+
+						log::debug!("Queuing surface redraw");
+						// tx.clone().try_send(EditorSignal::Redraw).unwrap();
+						addr.try_send(EditorSignal2::Redraw).unwrap();
 					}
-
-					log::debug!("Queuing surface redraw");
-					// tx.clone().try_send(EditorSignal::Redraw).unwrap();
-					addr.try_send(EditorSignal2::Redraw).unwrap();
-				}
+					cair::Result::Ok(())
+				})
+				.expect("Rendering failed");
 				gtk::Inhibit::default()
 			}));
 		}
@@ -96,7 +100,7 @@ impl actix::Handler<woab::Signal> for EditorActor {
 				}
 				if selected_staff != self.selected_staff {
 					self.selected_staff = selected_staff;
-					self.render_page();
+					self.render_page().unwrap();
 					self.app.try_send(StaffSelected(selected_staff)).unwrap();
 				}
 			},
@@ -105,7 +109,7 @@ impl actix::Handler<woab::Signal> for EditorActor {
 				if event.keyval() == gdk::keys::constants::Delete
 				|| event.keyval() == gdk::keys::constants::KP_Delete {
 					self.selected_staff = None;
-					self.render_page();
+					self.render_page().unwrap();
 					self.app.try_send(DeleteSelectedStaff).unwrap();
 				}
 			},
@@ -125,7 +129,7 @@ pub enum EditorSignal2 {
 impl actix::Handler<EditorSignal2> for EditorActor {
 	type Result = ();
 
-	fn handle(&mut self, signal: EditorSignal2, ctx: &mut Self::Context) {
+	fn handle(&mut self, signal: EditorSignal2, _ctx: &mut Self::Context) {
 		match signal {
 			EditorSignal2::Redraw => self.render_page(),
 			EditorSignal2::LoadPage(current_page) => {
@@ -181,20 +185,20 @@ impl EditorActor {
 
 		let scale = editor.allocated_height() as f64 / page.get_height();
 		context.scale(scale, scale);
-		page.render(&context);
+		page.render(&context)?;
 
-		context.save();
+		context.save()?;
 		context.set_source_rgba(0.1, 0.2, 0.4, 0.3);
 		for (i, staff) in bars.iter().enumerate() {
 			if Some(i) == self.selected_staff {
 				/* Draw focused */
-				context.save();
+				context.save()?;
 
 				/* Main shape */
 				context.set_source_rgba(0.15, 0.3, 0.5, 0.3);
 				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
-				context.fill_preserve();
-				context.stroke();
+				context.fill_preserve()?;
+				context.stroke()?;
 
 				/* White handles on the corners */
 				context.set_source_rgba(0.35, 0.6, 0.8, 1.0);
@@ -231,20 +235,20 @@ impl EditorActor {
 				);
 				context.fill()?;
 
-				context.restore();
+				context.restore()?;
 			} else {
 				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
-				context.fill_preserve();
-				context.stroke();
+				context.fill_preserve()?;
+				context.stroke()?;
 			}
-			context.save();
+			context.save()?;
 			context.set_font_size(25.0);
 			context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
 			context.move_to(staff.left() + 5.0, staff.bottom() - 5.0);
-			context.show_text(&(staff_index_offset + i).to_string());
-			context.restore();
+			context.show_text(&(staff_index_offset + i).to_string())?;
+			context.restore()?;
 		}
-		context.restore();
+		context.restore()?;
 
 		surface.flush();
 		Ok(())
