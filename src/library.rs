@@ -130,22 +130,22 @@ pub struct Library {
 }
 
 impl Library {
-	pub fn load() -> Result<Self, ()> {
+	pub fn load() -> anyhow::Result<Self> {
 		// TODO don't hardcode here
-		let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
-		let songs = collection::load();
-		let mut stats: HashMap<Uuid, LibrarySong> = {
-			match xdg.find_data_file("library.json") {
+		let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
+		let songs = collection::load().context("Failed to load song collection")?;
+		let mut stats: HashMap<Uuid, LibrarySong> = catch!({
+			anyhow::Result::<_>::Ok(match xdg.find_data_file("library.json") {
 				Some(path) => {
-					let stats: LibraryFile =
-						serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+					let stats: LibraryFile = serde_json::from_reader(std::fs::File::open(path)?)?;
 					match stats {
 						LibraryFile::V0 { songs } => songs.into_owned(),
 					}
 				},
 				None => HashMap::new(),
-			}
-		};
+			})
+		})
+		.context("Failed to load statistics database")?;
 		/* Create stats for all new songs */
 		for uuid in songs.keys() {
 			if stats.contains_key(uuid) {

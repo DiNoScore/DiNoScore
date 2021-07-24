@@ -114,9 +114,9 @@ macro_rules! signal {
 }
 
 pub mod collection;
+pub mod image_util;
 pub mod layout;
 pub mod library;
-pub mod image_util;
 #[cfg(feature = "editor")]
 pub mod recognition;
 pub mod unsafe_force;

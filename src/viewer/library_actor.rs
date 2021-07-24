@@ -12,11 +12,12 @@ use super::song_actor::{LoadSong, SongActor};
 pub fn create(
 	builder: &woab::BuilderConnector,
 	song_actor: actix::Addr<SongActor>,
+	application: gtk::Application,
 	library: library::Library,
 ) -> actix::Addr<LibraryActor> {
 	LibraryActor::create(move |_ctx| LibraryActor {
 		widgets: builder.widgets().unwrap(),
-		application: todo!(),
+		application,
 		library: Rc::new(RefCell::new(library)),
 		song_actor,
 		reference_time: std::time::SystemTime::now(),
@@ -25,18 +26,18 @@ pub fn create(
 }
 
 pub struct LibraryActor {
-	pub widgets: LibraryWidgets,
-	pub application: gtk::Application,
-	pub library: Rc<RefCell<library::Library>>,
-	pub song_actor: actix::Addr<SongActor>,
+	widgets: LibraryWidgets,
+	application: gtk::Application,
+	library: Rc<RefCell<library::Library>>,
+	song_actor: actix::Addr<SongActor>,
 	/**
 	 * Our scores decay over time, so we need to fix a point in time for the values to be comparable.
 	 * This weakly depends on the assumption that the application won't be running for months, and that
 	 * no time traveling or clock fuckery will occur in that order of magnitude.
 	 */
-	pub reference_time: std::time::SystemTime,
+	reference_time: std::time::SystemTime,
 	/** This is a predicate: true = show that song */
-	pub song_filter: Box<dyn Fn(&collection::SongMeta) -> bool>,
+	song_filter: Box<dyn Fn(&collection::SongMeta) -> bool>,
 }
 
 #[derive(woab::WidgetsFromBuilder)]

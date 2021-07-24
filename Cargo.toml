@@ -38,7 +38,7 @@ gdk-pixbuf = { version = "*", features = [ "v2_36" ]}#, git = "https://github.co
 poppler = { git = "https://github.com/piegamesde/poppler-rs" }
 # libhandy = { git = "https://gitlab.gnome.org/World/Rust/libhandy-rs", features = ["v1_2"] }
 libhandy = { version = "0.8", features = ["v1_2"] }
-woab = { git = "https://github.com/idanarye/woab.git" }
+woab = { git = "https://github.com/idanarye/woab.git", branch = "allow-checking-if-runtime-is-running" }
 
 itertools = "0.10.0"
 maplit = "1.0.2"
@@ -59,7 +59,7 @@ xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
 tokio = "1.6.1"
 lru-disk-cache = "0.4.1"
-actix = { version = "0.11.1" }
+actix = { version = "0.12" }
 # tokio = "1.4"
 fragile = "1.0.0"
 maybe-owned = { version = "0.3.4", features = ["serde"] }
@@ -73,6 +73,10 @@ atomicwrites = "0.3.0"
 flate2 = "1.0.20"
 pipeline = { git = "https://github.com/piegamesde/pipeline.rs" }
 typed-index-collections = { version = "3.0.3", features = [ "serde-std" ] }
+log-panics = { version = "2.0.0", features = [ "with-backtrace" ] }
+# fern = { version = "0.6.0", features = [ "date-based" ] }
+fern = { git = "https://github.com/piegamesde/fern", features = [ "date-based", "colored" ]}
+exec = "0.3.1"
 
 # Editor dependencies
 tensorflow = { version = "0.16.0", optional = true }
@@ -81,6 +85,9 @@ blocking = { version = "1.0.2", optional = true }
 
 # CLI dependencies
 clap = { version = "2.33.3", optional = true }
+git-version = "0.3.4"
+chrono = "0.4.19"
+backtrace = "0.3.60"
 
 [features]
 default = ["viewer", "editor", "cli"]

@@ -105,7 +105,7 @@ impl EditorSongFile {
 		);
 		self.pages[*page_index..]
 			.iter_mut()
-			.flat_map(|(page, staves)| staves)
+			.flat_map(|(_page, staves)| staves)
 			.for_each(|staff| {
 				staff.page -= PageIndex(1);
 			});
@@ -895,7 +895,7 @@ fn main() -> anyhow::Result<()> {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
-		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop(); // <===== IMPORTANT!!!
 		log::info!("Woab started");
 	});
 

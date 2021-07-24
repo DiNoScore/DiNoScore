@@ -11,13 +11,16 @@ use libhandy::traits::HeaderBarExt;
 use std::sync::mpsc::*;
 
 pub fn create(
+	context: actix::Context<SongActor>,
 	builder: &woab::BuilderConnector,
 	application: gtk::Application,
 	library_actor: actix::Addr<library_actor::LibraryActor>,
 ) -> actix::Addr<SongActor> {
-	SongActor::create(move |_ctx| {
-		SongActor::new(builder.widgets().unwrap(), application, library_actor)
-	})
+	context.run(SongActor::new(
+		builder.widgets().unwrap(),
+		application,
+		library_actor,
+	))
 }
 
 struct SongRenderer {
@@ -501,7 +504,7 @@ impl actix::Actor for SongActor {
 }
 
 impl SongActor {
-	pub fn new(
+	fn new(
 		widgets: SongWidgets,
 		application: gtk::Application,
 		library_actor: actix::Addr<LibraryActor>,

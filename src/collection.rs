@@ -16,23 +16,23 @@ use std::{
 use typed_index_collections::TiVec;
 use uuid::Uuid;
 
-pub fn load() -> HashMap<Uuid, SongFile> {
+pub fn load() -> anyhow::Result<HashMap<Uuid, SongFile>> {
 	use itertools::Itertools;
 
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
+	// TODO don't hardcode here
+	let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
 	xdg.find_data_files("songs")
 		.flat_map(|dir| walkdir::WalkDir::new(dir).follow_links(true))
 		.filter_ok(|entry| entry.file_type().is_file())
 		.map_ok(walkdir::DirEntry::into_path)
 		.filter_ok(|path| path.extension() == Some(std::ffi::OsStr::new("zip")))
-		.map_ok(|path| {
+		.map(|path| {
+			let path = path?;
 			let song = SongFile::new(&path)
-				.context(anyhow::format_err!("Could not load '{}'", path.display()))
-				.unwrap();
-			(*song.uuid(), song)
+				.context(anyhow::format_err!("Could not load '{}'", path.display()))?;
+			Ok((*song.uuid(), song))
 		})
-		.collect::<Result<_, walkdir::Error>>()
-		.unwrap()
+		.collect()
 }
 
 #[derive(Debug)]
@@ -267,12 +267,10 @@ impl SongFile {
 
 		log::info!("Saving sheets");
 		for (index, page) in pages.enumerate() {
-			writer
-				.start_file(
-					format!("page_{}.{}", index, page.extension()),
-					zip::write::FileOptions::default(),
-				)
-				.unwrap();
+			writer.start_file(
+				format!("page_{}.{}", index, page.extension()),
+				zip::write::FileOptions::default(),
+			)?;
 			use std::io::Write;
 			writer.write_all(page.raw())?;
 		}
@@ -306,7 +304,7 @@ impl SongFile {
 			return Ok(None);
 		};
 
-		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100).unwrap();
+		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100)?;
 		let context = cairo::Context::new(&surface)?;
 
 		let scale = surface.width() as f64 / staff.width();

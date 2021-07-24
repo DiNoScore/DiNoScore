@@ -17,6 +17,7 @@ mod mouse_actor;
 mod pedal;
 mod song_actor;
 mod xournal;
+mod crash_n_log;
 
 use fullscreen_actor::FullscreenActor;
 use library_actor::LibraryActor;
@@ -108,18 +109,18 @@ impl actix::Handler<woab::Signal> for AppActor {
 	}
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn main() -> anyhow::Result<()> {
-	simple_logger::SimpleLogger::new()
-		.with_level(log::LevelFilter::Trace)
-		.init()
-		.context("Failed to initialize logger")?;
-	let orig_hook = std::panic::take_hook();
-	std::panic::set_hook(Box::new(move |panic_info| {
-		// invoke the default handler and exit the process
-		orig_hook(panic_info);
-		std::process::exit(1);
-	}));
+	{ /* If we get called with an argument, show a crash dialog and exit */
+		let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+		/* As usual, ignore arg0 */
+		if args.len() > 1 {
+			crash_n_log::show_crash_dialog(args);
+			/* Never returns */
+		}
+	}
+
+	crash_n_log::init()?;
+	log::debug!("DiNoScore version {}.", git_version::git_version!());
 
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.viewer"),
@@ -131,7 +132,7 @@ fn main() -> anyhow::Result<()> {
 		let _ = gio::ThemedIcon::static_type();
 		libhandy::init();
 
-		woab::run_actix_inside_gtk_event_loop().unwrap(); // <===== IMPORTANT!!!
+		woab::run_actix_inside_gtk_event_loop();
 		log::info!("Woab started");
 	});
 
@@ -143,62 +144,54 @@ fn main() -> anyhow::Result<()> {
 			use actix::AsyncContext;
 
 			let fullscreen_actor = fullscreen_actor::create(&builder, application.clone());
-			let library = library::Library::load().unwrap();
 
 			let hide_mouse_actor = mouse_actor::create(&builder);
 
-			/* TODO clean this up once we figured out a less messy way to initialize
-			 * cross-dependent actors. Don't forget to make the unused types private again
-			 * after cleanup.
-			 */
-			song_actor::SongActor::create(move |ctx1| {
-				let song_actor = ctx1.address();
-				let library_actor = {
-					let builder = &builder;
-					let song_actor = song_actor.clone();
-					let application = application.clone();
-					LibraryActor::create(move |_ctx| LibraryActor {
-						widgets: builder.widgets().unwrap(),
+			let song_context = actix::Context::new();
+			let song_actor = song_context.address();
+
+			let library = library::Library::load().unwrap();
+			let library_actor =
+				library_actor::create(&builder, song_actor, application.clone(), library);
+
+			let song_actor = song_actor::create(
+				song_context,
+				&builder,
+				application.clone(),
+				library_actor.clone(),
+			);
+
+			let widgets: AppWidgets = builder.widgets().unwrap();
+			let app_actor = AppActor::create(
+				clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
+					widgets.window.set_application(Some(&application));
+					AppActor {
+						widgets,
 						application,
-						library: Rc::new(RefCell::new(library)),
 						song_actor,
-						reference_time: std::time::SystemTime::now(),
-						song_filter: Box::new(|_| true),
-					})
-				};
+					}
+				}),
+			);
 
-				let widgets: AppWidgets = builder.widgets().unwrap();
-				let app_actor = AppActor::create(
-					clone!(@weak application, @strong song_actor => @default-panic, move |_ctx| {
-						widgets.window.set_application(Some(&application));
-						AppActor {
-							widgets,
-							application,
-							song_actor,
-						}
-					}),
-				);
-
-				let builder = builder.connect_to(
-					woab::NamespacedSignalRouter::default()
-						.route(song_actor)
-						.route(library_actor.clone())
-						.route(app_actor)
-						.route(fullscreen_actor)
-						.route(hide_mouse_actor),
-				);
-
-				SongActor::new(
-					builder.widgets().unwrap(),
-					application.clone(),
-					library_actor,
-				)
-			});
+			builder.connect_to(
+				woab::NamespacedSignalRouter::default()
+					.route(song_actor)
+					.route(library_actor)
+					.route(app_actor)
+					.route(fullscreen_actor)
+					.route(hide_mouse_actor),
+			);
 		});
 		log::info!("Application started");
 	});
 
-	application.run();
-	log::info!("Thanks for using DiNoScore.");
+	application.run_with_args(&[] as &[&str]);
+	log::info!("Shuttign down …");
+	if let Err(e) = woab::close_actix_runtime() {
+		log::warn!("Failed to shut down WoAB runtime, {}", e);
+	}
+	log::info!("Thank you for using DiNoScore.");
+	log::logger().flush();
+
 	Ok(())
 }
