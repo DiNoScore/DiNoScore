@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
 	}
 
 	crash_n_log::init()?;
-	log::debug!("DiNoScore version {}.", git_version::git_version!());
+	log::debug!("DiNoScore version {}.", git_version::git_version!(fallback = "unknown"));
 
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.viewer"),

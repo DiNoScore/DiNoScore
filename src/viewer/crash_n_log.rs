@@ -135,7 +135,7 @@ fn write_crash_message(info: &std::panic::PanicInfo) -> anyhow::Result<std::path
 	writeln!(&mut out, "```\n")?;
 
 	writeln!(&mut out, "- DiNoScore version: `{}`{}",
-		git_version::git_version!(),
+		git_version::git_version!(fallback = "unknown"),
 		if cfg!(debug_assertions) {", debug build"} else {""}
 	)?;
 	writeln!(&mut out, "- Operating system: `{}`", std::env::consts::OS)?;
