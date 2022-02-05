@@ -1,25 +1,6 @@
 use super::*;
 use itertools::Itertools;
-
-const PB_PATH: &str = "./res/2019-05-16_faster-rcnn-inception-resnet-v2.pb";
-
-#[cfg(feature = "editor")]
-static DETECTION_GRAPH: once_cell::sync::Lazy<tensorflow::Graph> =
-	once_cell::sync::Lazy::new(|| {
-		use std::io::Read;
-		use tensorflow as tf;
-
-		let mut detection_graph = tf::Graph::new();
-		let mut proto = Vec::new();
-		std::fs::File::open(PB_PATH)
-			.unwrap()
-			.read_to_end(&mut proto)
-			.unwrap();
-		detection_graph
-			.import_graph_def(&proto, &tf::ImportGraphDefOptions::new())
-			.unwrap();
-		detection_graph
-	});
+use gtk::{cairo, gdk, gio, glib, prelude::*};
 
 #[derive(Debug, Clone)]
 pub struct RelativeStaff {
@@ -44,8 +25,27 @@ impl RelativeStaff {
 	}
 }
 
+/** Get only the staff bounding boxes, without the surrounding notes */
 #[cfg(feature = "editor")]
-pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
+async fn online_inference(image: &gdk_pixbuf::Pixbuf) -> anyhow::Result<Vec<RelativeStaff>> {
+	let image = image.save_to_bufferv("png", &[]).unwrap();
+	// let image = &include_bytes!("/home/piegames/Documents/git/OMR-MeasureRecognition/example-images/p001.png")[..];
+	let response: serde_json::Value = dbg!(reqwest::Client::new()
+		.post("https://inference.piegames.de/dinoscore/upload"
+/*"http://localhost:8000/upload"*/)
+		.multipart(reqwest::multipart::Form::new()
+			.part("file", reqwest::multipart::Part::bytes(image).file_name("file"))
+		)
+		.send().await?)
+		.error_for_status()?
+		.json().await?;
+	dbg!(&response);
+	todo!()
+}
+
+/** The code is modeled after a paper from TODO */
+#[cfg(feature = "editor")]
+pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	assert!(!image.has_alpha());
 	assert!(image.n_channels() == 3);
 	assert!(image.colorspace() == gdk_pixbuf::Colorspace::Rgb);
@@ -54,185 +54,66 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	let image_height = image.get_height();
 	let image_width = image.get_width();
 
-	let (num_detections, detection_boxes, detection_scores) = {
-		use tensorflow as tf;
+	let raw_staves = online_inference(image).await;
 
-		log::trace!("A");
-		let detection_graph = &DETECTION_GRAPH;
+	// TODO maybe add imageproc dependency? Would it actually help?
+	// https://docs.rs/imageproc/latest/imageproc/
+	// https://docs.rs/raster/latest/raster/ looks nice too
 
-		let image_tensor = tf::Tensor::new(&[1, image_height as u64, image_width as u64, 3])
-			.with_values(&image_bytes)
-			.unwrap();
-		log::trace!("A2");
+	todo!();
 
-		let mut session = tf::Session::new(&tf::SessionOptions::new(), &detection_graph).unwrap();
-		log::trace!("A3");
-		let mut session_args = tf::SessionRunArgs::new();
-		log::trace!("A4");
-		session_args.add_feed::<u8>(
-			&detection_graph
-				.operation_by_name("image_tensor")
-				.unwrap()
-				.unwrap(),
-			0,
-			&image_tensor,
-		);
-		log::trace!("B");
+	// /* Post processing */
 
-		let num_detections = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("num_detections")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_boxes = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_boxes")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_scores = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_scores")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_classes = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_classes")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
+	// /* Overlapping is bad */
+	// (0..staves.len()).collect::<Vec<_>>()
+	// 	.windows(2)
+	// 	.for_each(|idx| {
+	// 		macro_rules! staff_a (() => {staves[idx[0]]});
+	// 		macro_rules! staff_b (() => {staves[idx[1]]});
 
-		log::trace!("C");
-		session.run(&mut session_args).unwrap();
-		log::trace!("D");
+	// 		if staff_a!().bottom > staff_b!().top
+	// 			&& /* 90% horizontal overlap */
+	// 			(f64::min(staff_a!().right, staff_b!().right) - f64::max(staff_a!().left, staff_b!().left)) / (f64::max(staff_a!().right, staff_b!().right) - f64::min(staff_a!().left, staff_b!().left)) > 0.9
+	// 		{
+	// 			let center = (staff_a!().bottom + staff_b!().top) / 2.0;
+	// 			staff_a!().bottom = center;
+	// 			staff_b!().top = center;
+	// 		}
+	// 	});
 
-		/* We could probably extract better results by making more use of all that information */
-		let num_detections = session_args.fetch::<f32>(num_detections).unwrap();
-		let detection_boxes = session_args.fetch::<f32>(detection_boxes).unwrap();
-		let detection_scores = session_args.fetch::<f32>(detection_scores).unwrap();
-		let _detection_classes = session_args.fetch::<f32>(detection_classes).unwrap();
+	// /* Fixup fuckups */
+	// for staff in &mut staves {
+	// 	if staff.top > staff.bottom {
+	// 		std::mem::swap(&mut staff.top, &mut staff.bottom);
+	// 	}
+	// 	if staff.left > staff.right {
+	// 		std::mem::swap(&mut staff.left, &mut staff.right);
+	// 	}
+	// }
 
-		log::trace!("E");
-		session.close().unwrap();
-		log::trace!("F");
+	// log::debug!("Done");
+	// staves
+	todo!()
+}
 
-		(num_detections, detection_boxes, detection_scores)
-	};
-	log::trace!("Checkpoint");
+#[cfg(test)]
+mod test {
+	use super::*;
 
-	let mut bars = Vec::<RelativeStaff>::new();
-
-	for i in 0..(num_detections[0] as usize) {
-		if detection_scores[i] > 0.6 {
-			let detected = &detection_boxes[i * 4..i * 4 + 4];
-			let y1 = detected[0] * image.get_height() as f32;
-			let x1 = detected[1] * image.get_width() as f32;
-			let y2 = detected[2] * image.get_height() as f32;
-			let x2 = detected[3] * image.get_width() as f32;
-
-			bars.push(RelativeStaff {
-				left: x1 as f64,
-				top: y1 as f64,
-				bottom: y2 as f64,
-				right: x2 as f64,
-			});
-		}
+	#[tokio::test]
+	async fn test_inference_api() -> anyhow::Result<()> {
+		let bytes = include_bytes!("/home/piegames/Documents/git/OMR-MeasureRecognition/example-images/p001.png");
+		let image = gdk_pixbuf::Pixbuf::from_stream(
+			&gio::MemoryInputStream::from_bytes(&glib::Bytes::from(bytes as &[u8])),
+			Option::<&gio::Cancellable>::None,
+		)?;
+		let width = 1800;
+		let image = image.scale_simple(
+			width,
+			(width as f64 * image.get_height() / image.get_width()) as i32,
+			gdk_pixbuf::InterpType::Bilinear,
+		).unwrap();
+		online_inference(&image).await?;
+		Ok(())
 	}
-
-	let scale_x = 1.0 / image.get_width() as f64;
-	let scale_y = 1.0 / image.get_height() as f64;
-
-	for bar in &mut bars {
-		bar.left *= scale_x;
-		bar.top *= scale_y;
-		bar.right *= scale_x;
-		bar.bottom *= scale_y;
-	}
-
-	/* Set this to true to disable post-processing for debugging purposes */
-	if false {
-		return bars;
-	}
-
-	/* Group them by staff */
-	let mut bars: Vec<(usize, _)> = bars.into_iter().enumerate().collect::<Vec<_>>();
-
-	while {
-		/* do */
-		let mut changed = false;
-		for i in 0..bars.len() {
-			for j in 0..bars.len() {
-				if i == j {
-					continue;
-				}
-				// This is safe thanks to the index check above
-				let bar1 = &unsafe { &*(&bars as *const Vec<(usize, RelativeStaff)>) }[i];
-				let bar2 = &mut unsafe { &mut *(&mut bars as *mut Vec<(usize, RelativeStaff)>) }[j];
-				let c1 = (bar1.1.top + bar1.1.bottom) / 2.0;
-				let c2 = (bar2.1.top + bar2.1.bottom) / 2.0;
-				if c1 > bar2.1.top
-					&& c1 < bar2.1.bottom
-					&& c2 > bar1.1.top && c2 < bar1.1.bottom
-					&& bar1.0 != bar2.0
-				{
-					changed = true;
-					bar2.0 = bar1.0;
-				}
-			}
-		}
-		/* while */
-		changed
-	} {}
-
-	let staves = bars.into_iter().into_group_map();
-
-	/* Merge them */
-	let mut staves: Vec<RelativeStaff> = staves
-		.into_iter()
-		.filter_map(|staves| {
-			staves.1.into_iter().reduce(|a, b| RelativeStaff {
-				left: a.left.min(b.left),
-				right: a.right.max(b.right),
-				top: a.top.min(b.top),
-				bottom: a.bottom.max(b.bottom),
-			})
-		})
-		.collect();
-	staves.sort_by(|a, b| a.top.partial_cmp(&b.top).unwrap());
-
-	/* Overlapping is bad */
-	(0..staves.len()).collect::<Vec<_>>()
-		.windows(2)
-		.for_each(|idx| {
-			macro_rules! staff_a (() => {staves[idx[0]]});
-			macro_rules! staff_b (() => {staves[idx[1]]});
-
-			if staff_a!().bottom > staff_b!().top
-				&& /* 90% horizontal overlap */
-				(f64::min(staff_a!().right, staff_b!().right) - f64::max(staff_a!().left, staff_b!().left)) / (f64::max(staff_a!().right, staff_b!().right) - f64::min(staff_a!().left, staff_b!().left)) > 0.9
-			{
-				let center = (staff_a!().bottom + staff_b!().top) / 2.0;
-				staff_a!().bottom = center;
-				staff_b!().top = center;
-			}
-		});
-
-	/* Fixup fuckups */
-	for staff in &mut staves {
-		if staff.top > staff.bottom {
-			std::mem::swap(&mut staff.top, &mut staff.bottom);
-		}
-		if staff.left > staff.right {
-			std::mem::swap(&mut staff.left, &mut staff.right);
-		}
-	}
-
-	log::debug!("Done");
-	staves
 }

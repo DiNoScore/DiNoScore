@@ -470,12 +470,12 @@ impl AppActor {
 				let (page, bars_inner) = blocking::unblock(move || {
 					log::info!("Autodetecting {} ({}/{})", page, i, total_work);
 					let page = PageIndex(page);
-					let bars_inner: Vec<Staff> =
-						recognition::recognize_staves(&unsafe { data.unwrap() })
-							.iter()
-							.cloned()
-							.map(|staff| staff.into_staff(page, width, height))
-							.collect();
+					let bars_inner: Vec<Staff> = todo!();
+					// 	recognition::recognize_staves(Some(&unsafe { data.unwrap() })).await
+					// 		.iter()
+					// 		.cloned()
+					// 		.map(|staff| staff.into_staff(page, width, height))
+					// 		.collect();
 					(page, bars_inner)
 				})
 				.await;
@@ -885,6 +885,10 @@ fn main() -> anyhow::Result<()> {
 		orig_hook(panic_info);
 		std::process::exit(1);
 	}));
+
+	// futures::executor::block_on(async {
+		
+	// });
 
 	let application = gtk::Application::new(
 		Some("de.piegames.dinoscore.editor"),
