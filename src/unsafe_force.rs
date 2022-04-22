@@ -1,5 +1,7 @@
+#[derive(Debug)]
 pub struct Send<T>(T);
 
+#[allow(clippy::missing_safety_doc)]
 impl<T> Send<T> {
 	pub unsafe fn new(t: T) -> Self {
 		Send(t)

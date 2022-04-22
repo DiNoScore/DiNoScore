@@ -1,7 +1,12 @@
 //! Integration with Xournal++ for annotations
+//!
+//! Automatically launches Xournal++ to annotate the score. On save, the changes
+//! are incorporated back into our format.
+
 use super::*;
 use anyhow::Context;
 use gtk::glib;
+use lenient_version::Version;
 use std::{io::Write, process::Command};
 
 pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Result<()> {
@@ -15,12 +20,17 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 			.output()?;
 		anyhow::ensure!(version.status.success());
 		let version = String::from_utf8(version.stdout)?;
-		let version = version
+		let version: String = version
 			.lines()
 			.next()
+			.and_then(|line| line.strip_prefix("Xournal++ ").map(String::from))
 			.ok_or_else(|| anyhow::format_err!("`xournalpp --version` somehow gave weird input, expecting at least one line of text."))?;
-		// TODO
-		anyhow::ensure!(version == "Xournal++ 1.1.0+dev", "A Xournal++ version >= 1.1.0+dev is required");
+		let version = lenient_semver_parser::parse::<Version>(&version)
+			.map_err(|err| err.owned())?;
+
+		#[allow(non_snake_case)]
+		let MINIMUM_VERSION = lenient_semver_parser::parse::<Version>("1.1.0").unwrap();
+		anyhow::ensure!(version >= MINIMUM_VERSION, "A Xournal++ version >= 1.1.0 is required");
 		Ok(())
 	}).context("Failed to check Xournal++ version")?;
 
@@ -54,7 +64,7 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 			let xopp = std::fs::File::create(&annotations_file)?;
 			let mut xopp = flate2::write::GzEncoder::new(xopp, Default::default());
 			let pdf =
-				poppler::PopplerDocument::from_bytes(glib::Bytes::from_owned(background_pdf), "")?;
+				poppler::Document::from_bytes(&glib::Bytes::from_owned(background_pdf), None)?;
 
 			writeln!(
 				xopp,

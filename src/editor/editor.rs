@@ -1,256 +1,176 @@
-use actix::prelude::*;
-use glib::clone;
-use gtk::{cairo, gdk, glib, prelude::*};
+use dinoscore::{collection::*, prelude::*, *};
+use std::collections::BTreeMap;
+use uuid::Uuid;
 
-use std::{cell::RefCell, rc::Rc};
+/// Business logic for the editor
 
-use super::*;
+/**
+ * Representation of a [`collection::SongFile`] together with its
+ * [`SongMeta`](collection::SongMeta) as required by the editor
+ */
+pub struct EditorSongFile {
+	pub pages: Vec<(Rc<RawPageImage>, Vec<Staff>)>,
 
-pub(super) struct EditorActor {
-	widgets: EditorWidgets,
+	pub piece_starts: BTreeMap<StaffIndex, String>,
+	pub section_starts: BTreeMap<StaffIndex, SectionMeta>,
 
-	app: actix::Addr<AppActor>,
-	current_page: Option<(Rc<RawPageImage>, Vec<Staff>, usize)>,
-	selected_staff: Option<usize>,
-	// Internal image cache
-	editor_content: Rc<RefCell<(cairo::ImageSurface, bool)>>,
+	/// A unique identifier for this song that is stable across file modifications
+	song_uuid: Uuid,
+	/* /// Effectively a random string generated on each save. Useful for caching
+	 * version_uuid: Uuid, */
 }
 
-#[derive(woab::WidgetsFromBuilder)]
-pub struct EditorWidgets {
-	editor: gtk::DrawingArea,
+impl Default for EditorSongFile {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
-impl actix::Actor for EditorActor {
-	type Context = actix::Context<Self>;
-
-	fn started(&mut self, ctx: &mut Self::Context) {
-		let editor = &self.widgets.editor;
-		editor.set_focus_on_click(true);
-		editor.set_can_focus(true);
-		editor.add_events(
-			gdk::EventMask::POINTER_MOTION_MASK
-				| gdk::EventMask::BUTTON_PRESS_MASK
-				| gdk::EventMask::BUTTON_RELEASE_MASK
-				| gdk::EventMask::KEY_PRESS_MASK
-				| gdk::EventMask::KEY_RELEASE_MASK,
-		);
-
-		{
-			/* DrawingArea rendering */
-			let addr = ctx.address();
-			editor.connect_draw(clone!(@weak self.editor_content as editor_content => @default-panic, move |editor, context| {
-				catch!({
-					let (surface, _is_valid) = &mut *editor_content.borrow_mut();
-
-					let (source_width, source_height) = (surface.width(), surface.height());
-					let (target_width, target_height) = (editor.allocated_width(), editor.allocated_height());
-					if (target_width, target_height) == (source_width, source_height) {
-						context.set_source_surface(&surface, 0.0, 0.0)?;
-						context.paint()?;
-					} else {
-						// TODO replace with optional
-						if source_width > 0 && source_height > 0 {
-							context.scale(target_width as f64 / source_width as f64, target_height as f64 / source_height as f64);
-							context.set_source_surface(&surface, 0.0, 0.0)?;
-							context.paint()?;
-						}
-
-						log::debug!("Queuing surface redraw");
-						// tx.clone().try_send(EditorSignal::Redraw).unwrap();
-						addr.try_send(EditorSignal2::Redraw).unwrap();
-					}
-					cair::Result::Ok(())
-				})
-				.expect("Rendering failed");
-				gtk::Inhibit::default()
-			}));
+impl EditorSongFile {
+	pub fn new() -> Self {
+		Self {
+			pages: Vec::new(),
+			piece_starts: {
+				let mut map = BTreeMap::new();
+				map.insert(0.into(), "".into());
+				map
+			},
+			section_starts: {
+				let mut map = BTreeMap::new();
+				map.insert(0.into(), SectionMeta::default());
+				map
+			},
+			song_uuid: Uuid::new_v4(),
 		}
 	}
 
-	fn stopped(&mut self, _ctx: &mut Self::Context) {
-		log::debug!("Editor Quit");
+	pub fn get_staves(&self) -> TiVec<StaffIndex, Staff> {
+		self.pages
+			.iter()
+			.enumerate()
+			.flat_map(|(_page_index, page)| page.1.iter())
+			.cloned()
+			.collect()
 	}
-}
 
-impl actix::Handler<woab::Signal> for EditorActor {
-	type Result = woab::SignalResult;
+	pub fn get_pages(&self) -> Vec<Rc<RawPageImage>> {
+		self.pages.iter().map(|(page, _)| page).cloned().collect()
+	}
 
-	fn handle(&mut self, signal: woab::Signal, _ctx: &mut Self::Context) -> woab::SignalResult {
-		log::debug!("Editor signal: {:?}", signal.name());
-		signal!(match (signal) {
-			"button_press" => |editor = gtk::DrawingArea, event = gdk::Event| {
-				let event: gdk::EventButton = event.downcast().unwrap();
-				editor.emit_grab_focus();
+	pub fn count_staves_before(&self, page: PageIndex) -> usize {
+		self.pages[0..*page].iter().map(|p| p.1.len()).sum()
+	}
 
-				let (page, bars, _staves_before) = match &self.current_page {
-					Some(current_page) => current_page,
-					None => return Ok(Some(Inhibit(false))),
-				};
-
-				let scale = editor.allocated_height() as f64 / page.get_height();
-				let x = event.position().0 / scale;
-				let y = event.position().1 / scale;
-				let mut selected_staff = None;
-				for (i, bar) in bars.iter().enumerate() {
-					if x > bar.left() && x < bar.right() && y > bar.top() && y < bar.bottom() {
-						selected_staff = Some(i);
-						break;
-					}
+	fn shift_items(&mut self, threshold: usize, offset: isize) {
+		/* I whish Rust had generic closures or partially applied functions */
+		fn mapper<T: Clone>(
+			threshold: usize,
+			offset: isize,
+		) -> impl Fn((&StaffIndex, &mut T)) -> (StaffIndex, T) {
+			move |(&index, value)| {
+				if *index > threshold {
+					(
+						StaffIndex((*index as isize + offset) as usize),
+						value.clone(),
+					)
+				} else {
+					(index, value.clone())
 				}
-				if selected_staff != self.selected_staff {
-					self.selected_staff = selected_staff;
-					self.render_page().unwrap();
-					self.app.try_send(StaffSelected(selected_staff)).unwrap();
-				}
-			},
-			"key_press" => |_editor = gtk::DrawingArea, event = gdk::Event| {
-				let event: gdk::EventKey = event.downcast().unwrap();
-				if event.keyval() == gdk::keys::constants::Delete
-				|| event.keyval() == gdk::keys::constants::KP_Delete {
-					self.selected_staff = None;
-					self.render_page().unwrap();
-					self.app.try_send(DeleteSelectedStaff).unwrap();
-				}
-			},
-			_ => | | {},
-		});
-		Ok(Some(Inhibit(false)))
-	}
-}
-
-#[derive(actix::Message)]
-#[rtype(result = "()")]
-pub enum EditorSignal2 {
-	Redraw,
-	LoadPage(fragile::Fragile<Option<(Rc<RawPageImage>, Vec<Staff>, usize)>>),
-}
-
-impl actix::Handler<EditorSignal2> for EditorActor {
-	type Result = ();
-
-	fn handle(&mut self, signal: EditorSignal2, _ctx: &mut Self::Context) {
-		match signal {
-			EditorSignal2::Redraw => self.render_page(),
-			EditorSignal2::LoadPage(current_page) => {
-				self.current_page = current_page.into_inner();
-				self.selected_staff = None;
-				self.app.try_send(StaffSelected(None)).unwrap();
-				self.render_page()
-			},
-		}
-		.expect("Failed to render page")
-	}
-}
-
-impl EditorActor {
-	pub fn new(app: actix::Addr<AppActor>, widgets: EditorWidgets) -> Self {
-		EditorActor {
-			widgets,
-			app,
-
-			editor_content: Rc::new(RefCell::new((
-				cairo::ImageSurface::create(cairo::Format::Rgb24, 0, 0).unwrap(),
-				false,
-			))),
-			current_page: None,
-			selected_staff: None,
-		}
-	}
-
-	fn render_page(&self) -> cair::Result<()> {
-		let editor = &self.widgets.editor;
-		editor.queue_draw();
-		let (surface, _is_valid) = &mut *self.editor_content.borrow_mut();
-		*surface = cairo::ImageSurface::create(
-			cairo::Format::Rgb24,
-			editor.allocated_width(),
-			editor.allocated_height(),
-		)
-		.unwrap();
-		let context = cairo::Context::new(&surface)?;
-		context.set_source_rgb(1.0, 1.0, 1.0);
-		context.paint()?;
-
-		let (page, bars, staff_index_offset) = match &self.current_page {
-			Some(selected_page) => selected_page,
-			None => return Ok(()),
-		};
-		log::debug!("Drawing");
-		// let staves_before: usize = self.staves_before;//pages.borrow().pages[0..selection as usize].iter().map(|(p, b)| b.len()).sum();
-		// let page = &self.pages[selected_page.0];
-		// let bars = state.staves;
-		// let bars = &page.1;
-		// let page = &page.0;
-
-		let scale = editor.allocated_height() as f64 / page.get_height();
-		context.scale(scale, scale);
-		page.render(&context)?;
-
-		context.save()?;
-		context.set_source_rgba(0.1, 0.2, 0.4, 0.3);
-		for (i, staff) in bars.iter().enumerate() {
-			if Some(i) == self.selected_staff {
-				/* Draw focused */
-				context.save()?;
-
-				/* Main shape */
-				context.set_source_rgba(0.15, 0.3, 0.5, 0.3);
-				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
-				context.fill_preserve()?;
-				context.stroke()?;
-
-				/* White handles on the corners */
-				context.set_source_rgba(0.35, 0.6, 0.8, 1.0);
-				context.arc(
-					staff.left(),
-					staff.top(),
-					10.0,
-					0.0,
-					2.0 * std::f64::consts::PI,
-				);
-				context.fill()?;
-				context.arc(
-					staff.right(),
-					staff.top(),
-					10.0,
-					0.0,
-					2.0 * std::f64::consts::PI,
-				);
-				context.fill()?;
-				context.arc(
-					staff.left(),
-					staff.bottom(),
-					10.0,
-					0.0,
-					2.0 * std::f64::consts::PI,
-				);
-				context.fill()?;
-				context.arc(
-					staff.right(),
-					staff.bottom(),
-					10.0,
-					0.0,
-					2.0 * std::f64::consts::PI,
-				);
-				context.fill()?;
-
-				context.restore()?;
-			} else {
-				context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
-				context.fill_preserve()?;
-				context.stroke()?;
 			}
-			context.save()?;
-			context.set_font_size(25.0);
-			context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
-			context.move_to(staff.left() + 5.0, staff.bottom() - 5.0);
-			context.show_text(&(staff_index_offset + i).to_string())?;
-			context.restore()?;
 		}
-		context.restore()?;
+		/* TODO replace with `drain_filter` once stabilized */
+		self.piece_starts = self
+			.piece_starts
+			.iter_mut()
+			.map(mapper(threshold, offset))
+			.collect();
+		self.section_starts = self
+			.section_starts
+			.iter_mut()
+			.map(mapper(threshold, offset))
+			.collect();
+	}
 
-		surface.flush();
+	pub fn add_page(&mut self, page: RawPageImage) {
+		self.pages.push((Rc::new(page), vec![]));
+	}
+
+	pub fn remove_page(&mut self, page_index: PageIndex) {
+		let (_page, staves) = self.pages.remove(*page_index);
+		self.shift_items(
+			self.count_staves_before(page_index),
+			-(staves.len() as isize),
+		);
+		self.pages[*page_index..]
+			.iter_mut()
+			.flat_map(|(_page, staves)| staves)
+			.for_each(|staff| {
+				staff.page -= PageIndex(1);
+			});
+	}
+
+	pub fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
+		self.shift_items(
+			self.count_staves_before(page_index) + staves.len(),
+			staves.len() as isize,
+		);
+		self.pages[*page_index].1.extend(staves);
+	}
+
+	/// Insert single staff, maintain y ordering
+	pub fn add_staff(&mut self, page_index: PageIndex, staff: Staff) -> usize {
+		/* Find correct index to insert based on y coordinate */
+		let index = self.pages[*page_index]
+			.1
+			.iter()
+			.enumerate()
+			.find(|(_, staff2)| staff2.start.1 > staff.start.1)
+			.map(|(index, _)| index)
+			.unwrap_or_else(|| self.pages[*page_index].1.len());
+		self.shift_items(self.count_staves_before(page_index) + index, 1);
+		self.pages[*page_index].1.insert(index, staff);
+		index
+	}
+
+	/** The `staff` parameter is relative to the page index */
+	pub fn delete_staff(&mut self, page_index: PageIndex, staff: usize) {
+		self.shift_items(self.count_staves_before(page_index) + staff, -1);
+		self.pages[*page_index].1.remove(staff);
+	}
+
+	/// Move a single staff, update the y ordering
+	pub fn move_staff(&mut self, page_index: PageIndex, staff: usize, dx: f64, dy: f64) -> usize {
+		self.shift_items(self.count_staves_before(page_index) + staff, -1);
+		let mut staff = self.pages[*page_index].1.remove(staff);
+		staff.start.0 += dx;
+		staff.start.1 += dy;
+		staff.end.0 += dx;
+		staff.end.1 += dy;
+		self.add_staff(page_index, staff)
+	}
+
+	pub fn save(&self, file: std::path::PathBuf) -> anyhow::Result<()> {
+		let song = SongMeta {
+			n_pages: self.pages.len(),
+			staves: self.get_staves(),
+			piece_starts: self.piece_starts.clone(),
+			section_starts: self.section_starts.clone(),
+			song_uuid: self.song_uuid,
+			version_uuid: uuid::Uuid::new_v4(),
+			title: None,
+			composer: None,
+		};
+		use std::ops::Deref;
+		let thumbnail =
+			SongFile::generate_thumbnail(&song, self.pages.iter().map(|(page, _)| page.deref()))
+				.expect("Failed to generate thumbnail");
+		SongFile::save(
+			file,
+			song,
+			self.pages.iter().map(|(page, _)| page.deref()),
+			thumbnail,
+			true, // TODO overwrite?!
+		)?;
 		Ok(())
 	}
 }

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk+" version="4.0" />
+
+  <template class="ViewerWindow" parent="AdwApplicationWindow">
+    <property name="focusable">False</property>
+    <property name="default_width">650</property>
+    <property name="default_height">400</property>
+    <property name="title" translatable="yes">DiNoScore</property>
+    <signal name="notify::fullscreened" handler="fullscreen_changed" swapped="true" />
+    <child>
+      <object class="AdwLeaflet" id="deck">
+        <property name="can-unfold">False</property>
+        <!-- <property name="can-swipe-back">False</property>
+        <property name="can-swipe-forward">False</property> -->
+        <property name="transition-type">over</property>
+        <!-- <property name="visible-child">library</property> -->
+        <property name="hexpand">True</property>
+        <property name="vexpand">True</property>
+        <property name="halign">fill</property>
+        <property name="halign">fill</property>
+        <child>
+          <object class="ViewerLibrary" id="library" />
+        </child>
+        <child>
+          <object class="ViewerSong" id="song">
+            <signal name="notify::song-id" handler="update_song_loaded" swapped="true" />
+            <signal name="notify::song-name" handler="update_song_title" swapped="true" />
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+
+  <object class="GtkPopover" id="view_menu_widget">
+    <property name="focusable">False</property>
+    <!-- <property name="relative-to">header_bar</property> -->
+    <property name="position">bottom</property>
+    <child>
+      <object class="GtkBox">
+        <property name="width-request">160</property>
+        <property name="visible">True</property>
+        <property name="focusable">False</property>
+        <!-- <property name="border-width">9</property> -->
+        <property name="orientation">vertical</property>
+        <property name="spacing">3</property>
+        <child>
+        </child>
+      </object>
+    </child>
+  </object>
+
+</interface>

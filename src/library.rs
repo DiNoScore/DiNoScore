@@ -137,7 +137,12 @@ impl Library {
 		let mut stats: HashMap<Uuid, LibrarySong> = catch!({
 			anyhow::Result::<_>::Ok(match xdg.find_data_file("library.json") {
 				Some(path) => {
-					let stats: LibraryFile = serde_json::from_reader(std::fs::File::open(path)?)?;
+					let stats: LibraryFile = pipeline::pipe!(
+						path
+						=> std::fs::File::open(_)?
+						=> std::io::BufReader::new
+						=> serde_json::from_reader(_)?
+					);
 					match stats {
 						LibraryFile::V0 { songs } => songs.into_owned(),
 					}

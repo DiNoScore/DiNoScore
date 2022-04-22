@@ -5,7 +5,13 @@
 use crate::*;
 use anyhow::Context;
 use derive_more::*;
-use gtk::{cairo, gdk, gio, glib, prelude::*};
+
+use adw::prelude::*;
+use gdk::{cairo, gdk_pixbuf};
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
+use gtk4 as gtk;
+use libadwaita as adw;
+
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
 use std::{
@@ -52,7 +58,11 @@ impl SongFile {
 		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path)?)?;
 
 		let (mut index, mut song): (SongMeta, _) = {
-			let index: SongMetaVersioned = serde_json::from_reader(song.by_name("staves.json")?)?;
+			let index: SongMetaVersioned = pipeline::pipe!(
+				song.by_name("staves.json")?
+				=> std::io::BufReader::new
+				=> serde_json::from_reader(_)?
+			);
 			/* Backwards compatibility handling */
 			let index: SongMeta = match index.update() {
 				either::Either::Left(index) => index,
@@ -63,7 +73,7 @@ impl SongFile {
 						std::io::copy(&mut pages, &mut data)?;
 						let data = glib::Bytes::from_owned(data);
 						std::mem::drop(pages);
-						poppler::PopplerDocument::from_bytes(data, "")?
+						poppler::Document::from_bytes(&data, None)?
 					};
 					index.update(&pdf)
 				},
@@ -110,7 +120,7 @@ impl SongFile {
 
 	fn load_sheets_legacy<T>(
 		pages: &mut zip::read::ZipFile<'_>,
-		mapper: impl Fn(Vec<u8>, poppler::PopplerPage) -> T,
+		mapper: impl Fn(Vec<u8>, poppler::Page) -> T,
 	) -> anyhow::Result<TiVec<PageIndex, T>> {
 		log::debug!("Loading legacy sheets");
 		let mut data: Vec<u8> = vec![];
@@ -168,7 +178,7 @@ impl SongFile {
 
 			if file == format!("page_{}.pdf", index) {
 				let pdf =
-					poppler::PopplerDocument::from_bytes(data, "").context("Failed to load PDF")?;
+					poppler::Document::from_bytes(&data, None).context("Failed to load PDF")?;
 				anyhow::ensure!(
 					pdf.n_pages() == 1,
 					"Each PDF file must have exactly one page"
@@ -203,7 +213,7 @@ impl SongFile {
 
 			if file == format!("page_{}.pdf", index) {
 				let pdf =
-					poppler::PopplerDocument::from_bytes(data, "").context("Failed to load PDF")?;
+					poppler::Document::from_bytes(&data, None).context("Failed to load PDF")?;
 				anyhow::ensure!(
 					pdf.n_pages() == 1,
 					"Each PDF file must have exactly one page"
@@ -291,7 +301,7 @@ impl SongFile {
 	pub fn generate_thumbnail<'a>(
 		song: &SongMeta,
 		pages: impl IntoIterator<Item = &'a (impl PageImage + 'a)>,
-	) -> cair::Result<Option<gdk_pixbuf::Pixbuf>> {
+	) -> cairo::Result<Option<gdk_pixbuf::Pixbuf>> {
 		let mut pages = pages.into_iter();
 		let staff = if let Some(staff) = song.staves.first() {
 			staff
@@ -400,7 +410,8 @@ impl SongMeta {
 		sections
 	}
 
-	/** Convert absolute staff numbers into a (page, staff) pair. Starting to count at 0. */
+	/// Convert absolute staff numbers into a (page, staff) pair.
+	/// Page indices are relative to the current piece's start. Indices start at 0.
 	pub fn page_of_piece(&self, index: StaffIndex) -> (PageIndex, StaffIndex) {
 		let piece_start = *self.piece_starts.range(..=&index).next_back().unwrap().0;
 		let page = self.staves[index].page - self.staves[piece_start].page;
@@ -453,7 +464,7 @@ impl Serialize for SongMeta {
 	where
 		S: Serializer,
 	{
-		SongMeta::serialize(&self, serializer)
+		SongMeta::serialize(self, serializer)
 	}
 }
 
@@ -519,13 +530,13 @@ struct SongMetaV0 {
 }
 
 trait UpdateSongMeta {
-	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta;
+	fn update(self, pdf: &poppler::Document) -> SongMeta;
 }
 
 impl UpdateSongMeta for SongMetaV2 {
-	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
+	fn update(self, pdf: &poppler::Document) -> SongMeta {
 		SongMetaV3 {
-			n_pages: pdf.n_pages(),
+			n_pages: pdf.n_pages() as usize,
 			staves: self.staves.into(),
 			piece_starts: self
 				.piece_starts
@@ -542,13 +553,13 @@ impl UpdateSongMeta for SongMetaV2 {
 }
 
 impl UpdateSongMeta for SongMetaV1 {
-	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
+	fn update(self, pdf: &poppler::Document) -> SongMeta {
 		SongMetaV2 {
 			staves: self
 				.staves
 				.iter()
 				.map(|staff| {
-					let page = pdf.page(staff.page.0).unwrap();
+					let page = pdf.page(staff.page.0 as i32).unwrap();
 					// Convert from relative sizes back to pixels
 					let scale_x = page.size().0 as f64;
 					let scale_y = page.size().1 as f64;
@@ -573,7 +584,7 @@ impl UpdateSongMeta for SongMetaV1 {
 }
 
 impl UpdateSongMeta for SongMetaV0 {
-	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
+	fn update(self, pdf: &poppler::Document) -> SongMeta {
 		SongMetaV1 {
 			staves: self.staves,
 			piece_starts: self.piece_starts,
@@ -620,12 +631,12 @@ impl SongMetaVersioned {
 }
 
 impl UpdateSongMeta for SongMetaVersioned {
-	fn update(self, pdf: &poppler::PopplerDocument) -> SongMeta {
+	fn update(self, pdf: &poppler::Document) -> SongMeta {
 		match self {
 			SongMetaVersioned::V(meta) => meta,
 			SongMetaVersioned::V2(meta) => meta.update(pdf),
-			SongMetaVersioned::V1(meta) => meta.update(&pdf),
-			SongMetaVersioned::V0(meta) => meta.update(&pdf),
+			SongMetaVersioned::V1(meta) => meta.update(pdf),
+			SongMetaVersioned::V0(meta) => meta.update(pdf),
 		}
 	}
 }

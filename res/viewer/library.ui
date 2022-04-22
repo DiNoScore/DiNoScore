@@ -1,96 +1,187 @@
 <interface>
-  <template class="LibraryDeckContent" parent="GtkWidget">
+  <!-- Model used by the library IconView -->
+  <object class="GtkListStore" id="store_songs">
+    <columns>
+      <!-- column-name gdkpixbuf -->
+      <column type="GdkPixbuf"/>
+      <!-- column-name title -->
+      <column type="gchararray"/>
+      <!-- column-name UUID -->
+      <column type="gchararray"/>
+      <!-- column-name score -->
+      <column type="gfloat"/>
+    </columns>
+  </object>
+
+  <template class="ViewerLibrary" parent="GtkBox">
+    <property name="orientation">vertical</property>
     <child>
-      <object class="GtkBox" id="library_deck">
-        <property name="orientation">vertical</property>
-        <property name="spacing">10</property>
-        <property name="can_focus">False</property>
+      <object class="AdwHeaderBar" id="library_header">
+        <!-- Hide the close buttons when in fullscreen -->
+        <property name="show-start-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+        <property name="show-end-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+
+        <child type="start">
+          <object class="GtkSearchEntry" id="search_entry">
+            <property name="width-chars">20</property>
+            <property name="placeholder-text" translatable="yes">Search songs</property>
+            <signal name="search-changed" handler="on_search_entry_changed" swapped="true"/>
+            <signal name="next-match" handler="on_search_entry_next" swapped="true"/>
+            <signal name="previous-match" handler="on_search_entry_previous" swapped="true"/>
+            <signal name="stop-search" handler="on_search_stopped" swapped="true"/>
+            <child>
+              <object class="GtkShortcutController">
+                <property name="scope">managed</property>
+                <child>
+                  <object class="GtkShortcut">
+                    <property name="trigger">&lt;Control&gt;f</property>
+                    <property name="action">mnemonic-activate</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <child type="end">
+          <object class="GtkButton" id="fullscreen">
+            <!-- Bind self.visible to self.enabled (which is bound to action.enabled) -->
+            <property name="visible" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+            <property name="action-name">win.enter-fullscreen</property>
+            <property name="tooltip-text" translatable="yes">Fullscreen</property>
+            <property name="icon-name">view-fullscreen-symbolic</property>
+          </object>
+        </child>
+        <child type="end">
+          <object class="GtkButton" id="restore">
+            <!-- Bind self.visible to self.enabled (which is bound to action.enabled) -->
+            <property name="visible" bind-source="restore" bind-property="sensitive" bind-flags="sync-create"/>
+            <property name="action-name">win.leave-fullscreen</property>
+            <property name="tooltip-text" translatable="yes">Restore</property>
+            <property name="icon-name">view-restore-symbolic</property>
+          </object>
+        </child>
+      </object>
+    </child>
+
+    <child>
+      <object class="GtkBox">
         <child>
-          <object class="HdyHeaderBar" id="library_header">
-            <property name="show-close-button">True</property>
-            <property name="title" translatable="yes">DiNoScore</property>
-            <property name="spacing">10</property>
+          <object class="GtkScrolledWindow">
+            <property name="hscrollbar_policy">never</property>
+            <property name="hexpand">True</property>
+            <property name="vexpand">True</property>
             <child>
-              <object class="GtkSearchEntry">
-                <property name="width-chars">20</property>
-                <property name="placeholder-text" translatable="yes">Search songs</property>
+              <object class="GtkIconView" id="library_grid">
+                <property name="margin">6</property>
+                <property name="selection_mode">single</property>
+                <property name="model">store_songs</property>
+                <property name="reorderable">False</property>
+                <property name="activate-on-single-click">False</property>
+                <property name="column-spacing">1</property>
+                <property name="item-padding">1</property>
+                <property name="item-width">300</property>
+                <property name="pixbuf-column">0</property>
+                <property name="text-column">1</property>
+                <signal name="selection-changed" handler="on_item_selected" swapped="true"/>
+                <signal name="item-activated" handler="on_item_activated" swapped="true"/>
               </object>
-            </child>
-            <child>
-              <object class="GtkButton">
-                <property name="visible" bind-source="fullscreen" bind-property="visible" bind-flags="sync-create" />
-                <property name="action-name">app.enter_fullscreen</property>
-                <property name="tooltip-text" translatable="yes">Fullscreen</property>
-                <child>
-                  <object class="GtkImage">
-                    <property name="visible">True</property>
-                    <property name="icon-name" bind-source="fullscreen_image" bind-property="icon-name" bind-flags="sync-create" />
-                  </object>
-                </child>
-              </object>
-              <packing>
-                <property name="pack-type">end</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkButton">
-                <property name="no-show-all">True</property>
-                <property name="visible" bind-source="restore" bind-property="visible" bind-flags="sync-create" />
-                <property name="action-name">app.leave_fullscreen</property>
-                <property name="tooltip-text" translatable="yes">Restore</property>
-                <child>
-                  <object class="GtkImage">
-                    <property name="visible">True</property>
-                    <property name="icon-name" bind-source="restore_image" bind-property="icon-name" bind-flags="sync-create" />
-                  </object>
-                </child>
-              </object>
-              <packing>
-                <property name="pack-type">end</property>
-              </packing>
             </child>
           </object>
         </child>
         <child>
-          <object class="GtkScrolledWindow">
-            <property name="can_focus">True</property>
-            <property name="hscrollbar_policy">never</property>
+          <object class="GtkRevealer" id="sidebar_revealer">
+            <property name="hexpand">False</property>
+            <property name="transition-type">slide-left</property>
+            <property name="reveal-child">False</property>
             <child>
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <property name="spacing">10</property>
-                <!-- <child>
-                    <object class="GtkLabel">
-                      <property name="visible">True</property>
-                      <property name="can_focus">False</property>
-                      <property name="halign">GTK_ALIGN_START</property>
-                      <property name="label" translatable="yes">Recently played:</property>
-                    </object>
-                  </child> -->
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
                 <child>
-                  <object class="GtkIconView" id="library_grid">
-                    <property name="margin">6</property>
-                    <property name="selection_mode">single</property>
-                    <property name="model">store_songs</property>
-                    <property name="reorderable">False</property>
-                    <property name="activate-on-single-click">False</property>
-                    <property name="column-spacing">1</property>
-                    <property name="item-padding">1</property>
-                    <property name="item-width">300</property>
-                    <!-- <property name="columns">3</property> -->
-                    <property name="pixbuf-column">0</property>
-                    <property name="text-column">1</property>
+                  <object class="GtkBox">
+                    <property name="spacing">10</property>
+                    <property name="margin_start">5</property>
+                    <property name="margin_end">5</property>
+                    <property name="margin_top">5</property>
+                    <property name="margin_bottom">5</property>
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Play</property>
+                        <property name="sensitive" bind-source="sidebar_revealer" bind-property="reveal-child" bind-flags="sync-create"/>
+                        <signal name="clicked" handler="on_play_button_pressed" swapped="true" />
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkGrid">
+                        <property name="row-spacing">15</property>
+                        <property name="column-spacing">3</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Times played:</property>
+                            <property name="halign">start</property>
+                            <layout>
+                              <property name="row">0</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="stats_times_played">
+                            <property name="halign">end</property>
+                            <layout>
+                              <property name="row">0</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="halign">start</property>
+                            <property name="label" translatable="yes">Hours played:</property>
+                            <layout>
+                              <property name="row">1</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="stats_time_played">
+                            <property name="halign">end</property>
+                            <layout>
+                              <property name="row">1</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Last played:</property>
+                            <property name="halign">start</property>
+                            <layout>
+                              <property name="row">2</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="stats_last_played">
+                            <property name="halign">end</property>
+                            <layout>
+                              <property name="row">2</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
-                  <packing>
-                    <property name="expand">True</property>
-                  </packing>
                 </child>
               </object>
             </child>
           </object>
-          <packing>
-            <property name="expand">True</property>
-          </packing>
         </child>
       </object>
     </child>
