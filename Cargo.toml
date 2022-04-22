@@ -2,7 +2,7 @@
 name = "dinoscore"
 version = "0.3.0"
 authors = ["piegames <git@piegames.de>"]
-edition = "2018"
+edition = "2021"
 default-run = "viewer"
 
 [[bin]]
@@ -32,70 +32,81 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-gtk = { version = "0.14", features = ["v3_20"]}#, git = "https://github.com/gtk-rs/gtk3-rs.git" }
-gdk-pixbuf = { version = "*", features = [ "v2_36" ]}#, git = "https://github.com/gtk-rs/gtk-rs-core.git" }
-# poppler = { path = "../poppler-rs" }
-poppler = { git = "https://github.com/piegamesde/poppler-rs" }
-# libhandy = { git = "https://gitlab.gnome.org/World/Rust/libhandy-rs", features = ["v1_2"] }
-libhandy = { version = "0.8", features = ["v1_2"] }
-woab = { git = "https://github.com/idanarye/woab.git", branch = "allow-checking-if-runtime-is-running" }
+libadwaita = "0.1.1"
+gtk4 = "0.4.7"
+glib = { version = "*", features = ["log"] }
+cairo-rs = { version = "*", features = ["png", "pdf", "svg", "v1_16"]}
+poppler-rs = { version = "0.19.0", features = ["v21_12"] }
 
+# Utility
+atomicwrites = "0.3.0"
+pipeline = { git = "https://github.com/piegamesde/pipeline.rs" }
+git-version = "0.3.4"
 itertools = "0.10.0"
-maplit = "1.0.2"
-either = "1.6.0"
+noisy_float = "0.2.0"
 
+# Utility containers
+either = "1.6.0"
+maybe-owned = { version = "0.3.4", features = ["serde"] }
+typed-index-collections = { version = "3.0.3", features = [ "serde-std" ] }
+once_cell = "1.4.1"
+fragile = "1.0.0"
+
+# File format
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "1.6"
-zip = "0.5.9"
-futures = "0.3.5"
-midi-event = "0.2.0"
-portmidi = "0.2.5"
 derive_more = "0.99.9"
-once_cell = "1.4.1"
-noisy_float = "0.2.0"
+zip = "0.5.9"
 # xdg = "2.2.0"
 xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
-tokio = "1.6.1"
-lru-disk-cache = "0.4.1"
-actix = { version = "0.12" }
-# tokio = "1.4"
-fragile = "1.0.0"
-maybe-owned = { version = "0.3.4", features = ["serde"] }
-# inline-python = "0.6.0"
-anyhow = "1.0.40"
-pyo3 = "0.13.2"
 walkdir = "2"
-log = "0.4.14"
-simple_logger = "1.11.0"
-atomicwrites = "0.3.0"
+pyo3 = { version = "0.16.4", features = [ "auto-initialize", "anyhow" ] }
+
+# Xournal
 flate2 = "1.0.20"
-pipeline = { git = "https://github.com/piegamesde/pipeline.rs" }
-typed-index-collections = { version = "3.0.3", features = [ "serde-std" ] }
+lenient_semver_parser = { version = "0.4.2", default-features = false }
+lenient_version = { version = "0.4.2" }
+
+# Midi
+midi-event = "0.2.0"
+portmidi = "0.2.5"
+
+# Async
+futures = "0.3.5"
+
+# Crash and log
+log = "0.4.14"
 log-panics = { version = "2.0.0", features = [ "with-backtrace" ] }
-# fern = { version = "0.6.0", features = [ "date-based" ] }
 fern = { git = "https://github.com/piegamesde/fern", features = [ "date-based", "colored" ]}
+chrono = "0.4.19"
+anyhow = "1.0.40"
+backtrace = "0.3.60"
 exec = "0.3.1"
 
 # Editor dependencies
-tensorflow = { version = "0.16.0", optional = true }
-# opencv = { version = "0.43", features = ["buildtime-bindgen", "clang-runtime"], optional = true }
 blocking = { version = "1.0.2", optional = true }
+image = { version = "0.24.1", features = ["png"], default-features = false, optional = true }
+imageproc = { version = "0.23.0", optional = true }
+reqwest = { version = "0.11.9", features = ["multipart", "json"], optional = true}
+tokio = { version = "1.6.1", features = [ "macros", "rt" ], optional = true }
 
 # CLI dependencies
 clap = { version = "2.33.3", optional = true }
-git-version = "0.3.4"
-chrono = "0.4.19"
-backtrace = "0.3.60"
+
+[build-dependencies]
+gtk4 = "0.4.7"
 
 [features]
 default = ["viewer", "editor", "cli"]
 viewer = []
 editor = [
-    # "opencv", 
-    "tensorflow",
-    "blocking"
+    "image",
+    "imageproc",
+    "tokio",
+    "reqwest",
+    "blocking",
 ]
 cli = [
     "clap"

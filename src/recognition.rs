@@ -1,27 +1,9 @@
 use super::*;
+use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
 use itertools::Itertools;
 
-const PB_PATH: &str = "./res/2019-05-16_faster-rcnn-inception-resnet-v2.pb";
-
-#[cfg(feature = "editor")]
-static DETECTION_GRAPH: once_cell::sync::Lazy<tensorflow::Graph> =
-	once_cell::sync::Lazy::new(|| {
-		use std::io::Read;
-		use tensorflow as tf;
-
-		let mut detection_graph = tf::Graph::new();
-		let mut proto = Vec::new();
-		std::fs::File::open(PB_PATH)
-			.unwrap()
-			.read_to_end(&mut proto)
-			.unwrap();
-		detection_graph
-			.import_graph_def(&proto, &tf::ImportGraphDefOptions::new())
-			.unwrap();
-		detection_graph
-	});
-
-#[derive(Debug, Clone)]
+/* Origin top left corner */
+#[derive(Debug, Copy, Clone)]
 pub struct RelativeStaff {
 	pub left: f64,
 	pub top: f64,
@@ -44,195 +26,318 @@ impl RelativeStaff {
 	}
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+struct Response {
+	width: u32,
+	height: u32,
+	// #[serde(alias="system_measures", alias="stave_measures")]
+	staves: Vec<AbsoluteStaff>,
+}
+
+/* Origin top left corner */
+#[derive(serde::Deserialize, Debug, Copy, Clone)]
+struct AbsoluteStaff {
+	bottom: u32,
+	left: u32,
+	top: u32,
+	right: u32,
+}
+
+impl AbsoluteStaff {
+	fn width(&self) -> u32 {
+		self.right - self.left
+	}
+
+	fn height(&self) -> u32 {
+		self.bottom - self.top
+	}
+}
+
+/** Get only the staff bounding boxes, without the surrounding notes */
 #[cfg(feature = "editor")]
-pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
-	assert!(!image.has_alpha());
-	assert!(image.n_channels() == 3);
-	assert!(image.colorspace() == gdk_pixbuf::Colorspace::Rgb);
+async fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaff>> {
+	let mut png = Vec::with_capacity(8096);
+	image::write_buffer_with_format(
+		&mut std::io::Cursor::new(&mut png),
+		image.as_raw(),
+		image.width(),
+		image.height(),
+		image::ColorType::L8,
+		image::ImageOutputFormat::Png,
+	)?;
+	let response: serde_json::Value = reqwest::Client::new()
+		.post("https://inference.piegames.de/dinoscore/upload")
+		// .post("http://localhost:8000/upload")
+		.multipart(reqwest::multipart::Form::new().part(
+			"file",
+			reqwest::multipart::Part::bytes(png).file_name("file"),
+		))
+		.send()
+		.await?
+		.error_for_status()?
+		.json()
+		.await?;
+	let response: Vec<Response> = serde_json::from_value(response).unwrap();
+	let response = &response[0];
+	Ok(response.staves.clone())
+	// Ok(response.staves.iter()
+	// 	.map(|staff| RelativeStaff {
+	// 		top: staff.top as f64 / response.height as f64,
+	// 		bottom: staff.bottom as f64 / response.height as f64,
+	// 		left: staff.left as f64 / response.width as f64,
+	// 		right: staff.right as f64 / response.width as f64,
+	// 	})
+	// 	.collect()
+	// )
+}
 
-	let image_bytes = image.read_pixel_bytes().unwrap();
-	let image_height = image.get_height();
-	let image_width = image.get_width();
+/** The code is modeled after a paper from TODO */
+#[cfg(feature = "editor")]
+pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
+	let png = image.save_to_bufferv("png", &[]).unwrap();
+	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
+	let image_width = image.width();
+	let image_height = image.height();
 
-	let (num_detections, detection_boxes, detection_scores) = {
-		use tensorflow as tf;
+	let mut raw_staves = online_inference(&image).await.unwrap();
+	// return raw_staves.unwrap();
+	// TODO maybe add imageproc dependency? Would it actually help?
+	// https://docs.rs/imageproc/latest/imageproc/
 
-		log::trace!("A");
-		let detection_graph = &DETECTION_GRAPH;
+	/* Compute the integral once, and then use it to query arbitrary sub-rectangles */
+	let integral_image = imageproc::integral_image::integral_image(&image);
+	// /* Blur out horizontal components (1%) */
+	// let blurred_image = imageproc::filter::box_filter(&image, 0, image_height / 100);
 
-		let image_tensor = tf::Tensor::new(&[1, image_height as u64, image_width as u64, 3])
-			.with_values(&image_bytes)
-			.unwrap();
-		log::trace!("A2");
+	/* Extend staves to the left and right until no more content */
+	{
+		for staff in &mut raw_staves {
+			/* Check a sliding window 2% of the staff width for content */
+			let window_width = (staff.width() / 50).max(4);
+			let window_size = window_width * staff.height();
 
-		let mut session = tf::Session::new(&tf::SessionOptions::new(), &detection_graph).unwrap();
-		log::trace!("A3");
-		let mut session_args = tf::SessionRunArgs::new();
-		log::trace!("A4");
-		session_args.add_feed::<u8>(
-			&detection_graph
-				.operation_by_name("image_tensor")
-				.unwrap()
-				.unwrap(),
-			0,
-			&image_tensor,
-		);
-		log::trace!("B");
-
-		let num_detections = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("num_detections")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_boxes = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_boxes")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_scores = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_scores")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-		let detection_classes = session_args.request_fetch(
-			&detection_graph
-				.operation_by_name("detection_classes")
-				.unwrap()
-				.unwrap(),
-			0,
-		);
-
-		log::trace!("C");
-		session.run(&mut session_args).unwrap();
-		log::trace!("D");
-
-		/* We could probably extract better results by making more use of all that information */
-		let num_detections = session_args.fetch::<f32>(num_detections).unwrap();
-		let detection_boxes = session_args.fetch::<f32>(detection_boxes).unwrap();
-		let detection_scores = session_args.fetch::<f32>(detection_scores).unwrap();
-		let _detection_classes = session_args.fetch::<f32>(detection_classes).unwrap();
-
-		log::trace!("E");
-		session.close().unwrap();
-		log::trace!("F");
-
-		(num_detections, detection_boxes, detection_scores)
-	};
-	log::trace!("Checkpoint");
-
-	let mut bars = Vec::<RelativeStaff>::new();
-
-	for i in 0..(num_detections[0] as usize) {
-		if detection_scores[i] > 0.6 {
-			let detected = &detection_boxes[i * 4..i * 4 + 4];
-			let y1 = detected[0] * image.get_height() as f32;
-			let x1 = detected[1] * image.get_width() as f32;
-			let y2 = detected[2] * image.get_height() as f32;
-			let x2 = detected[3] * image.get_width() as f32;
-
-			bars.push(RelativeStaff {
-				left: x1 as f64,
-				top: y1 as f64,
-				bottom: y2 as f64,
-				right: x2 as f64,
-			});
-		}
-	}
-
-	let scale_x = 1.0 / image.get_width() as f64;
-	let scale_y = 1.0 / image.get_height() as f64;
-
-	for bar in &mut bars {
-		bar.left *= scale_x;
-		bar.top *= scale_y;
-		bar.right *= scale_x;
-		bar.bottom *= scale_y;
-	}
-
-	/* Set this to true to disable post-processing for debugging purposes */
-	if false {
-		return bars;
-	}
-
-	/* Group them by staff */
-	let mut bars: Vec<(usize, _)> = bars.into_iter().enumerate().collect::<Vec<_>>();
-
-	while {
-		/* do */
-		let mut changed = false;
-		for i in 0..bars.len() {
-			for j in 0..bars.len() {
-				if i == j {
-					continue;
+			/* Extend to left */
+			loop {
+				let sum: u32 = imageproc::integral_image::sum_image_pixels(
+					&integral_image,
+					staff.left,
+					staff.top,
+					staff.left + window_width,
+					staff.bottom,
+				)[0];
+				/* Check for the average brightness in the window. Break if less than 2% content */
+				let average = sum as f32 / (window_size as f32 * 255.0);
+				if staff.left == 0 || average >= 0.98 {
+					break;
 				}
-				// This is safe thanks to the index check above
-				let bar1 = &unsafe { &*(&bars as *const Vec<(usize, RelativeStaff)>) }[i];
-				let bar2 = &mut unsafe { &mut *(&mut bars as *mut Vec<(usize, RelativeStaff)>) }[j];
-				let c1 = (bar1.1.top + bar1.1.bottom) / 2.0;
-				let c2 = (bar2.1.top + bar2.1.bottom) / 2.0;
-				if c1 > bar2.1.top
-					&& c1 < bar2.1.bottom
-					&& c2 > bar1.1.top && c2 < bar1.1.bottom
-					&& bar1.0 != bar2.0
-				{
-					changed = true;
-					bar2.0 = bar1.0;
+				staff.left -= 1;
+			}
+			/* Extend to right */
+			loop {
+				let sum: u32 = imageproc::integral_image::sum_image_pixels(
+					&integral_image,
+					staff.right - window_width,
+					staff.top,
+					staff.right,
+					staff.bottom,
+				)[0];
+				/* Check for the average brightness in the window. Break if less than 2% content */
+				let average = sum as f32 / (window_size as f32 * 255.0);
+				if staff.right == image_width || average >= 0.98 {
+					break;
 				}
+				staff.right += 1;
 			}
 		}
-		/* while */
-		changed
-	} {}
+	}
 
-	let staves = bars.into_iter().into_group_map();
-
-	/* Merge them */
-	let mut staves: Vec<RelativeStaff> = staves
-		.into_iter()
-		.filter_map(|staves| {
-			staves.1.into_iter().reduce(|a, b| RelativeStaff {
-				left: a.left.min(b.left),
-				right: a.right.max(b.right),
-				top: a.top.min(b.top),
-				bottom: a.bottom.max(b.bottom),
-			})
-		})
-		.collect();
-	staves.sort_by(|a, b| a.top.partial_cmp(&b.top).unwrap());
-
-	/* Overlapping is bad */
-	(0..staves.len()).collect::<Vec<_>>()
+	/* Sort them from top to bottom. Also remove overlap */
+	raw_staves.sort_by_key(|staff| staff.top);
+	(0..raw_staves.len()).collect::<Vec<_>>()
 		.windows(2)
 		.for_each(|idx| {
-			macro_rules! staff_a (() => {staves[idx[0]]});
-			macro_rules! staff_b (() => {staves[idx[1]]});
+			macro_rules! staff_a (() => {raw_staves[idx[0]]});
+			macro_rules! staff_b (() => {raw_staves[idx[1]]});
 
 			if staff_a!().bottom > staff_b!().top
 				&& /* 90% horizontal overlap */
-				(f64::min(staff_a!().right, staff_b!().right) - f64::max(staff_a!().left, staff_b!().left)) / (f64::max(staff_a!().right, staff_b!().right) - f64::min(staff_a!().left, staff_b!().left)) > 0.9
+				100 * (staff_a!().right.min(staff_b!().right) - staff_a!().left.max(staff_b!().left)) / (staff_a!().right.max(staff_b!().right) - staff_a!().left.min(staff_b!().left)) > 90
 			{
-				let center = (staff_a!().bottom + staff_b!().top) / 2.0;
+				let center = (staff_a!().bottom + staff_b!().top) / 2;
 				staff_a!().bottom = center;
 				staff_b!().top = center;
 			}
 		});
 
-	/* Fixup fuckups */
-	for staff in &mut staves {
-		if staff.top > staff.bottom {
-			std::mem::swap(&mut staff.top, &mut staff.bottom);
-		}
-		if staff.left > staff.right {
-			std::mem::swap(&mut staff.left, &mut staff.right);
+	/* Merge staves from the same system */
+	{
+		let to_merge = (0..raw_staves.len())
+			.collect::<Vec<_>>()
+			.windows(2)
+			.rev()
+			.map(|idx| (idx[0], idx[1]))
+			.filter(|(staff_a, staff_b)| {
+				let staff_a = &raw_staves[*staff_a];
+				let staff_b = &raw_staves[*staff_b];
+
+				/* Need 90% horizontal overlap */
+				if 100 * (staff_a.right.min(staff_b.right) - staff_a.left.max(staff_b.left))
+					/ (staff_a.right.max(staff_b.right) - staff_a.left.min(staff_b.left))
+					<= 90
+				{
+					return false;
+				}
+
+				/* Limit distance they can be apart */
+				if staff_b.bottom - staff_a.top > 3 * (staff_a.height() + staff_b.height()) {
+					return false;
+				}
+
+				/* Search for a strong vertical connection (size 2% of width) at the beginning (in the first 5%) */
+				let window_width = (staff_a.width() / 50).max(4);
+				let window_size = window_width * (staff_b.bottom - staff_a.top);
+				for x in staff_a.left.min(staff_b.left)
+					..staff_a.left.max(staff_b.left) + staff_a.width() / 20
+				{
+					let sum: u32 = imageproc::integral_image::sum_image_pixels(
+						&integral_image,
+						x,
+						staff_a.top,
+						x + window_width,
+						staff_b.bottom,
+					)[0];
+					/* Check for the average brightness in the window. We want at least 20% content */
+					let average = sum as f32 / (window_size as f32 * 255.0);
+					if average < 0.8 {
+						return true;
+					}
+				}
+
+				false
+			})
+			.collect::<Vec<_>>();
+
+		for (staff_a, staff_b) in to_merge {
+			let staff_b = raw_staves.remove(staff_b);
+			let staff_a = &mut raw_staves[staff_a];
+			staff_a.left = staff_a.left.min(staff_b.left);
+			staff_a.top = staff_a.top.min(staff_b.top);
+			staff_a.right = staff_a.right.max(staff_b.right);
+			staff_a.bottom = staff_a.bottom.max(staff_b.bottom);
 		}
 	}
 
-	log::debug!("Done");
+	/* Extend staves up and down to content */
+	{
+		for staff in &mut raw_staves {
+			let window_width = (staff.width() / 50).max(4);
+			let window_height = (staff.height() / 20).max(4);
+			let window_size = window_width * window_height;
+
+			for _ in 0..3 {
+				for x in staff.left..staff.right - window_width {
+					/* Down */
+					loop {
+						let sum: u32 = imageproc::integral_image::sum_image_pixels(
+							&integral_image,
+							x,
+							staff.bottom - window_height,
+							x + window_width,
+							staff.bottom,
+						)[0];
+						let average = sum as f32 / (window_size as f32 * 255.0);
+						if average < 0.97 && staff.bottom < image_height {
+							staff.bottom += 1
+						} else {
+							break;
+						}
+					}
+					/* Up */
+					loop {
+						let sum: u32 = imageproc::integral_image::sum_image_pixels(
+							&integral_image,
+							x,
+							staff.top,
+							x + window_width,
+							staff.top + window_height,
+						)[0];
+						let average = sum as f32 / (window_size as f32 * 255.0);
+						if average < 0.97 && staff.top > 0 {
+							staff.top -= 1
+						} else {
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		/* Clip overlaps again */
+		// (0..raw_staves.len()).collect::<Vec<_>>()
+		// 	.windows(2)
+		// 	.for_each(|idx| {
+		// 		macro_rules! staff_a (() => {raw_staves[idx[0]]});
+		// 		macro_rules! staff_b (() => {raw_staves[idx[1]]});
+
+		// 		if staff_a!().bottom > staff_b!().top
+		// 			&& /* 90% horizontal overlap */
+		// 			100 * (staff_a!().right.min(staff_b!().right) - staff_a!().left.max(staff_b!().left)) / (staff_a!().right.max(staff_b!().right) - staff_a!().left.min(staff_b!().left)) > 90
+		// 		{
+		// 			let center = (staff_a!().bottom + staff_b!().top) / 2;
+		// 			staff_a!().bottom = center;
+		// 			staff_b!().top = center;
+		// 		}
+		// 	});
+	}
+
+	/* Convert back to relative positions. Filter for too small artefacts */
+	let staves = raw_staves
+		.iter()
+		.map(|staff| RelativeStaff {
+			top: staff.top as f64 / image_height as f64,
+			bottom: staff.bottom as f64 / image_height as f64,
+			left: staff.left as f64 / image_width as f64,
+			right: staff.right as f64 / image_width as f64,
+		})
+		/* At least 20% width */
+		.filter(|staff| staff.right - staff.left >= 0.2)
+		/* At least 1% height */
+		.filter(|staff| staff.bottom - staff.top >= 0.01)
+		.collect::<Vec<_>>();
+
+	// /* Post processing */
+	// /* Overlapping is bad */
+	// /* Fixup fuckups */
+	// for staff in &mut staves {
+	// 	if staff.top > staff.bottom {
+	// 		std::mem::swap(&mut staff.top, &mut staff.bottom);
+	// 	}
+	// 	if staff.left > staff.right {
+	// 		std::mem::swap(&mut staff.left, &mut staff.right);
+	// 	}
+	// }
+
+	// log::debug!("Done");
 	staves
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	// #[tokio::test]
+	// async fn test_inference_api() -> anyhow::Result<()> {
+	// 	let image = gdk_pixbuf::Pixbuf::from_stream(
+	// 		&gio::MemoryInputStream::from_bytes(&glib::Bytes::from(bytes as &[u8])),
+	// 		Option::<&gio::Cancellable>::None,
+	// 	)?;
+	// 	let width = 1800;
+	// 	let image = image.scale_simple(
+	// 		width,
+	// 		(width as f64 * image.get_height() / image.get_width()) as i32,
+	// 		gdk_pixbuf::InterpType::Bilinear,
+	// 	).unwrap();
+	// 	online_inference(&image).await?;
+	// 	Ok(())
+	// }
 }

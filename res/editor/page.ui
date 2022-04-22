@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="EditorPage" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <property name="hexpand">True</property>
+    <child>
+      <object class="GtkDrawingArea" id="editor">
+        <property name="vexpand">True</property>
+        <property name="focusable">True</property>
+        <property name="focus-on-click">True</property>
+        <child>
+          <object class="GtkGestureClick">
+            <signal name="pressed" handler="on_click" swapped="true" />
+          </object>
+        </child>
+        <child>
+          <object class="GtkGestureDrag" id="drag_gesture">
+            <signal name="drag-begin" handler="on_drag_start" swapped="true" />
+            <signal name="drag-end" handler="on_drag_end" swapped="true" />
+            <signal name="drag-update" handler="on_drag_update" swapped="true" />
+          </object>
+        </child>
+        <child>
+          <object class="GtkEventControllerKey">
+            <signal name="key-released" handler="on_key" swapped="true" />
+          </object>
+        </child>
+        <child>
+          <object class="GtkEventControllerMotion">
+            <signal name="leave" handler="on_leave" swapped="true" />
+            <signal name="motion" handler="on_motion" swapped="true" />
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="margin_start">5</property>
+        <property name="margin_end">5</property>
+        <property name="margin_top">5</property>
+        <property name="margin_bottom">5</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">10</property>
+        <child>
+          <object class="GtkFrame">
+            <property name="child">
+              <object class="GtkBox">
+                <property name="margin_start">5</property>
+                <property name="margin_end">5</property>
+                <property name="margin_top">5</property>
+                <property name="margin_bottom">5</property>
+                <property name="spacing">10</property>
+                <child>
+                  <object class="GtkCheckButton" id="piece_start">
+                    <property name="label">Start piece</property>
+                    <property name="sensitive">False</property>
+                    <property name="tooltip_text">This staff marks the start of a new piece/movement/variation/…</property>
+                    <signal name="toggled" handler="update_part_start" swapped="true"/>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="piece_name">
+                    <property name="sensitive">False</property>
+                    <property name="tooltip_text">Give that piece a name</property>
+                    <property name="placeholder_text">I. Presto</property>
+                    <signal name="notify::text" handler="update_part_name" swapped="true"/>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <child type="label">
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Pieces</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkFrame">
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">horizontal</property>
+                <property name="margin_start">5</property>
+                <property name="margin_end">5</property>
+                <property name="margin_top">5</property>
+                <property name="margin_bottom">5</property>
+                <child>
+                  <object class="GtkCheckButton" id="section_start">
+                    <property name="label">Start section</property>
+                    <property name="tooltip_text">This staff contains the start of a new section</property>
+                    <property name="sensitive">False</property>
+                    <signal name="toggled" handler="update_section_start" swapped="true"/>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="section_end">
+                    <property name="label">Previous section ends here</property>
+                    <property name="sensitive">False</property>
+                    <property name="tooltip_text">Check this if the old section ends and the new sections starts in the same staff</property>
+                    <signal name="toggled" handler="update_section_end" swapped="true"/>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="section_repetition">
+                    <property name="label">Section is repetition</property>
+                    <property name="sensitive">False</property>
+                    <property name="focusable">True</property>
+                    <property name="tooltip_text">This section is a repetition</property>
+                    <signal name="toggled" handler="update_section_repetition" swapped="true"/>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <child type="label">
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Sections</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

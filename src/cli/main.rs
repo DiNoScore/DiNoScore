@@ -1,11 +1,23 @@
+use gtk4 as gtk;
+
 use anyhow::Context;
 use dinoscore::*;
 use typed_index_collections::TiVec;
 
 fn main() -> anyhow::Result<()> {
-	simple_logger::SimpleLogger::new()
-		.with_level(log::LevelFilter::Debug)
-		.init()
+	fern::Dispatch::new()
+		.format(
+			fern::formatter::FormatterBuilder::default()
+				.color_config(|config| {
+					config
+						.debug(fern::colors::Color::Magenta)
+						.trace(fern::colors::Color::BrightMagenta)
+				})
+				.build(),
+		)
+		.level(log::LevelFilter::Trace)
+		.chain(fern::logger::stdout())
+		.apply()
 		.context("Failed to initialize logger")?;
 
 	gtk::init().unwrap();

@@ -1,11 +1,16 @@
+//! Page turning through MIDI pedal
+//!
+//! Uses portmidi to listen on the default MIDI device. By default, maps the
+//! Soft pedal (MIDI controller 67) to "next" and the Sostenuto pedal (MIDI
+//! controller 66) to "previous".
+
 use gtk::glib::Sender;
+use gtk4 as gtk;
 use std::{any::Any, error::Error};
 
 use midi_event::*;
 use portmidi as pm;
 
-#[derive(actix::Message)]
-#[rtype(result = "()")]
 pub enum PageEvent {
 	Next,
 	Previous,

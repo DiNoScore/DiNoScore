@@ -1,0 +1,236 @@
+<interface>
+  <template class="ViewerSong" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="AdwHeaderBar" id="header">
+        <!-- Hide the close buttons when in fullscreen -->
+        <property name="show-start-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+        <property name="show-end-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+        <child type="start">
+          <object class="GtkButton">
+            <property name="tooltip-text" translatable="yes">Go back</property>
+            <property name="icon-name">go-previous-symbolic</property>
+            <signal name="clicked" handler="unload_song" swapped="true" />
+            <child>
+              <object class="GtkShortcutController">
+                <property name="scope">managed</property>
+                <child>
+                  <object class="GtkShortcut">
+                    <property name="trigger">Escape</property>
+                    <property name="action">activate</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="start">
+          <object class="GtkComboBoxText" id="part_selection">
+            <!-- That signal handler is done in code because we sometimes need to inhibit it -->
+            <!-- <signal name="changed" handler="select_part" swapped="true" /> -->
+          </object>
+        </child>
+        <child type="start">
+          <object class="GtkButton">
+            <property name="tooltip-text" translatable="yes">Previous piece</property>
+            <property name="action_name">song.previous-piece</property>
+            <property name="icon-name">go-first-symbolic</property>
+          </object>
+        </child>
+        <child type="start">
+          <object class="GtkButton">
+            <property name="tooltip-text" translatable="yes">Next piece</property>
+            <property name="action_name">song.next-piece</property>
+            <property name="icon-name">go-last-symbolic</property>
+          </object>
+        </child>
+
+        <child type="end">
+          <object class="GtkButton" id="fullscreen">
+            <!-- Bind self.visible to self.enabled (which is bound to action.enabled) -->
+            <property name="visible" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+            <property name="action-name">win.enter-fullscreen</property>
+            <property name="tooltip-text" translatable="yes">Fullscreen</property>
+            <property name="icon-name">view-fullscreen-symbolic</property>
+          </object>
+        </child>
+        <child type="end">
+          <object class="GtkButton" id="restore">
+            <!-- Bind self.visible to self.enabled (which is bound to action.enabled) -->
+            <property name="visible" bind-source="restore" bind-property="sensitive" bind-flags="sync-create"/>
+            <property name="action-name">win.leave-fullscreen</property>
+            <property name="tooltip-text" translatable="yes">Restore</property>
+            <property name="icon-name">view-restore-symbolic</property>
+          </object>
+        </child>
+        <!-- <child type="end"> this opens the "…" menu once we have one
+          <object class="GtkMenuButton">
+            <property name="focusable">True</property>
+            <property name="receives-default">True</property>
+            <property name="popover">view_menu_widget</property>
+            <child>
+              <object class="GtkImage">
+                <property name="visible">True</property>
+                <property name="focusable">False</property>
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="icon_size">2</property>
+              </object>
+            </child>
+          </object>
+        </child> -->
+        <child type="end">
+          <object class="GtkMenuButton" id="zoom_button">
+            <property name="receives-default">True</property>
+            <property name="label" translatable="no">100%</property>
+          </object>
+        </child>
+        <child type="end">
+          <object class="GtkButton">
+            <property name="tooltip-text" translatable="yes">Make annotations</property>
+            <property name="icon-name">document-edit-symbolic</property>
+            <signal name="clicked" handler="annotate" swapped="true"/>
+          </object>
+        </child>
+      </object>
+    </child>
+
+    <child>
+      <!-- Wrap the carousel in an overlay to grab off resize events (this is a hack) -->
+      <object class="GtkOverlay">
+        <child>
+          <object class="GtkDrawingArea" id="size_catcher">
+            <property name="vexpand">True</property>
+            <property name="hexpand">True</property>
+            <signal name="resize" handler="on_resize" swapped="true"/>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="AdwCarousel" id="carousel">
+            <property name="focusable">True</property>
+            <property name="allow-mouse-drag">True</property>
+            <property name="vexpand">True</property>
+            <property name="hexpand">True</property>
+            <signal name="page-changed" handler="page_changed" swapped="true" />
+            <child>
+              <object class="GtkGestureZoom" id="zoom_gesture">
+                <signal name="begin" handler="zoom_gesture_start" swapped="true" />
+                <signal name="end" handler="zoom_gesture_end" swapped="true" />
+                <signal name="cancel" handler="zoom_gesture_cancel" swapped="true" />
+                <signal name="scale-changed" handler="zoom_gesture_update" swapped="true" />
+              </object>
+            </child>
+            <child>
+              <object class="GtkGestureClick">
+                <signal name="pressed" handler="carousel_button_press" swapped="true" />
+                <signal name="released" handler="carousel_button_release" swapped="true" />
+              </object>
+            </child>
+            <child>
+              <object class="GtkEventControllerScroll" id="scroll_gesture">
+                <property name="flags">vertical</property>
+                <signal name="scroll" handler="carousel_scroll" swapped="true" />
+              </object>
+            </child>
+            <child>
+              <object class="GtkEventControllerKey">
+                <signal name="key-pressed" handler="carousel_key" swapped="true" />
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkShortcutController">
+        <property name="scope">managed</property>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Control&gt;plus</property>
+            <property name="action">action(song.zoom-in)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Control&gt;minus</property>
+            <property name="action">action(song.zoom-out)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Control&gt;0</property>
+            <property name="action">action(song.zoom-original)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Control&gt;N</property>
+            <property name="action">action(song.next-page)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Alt&gt;N</property>
+            <property name="action">action(song.next-page)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">Right</property>
+            <property name="action">action(song.next-page)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Control&gt;P</property>
+            <property name="action">action(song.previous-page)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">&lt;Alt&gt;P</property>
+            <property name="action">action(song.previous-page)</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcut">
+            <property name="trigger">Left</property>
+            <property name="action">action(song.previous-page)</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+
+  <menu id="zoom_menu">
+    <section>
+      <attribute name="display-hint">horizontal-buttons</attribute>
+      <item>
+        <attribute name="label">Zoom out</attribute>
+        <attribute name="action">song.zoom-out</attribute>
+        <attribute name="verb-icon">zoom-out-symbolic</attribute>
+      </item>
+      <item>
+        <attribute name="label">Reset zoom</attribute>
+        <attribute name="action">song.zoom-original</attribute>
+        <attribute name="verb-icon">zoom-original-symbolic</attribute>
+      </item>
+      <item>
+        <attribute name="label">Zoom in</attribute>
+        <attribute name="action">song.zoom-in</attribute>
+        <attribute name="verb-icon">zoom-in-symbolic</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Three staves</attribute>
+        <attribute name="action">song.sizing-mode</attribute>
+        <attribute name="target">fit-staves</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Two columns</attribute>
+        <attribute name="action">song.sizing-mode</attribute>
+        <attribute name="target">fit-columns</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

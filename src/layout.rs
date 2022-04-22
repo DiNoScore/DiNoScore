@@ -86,7 +86,7 @@ pub fn find_scale_for_fixed_staves(
 	/* The +0.5 is to have some safety margin that prevents above average staves to form two-staff pages.
 	 * If we can fit n + 0.5 average staves on a page, we have a lower probability of having pages with n-1 staves.
 	 * Same for pages with n+1 staves.
-	 * Ideally, we'd use some percentile (maybe upper quartile?) instead of the average …
+	 * Ideally, we'd use some percentile (median? maybe upper quartile?) instead of the average …
 	 */
 	pdf_page_width / average_height / (num_staves as f64 + 0.5)
 }

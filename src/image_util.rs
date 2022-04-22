@@ -3,14 +3,18 @@
 //! Contains helper functions for PDF <-> Pixbuf conversion, and a [`PageImageExt`] trait that
 //! abstracts over them in the case we don't care (most of the time, in fact).
 
-use super::cair;
 use anyhow::Context;
-use gtk::{cairo, gdk, gio, glib, prelude::*};
+
+use adw::prelude::*;
+use gdk::{cairo, gdk_pixbuf};
+use gtk::{gdk, gio, glib, glib::clone, prelude::*};
+use gtk4 as gtk;
+use libadwaita as adw;
 
 pub trait PageImage {
-	fn render(&self, context: &cairo::Context) -> cair::Result<()>;
+	fn render(&self, context: &cairo::Context) -> cairo::Result<()>;
 
-	fn render_to_thumbnail(&self, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf>;
+	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf>;
 
 	fn get_width(&self) -> f64;
 
@@ -18,12 +22,12 @@ pub trait PageImage {
 }
 
 impl PageImage for gdk_pixbuf::Pixbuf {
-	fn render(&self, context: &cairo::Context) -> cair::Result<()> {
+	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
 		context.set_source_pixbuf(self, 0.0, 0.0);
 		context.paint()
 	}
 
-	fn render_to_thumbnail(&self, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf> {
+	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
 		Ok(self
 			.scale_simple(
 				width,
@@ -44,13 +48,14 @@ impl PageImage for gdk_pixbuf::Pixbuf {
 
 pub type PageImageBox = Box<dyn PageImage>;
 
-impl PageImage for poppler::PopplerPage {
-	fn render(&self, context: &cairo::Context) -> cair::Result<()> {
-		self.render(context)
+impl PageImage for poppler::Page {
+	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
+		self.render(context);
+		context.status()
 	}
 
-	fn render_to_thumbnail(&self, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf> {
-		pdf_to_pixbuf(&self, width)
+	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
+		pdf_to_pixbuf(self, width)
 	}
 
 	fn get_width(&self) -> f64 {
@@ -71,7 +76,7 @@ pub enum RawPageImage {
 		extension: String,
 	},
 	Vector {
-		page: poppler::PopplerPage,
+		page: poppler::Page,
 		raw: Vec<u8>,
 	},
 }
@@ -79,24 +84,24 @@ pub enum RawPageImage {
 impl RawPageImage {
 	pub fn extension(&self) -> &str {
 		match self {
-			Self::Raster { extension, .. } => &extension,
+			Self::Raster { extension, .. } => extension,
 			Self::Vector { .. } => "pdf",
 		}
 	}
 
 	pub fn raw(&self) -> &[u8] {
 		match self {
-			Self::Raster { raw, .. } | Self::Vector { raw, .. } => &raw,
+			Self::Raster { raw, .. } | Self::Vector { raw, .. } => raw,
 		}
 	}
 }
 
 impl PageImage for RawPageImage {
-	fn render(&self, context: &cairo::Context) -> cair::Result<()> {
+	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
 		(&self).render(context)
 	}
 
-	fn render_to_thumbnail(&self, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf> {
+	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
 		(&self).render_to_thumbnail(width)
 	}
 
@@ -110,14 +115,17 @@ impl PageImage for RawPageImage {
 }
 
 impl PageImage for &RawPageImage {
-	fn render(&self, context: &cairo::Context) -> cair::Result<()> {
+	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
 		match self {
-			RawPageImage::Vector { page, .. } => page.render(context),
+			RawPageImage::Vector { page, .. } => {
+				page.render(context);
+				context.status()
+			},
 			RawPageImage::Raster { image, .. } => image.render(context),
 		}
 	}
 
-	fn render_to_thumbnail(&self, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf> {
+	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
 		match self {
 			RawPageImage::Vector { page, .. } => page.render_to_thumbnail(width),
 			RawPageImage::Raster { image, .. } => image.render_to_thumbnail(width),
@@ -140,8 +148,6 @@ impl PageImage for &RawPageImage {
 }
 
 /// Split a PDF file into its own pages
-// TODO replace with inline_python! once that compiles on stable.
-// This will result in better and shorter code
 pub fn explode_pdf(pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	let gil = pyo3::Python::acquire_gil();
@@ -173,14 +179,14 @@ for page in pdf.pages:
 
 pub fn explode_pdf_full<T>(
 	pdf: &[u8],
-	mapper: impl Fn(Vec<u8>, poppler::PopplerPage) -> T,
+	mapper: impl Fn(Vec<u8>, poppler::Page) -> T,
 ) -> anyhow::Result<Vec<T>> {
 	explode_pdf(pdf)
 		.context("Failed to split PDF into its pages")?
 		.into_iter()
 		.map(|bytes| {
 			let document =
-				poppler::PopplerDocument::from_bytes(glib::Bytes::from_owned(bytes.clone()), "")?;
+				poppler::Document::from_bytes(&glib::Bytes::from_owned(bytes.clone()), None)?;
 			/* This is a guarantee from our explode_pdf function */
 			assert!(document.n_pages() == 1);
 			Ok(mapper(bytes, document.page(0).unwrap()))
@@ -238,8 +244,7 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 }
 
 /// Create a PDF Document with a single page that wraps a raster image
-#[allow(clippy::box_vec)]
-pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cair::Result<Vec<u8>> {
+pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
 	let pdf_binary: Vec<u8> = Vec::new();
 	let surface = cairo::PdfSurface::for_stream(
 		image.get_width() as f64,
@@ -262,17 +267,17 @@ pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cair::Result<Vec<u8>> {
 }
 
 /// Create a PDF Document with a single page that wraps a raster image
-pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> cair::Result<poppler::PopplerDocument> {
+pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<poppler::Document> {
 	pipeline::pipe! {
 		pixbuf_to_pdf_raw(image)?
 		=> glib::Bytes::from_owned
-		=> poppler::PopplerDocument::from_bytes(_, "").unwrap()
-		=> cair::Result::Ok
+		=> poppler::Document::from_bytes(&_, None).unwrap()
+		=> cairo::Result::Ok
 	}
 }
 
 /// Render a PDF page to a preview image with fixed width
-pub fn pdf_to_pixbuf(page: &poppler::PopplerPage, width: i32) -> cair::Result<gdk_pixbuf::Pixbuf> {
+pub fn pdf_to_pixbuf(page: &poppler::Page, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
 	let surface = cairo::ImageSurface::create(
 		cairo::Format::Rgb24,
 		width,
@@ -285,7 +290,7 @@ pub fn pdf_to_pixbuf(page: &poppler::PopplerPage, width: i32) -> cair::Result<gd
 	context.scale(scale, scale);
 	context.set_source_rgb(1.0, 1.0, 1.0);
 	context.paint()?;
-	page.render(&context)?;
+	page.render(&context);
 	surface.flush();
 
 	Ok(gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.width(), surface.height()).unwrap())

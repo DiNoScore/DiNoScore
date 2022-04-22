@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+    <gresource prefix="/de/piegames/dinoscore/viewer">
+        <file compressed="true" preprocess="xml-stripblanks">window.ui</file>
+        <file compressed="true" preprocess="xml-stripblanks">song.ui</file>
+        <file compressed="true" preprocess="xml-stripblanks">library.ui</file>
+    </gresource>
+</gresources>

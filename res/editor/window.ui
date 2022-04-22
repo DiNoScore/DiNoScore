@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+
+  <object class="GtkListStore" id="store_pages">
+    <columns>
+      <!-- column-name gdkpixbuf -->
+      <column type="GdkPixbuf"/>
+    </columns>
+  </object>
+
+  <menu id="menubar">
+    <item>
+      <attribute name="label" translatable="yes">New</attribute>
+      <attribute name="action">app.new</attribute>
+    </item>
+    <item>
+      <attribute name="label" translatable="yes">Open</attribute>
+      <attribute name="action">app.open</attribute>
+    </item>
+    <item>
+      <attribute name="label" translatable="yes">Save</attribute>
+      <attribute name="action">app.save</attribute>
+    </item>
+  </menu>
+
+  <template class="EditorWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">First GTK+ Program</property>
+    <property name="default_width">800</property>
+    <property name="default_height">600</property>
+    <child>
+      <object class="GtkBox" id="pages">
+        <property name="orientation">vertical</property>
+        <property name="spacing">10</property>
+        <child>
+          <object class="AdwHeaderBar" id="header">
+            <child type="start">
+              <object class="GtkMenuButton">
+                <property name="focusable">True</property>
+                <property name="receives-default">True</property>
+                <property name="menu-model">menubar</property>
+                <property name="icon-name">open-menu-symbolic</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="css-classes">toolbar</property>
+            <child>
+              <object class="GtkButton">
+                <property name="tooltip_text">Add pages from images or PDF files</property>
+                <property name="label">Add BW images…</property>
+                <signal name="clicked" handler="add_pages" swapped="true"/>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="add_pages2">
+                <property name="sensitive">False</property>
+                <!-- <signal name="clicked" handler="AppActor::add_pages2"/> -->
+                <property name="tooltip_text">Add pages from images that need more processing. PDF files are treated as containing one picture per page.</property>
+                <property name="label">Add colour images…</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator">
+                <property name="orientation">vertical</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="autodetect">
+                <signal name="clicked" handler="autodetect" swapped="true"/>
+                <property name="label">Autodetect</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="autodetect2">
+                <property name="label">Single page mode</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkPaned">
+            <property name="vexpand">True</property>
+            <property name="resize-start-child">False</property>
+            <property name="resize-end-child">True</property>
+            <property name="position">450</property>
+            <child>
+              <object class="GtkScrolledWindow">
+                <!-- <property name="hscrollbar_policy">never</property> -->
+                <property name="child">
+                  <object class="GtkIconView" id="pages_preview">
+                    <property name="hexpand">False</property>
+                    <property name="margin-start">6</property>
+                    <property name="margin-end">6</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <property name="selection_mode">multiple</property>
+                    <property name="model">store_pages</property>
+                    <property name="columns">1</property>
+                    <property name="item_width">64</property>
+                    <!-- https://gitlab.gnome.org/GNOME/gtk/-/issues/3187 -->
+                    <!-- <property name="reorderable">True</property> -->
+                    <property name="pixbuf-column">0</property>
+                    <signal name="selection-changed" handler="page_changed" swapped="true"/>
+                    <!-- <signal name="key-press-event" handler="AppActor::key_press"/> -->
+                    <child>
+                      <object class="GtkEventControllerKey">
+                        <signal name="key-released" handler="on_key" swapped="true" />
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="EditorPage" id="editor" />
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

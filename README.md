@@ -1,16 +1,34 @@
 # DiNoScore*
 
-A digital music stand written with GTK in Rust using [WoAB](https://github.com/idanarye/woab). Includes an editor to import your sheet. Touch-friendly thanks to Libhandy. Everything is messy and work in progress!
+A digital music stand written in Rust with Gtk 4 and Libadwaita. It is comparable to *forScore*, but completely free\*\*. Touch screen is optional but recommended.
 
 \* **Di**gital **No**te **Score**. Never let anything stop your from a good acronym :D
 
+\*\* Not only is it free, it also works on relatively low budget hardware.
+
+## Features
+
+- Probably the only open source digital music stand software out there
+- Adaptive layout that shows a configurable amount of staves per page
+  - It can also show columns at once if you wish
+  - Supports different staff sizes for different environmental conditions
+- Annotations support through Xournal++
+- Editor to import your sheets
+- Night mode
+
+## Planned features (help appreciated)
+
+- Setlists
+- Synchronized or remote page turning
+	- Automatic page turning via score following?
+- Four hands mode/duet on single device?
+
 ## Try it out
 
-If you've installed Nix, simply type `nix-shell` and you're good to go. Power users may prefer `direnv allow`.
+If you've installed Nix, simply type `nix-shell` and you're good to go. Power users may prefer [`direnv allow`](http://direnv.net/).
 
 - **Run the application**: `cargo run --locked --release`
 - Run the editor: `cargo run --locked --release --bin editor`
-	- You need to download the models first: `cd res && wget "https://github.com/OMR-Research/MeasureDetector/releases/download/v1.0/2019-05-16_faster-rcnn-inception-resnet-v2.pb"`
 
 Songs are packed as zip files. The program lists everything in `$XDG_DATA_DIRS/dinoscore/songs`, so simply put your songs into `$XDG_DATA_HOME/dinoscore/songs`. If youd don't know what `XDG_DATA_HOME` is, use `~/.local/share/dinoscore/songs` instead.
 
@@ -22,4 +40,6 @@ Windows users please checkout the [separate documentation](./Windows.md)
 
 ## License
 
-Until everything is sorted out, all parts that depend on GPL code are GPL-licensed as well. All DiNoScore applications will be licensed under the GPL anyways. But the plan is to make a library with common functionality that can be used under the MPL.
+This work is licensed under the EUPL v1.2 or later. Parts of the library, notably the file format, the layout engine and the staff recognition, are additionally dual-licensed under the MPL.
+
+Contact the owner(s) for use in proprietary software.
