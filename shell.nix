@@ -21,12 +21,16 @@ mkShell rec {
     (python39.withPackages (pypkgs: [
       pypkgs.pikepdf
     ]))
+    
+    # Build dependencies
+    gnome.adwaita-icon-theme
   ];
 
   buildInputs = [
     poppler
     poppler_data
     gtk4
+    glib
     gdk-pixbuf
     atk
     libadwaita
@@ -35,7 +39,6 @@ mkShell rec {
     portmidi
     stdenv.cc.cc.lib
     bzip2
-    glib
     cairo
   ];
   shellHook = ''

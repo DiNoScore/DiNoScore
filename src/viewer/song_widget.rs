@@ -230,24 +230,27 @@ mod imp {
 			self.carousel.add_controller(&hide_mouse_controller);
 
 			/* MIDI handling */
-			let (midi_tx, midi_rx) = glib::MainContext::channel(glib::Priority::default());
-			let handler = crate::pedal::run(midi_tx).unwrap();
-			midi_rx.attach(
-				None,
-				clone!(@weak obj => @default-return Continue(false), move |event| {
-					/* Reference the MIDI handler which holds the Sender so that it doesn't get dropped. */
-					let _handler = &handler;
-					match event {
-						crate::pedal::PageEvent::Next => {
-							obj.imp().next.activate(None);
-						},
-						crate::pedal::PageEvent::Previous => {
-							obj.imp().previous.activate(None);
-						},
-					}
-					Continue(true)
-				}),
-			);
+			#[cfg(unix)]
+			{
+				let (midi_tx, midi_rx) = glib::MainContext::channel(glib::Priority::default());
+				let handler = crate::pedal::run(midi_tx).unwrap();
+				midi_rx.attach(
+					None,
+					clone!(@weak obj => @default-return Continue(false), move |event| {
+						/* Reference the MIDI handler which holds the Sender so that it doesn't get dropped. */
+						let _handler = &handler;
+						match event {
+							crate::pedal::PageEvent::Next => {
+								obj.imp().next.activate(None);
+							},
+							crate::pedal::PageEvent::Previous => {
+								obj.imp().previous.activate(None);
+							},
+						}
+						Continue(true)
+					}),
+				);
+			}
 		}
 	}
 

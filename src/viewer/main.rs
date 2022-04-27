@@ -8,12 +8,14 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::tabs_in_doc_comments)]
+#![windows_subsystem = "windows"]
 
 use anyhow::Context;
 use dinoscore::{prelude::*, *};
 
 mod crash_n_log;
 mod library_widget;
+#[cfg(target_family = "unix")]
 mod pedal;
 mod song_page;
 mod song_widget;
@@ -45,13 +47,34 @@ fn main() -> anyhow::Result<()> {
 		git_version::git_version!(fallback = "unknown")
 	);
 
-	gio::resources_register_include!("viewer.gresource")
-		.context("Failed to register resources.")?;
+	#[cfg(debug_assertions)]
+	{
+		pipeline::pipe! {
+			gvdb::gresource::GResourceXMLDocument::from_file("res/viewer/resources.gresource.xml".as_ref()).unwrap()
+			=> gvdb::gresource::GResourceBuilder::from_xml(_).unwrap()
+			=> _.build().unwrap()
+			=> glib::Bytes::from_owned
+			=> &gio::Resource::from_data(&_)?
+			=> gio::resources_register
+		};
+	}
+	#[cfg(not(debug_assertions))]
+	{
+		pipeline::pipe! {
+			gvdb_macros::include_gresource_from_xml!("res/viewer/resources.gresource.xml")
+			=> glib::Bytes::from_static
+			=> &gio::Resource::from_data(&_)?
+			=> gio::resources_register
+		};
+	}
+	/* Vendor icons */
+	gio::resources_register_include!("icons.gresource").context("Failed to register resources.")?;
 
-	let application = gtk::Application::new(
-		Some("de.piegames.dinoscore.viewer"),
-		gio::ApplicationFlags::NON_UNIQUE,
-	);
+	let application = gtk::Application::builder()
+		.application_id("de.piegames.dinoscore.viewer")
+		.flags(gio::ApplicationFlags::NON_UNIQUE)
+		.resource_base_path("/de/piegames/dinoscore")
+		.build();
 
 	application.connect_startup(gtk_init);
 
@@ -63,6 +86,11 @@ fn main() -> anyhow::Result<()> {
 
 		window.present();
 		log::info!("Application started");
+
+		/* Check hardware acceleration */
+		if window.surface().create_gl_context().is_err() {
+			window.show_no_gl_toast();
+		}
 	});
 
 	application.run_with_args(&[] as &[&str]);

@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use anyhow::Context;
 use dinoscore::{prelude::*, *};
 
@@ -461,12 +463,34 @@ fn main() -> anyhow::Result<()> {
 		std::process::exit(1);
 	}));
 
-	gio::resources_register_include!("editor.gresource").expect("Failed to register resources.");
+	#[cfg(debug_assertions)]
+	{
+		pipeline::pipe! {
+			gvdb::gresource::GResourceXMLDocument::from_file("res/editor/resources.gresource.xml".as_ref()).unwrap()
+			=> gvdb::gresource::GResourceBuilder::from_xml(_).unwrap()
+			=> _.build().unwrap()
+			=> glib::Bytes::from_owned
+			=> &gio::Resource::from_data(&_)?
+			=> gio::resources_register
+		};
+	}
+	#[cfg(not(debug_assertions))]
+	{
+		pipeline::pipe! {
+			gvdb_macros::include_gresource_from_xml!("res/editor/resources.gresource.xml")
+			=> glib::Bytes::from_static
+			=> &gio::Resource::from_data(&_)?
+			=> gio::resources_register
+		};
+	}
+	/* Vendor icons */
+	gio::resources_register_include!("icons.gresource").context("Failed to register resources.")?;
 
-	let application = gtk::Application::new(
-		Some("de.piegames.dinoscore.editor"),
-		gio::ApplicationFlags::NON_UNIQUE,
-	);
+	let application = gtk::Application::builder()
+		.application_id("de.piegames.dinoscore.editor")
+		.flags(gio::ApplicationFlags::NON_UNIQUE)
+		.resource_base_path("/de/piegames/dinoscore")
+		.build();
 
 	application.connect_startup(|_application| {
 		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */

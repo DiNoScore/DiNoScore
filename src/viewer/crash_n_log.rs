@@ -19,7 +19,8 @@ pub fn init() -> anyhow::Result<()> {
 				})
 				.build(),
 		)
-		.level(log::LevelFilter::Trace);
+		.level(log::LevelFilter::Trace)
+		.level_for("serde_xml_rs", log::LevelFilter::Warn);
 
 	logger = logger.chain(fern::logger::stdout());
 	match catch!({
@@ -42,21 +43,33 @@ pub fn init() -> anyhow::Result<()> {
 			});
 		}
 
-		path.push(
-			chrono::Local::now()
-				.format("%Y-%m-%d %H:%M.log")
-				.to_string(),
-		);
-		let log_file = fern::logger::file(path)?;
+		#[cfg(unix)]
+		{
+			path.push(
+				chrono::Local::now()
+					.format("%Y-%m-%d %H:%M.log")
+					.to_string(),
+			);
+		}
+		#[cfg(windows)]
+		{
+			path.push(
+				chrono::Local::now()
+					.format("%Y-%m-%d %H-%M.log")
+					.to_string(),
+			);
+		}
+		let log_file = fern::logger::file(path.clone())?;
 		// anyhow::Result::<_>::Ok(fern::DateBased::new(path, "%Y-%m-%d %H:%M.log"))
-		anyhow::Result::<_>::Ok(log_file)
+		anyhow::Result::<_>::Ok((path, log_file))
 	})
 	.context("Failed to initialize a file for logging")
 	{
-		Ok(log_file) => {
+		Ok((path, log_file)) => {
 			logger = logger.chain(log_file);
 			/* Initialize logger */
 			logger.apply().context("Failed to initialize logger")?;
+			log::debug!("Logging to {}", path.display());
 		},
 		Err(error) => {
 			/* Initialize logger and log that we failed to do some file logging */
@@ -65,7 +78,37 @@ pub fn init() -> anyhow::Result<()> {
 		},
 	};
 
+	glib::log_set_writer_func(|level, fields| {
+		let level = match level {
+			glib::LogLevel::Error | glib::LogLevel::Critical => log::Level::Error,
+			glib::LogLevel::Warning => log::Level::Warn,
+			glib::LogLevel::Message | glib::LogLevel::Info => log::Level::Info,
+			glib::LogLevel::Debug => log::Level::Debug,
+		};
+
+		let message = fields
+			.iter()
+			.find(|field| field.key() == "MESSAGE")
+			.and_then(glib::LogField::value_str)
+			.unwrap_or("<no message>");
+		let domain = fields
+			.iter()
+			.find(|field| field.key() == "GLIB_DOMAIN")
+			.and_then(glib::LogField::value_str)
+			.unwrap_or("<unknown>");
+
+		log::log!(target: domain, level, "{}", message);
+
+		glib::LogWriterOutput::Handled
+	});
+	/* I think those three are mostly redundant by the above, but just in case */
 	glib::log_set_default_handler(glib::rust_log_handler);
+	glib::set_print_handler(|print| {
+		log::info!("Internal gtk message: {print}");
+	});
+	glib::set_printerr_handler(|print| {
+		log::warn!("Internal gtk message: {print}");
+	});
 
 	/* Collect some panic hooks before building a custom one upon them */
 	#[allow(unused)]
@@ -104,7 +147,19 @@ fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
 	/* Ignore everything that can go wrong from here */
 
 	if let Ok(exe) = std::env::current_exe() {
-		let _ = exec::execvp(&exe, &[&exe as &dyn AsRef<std::ffi::OsStr>, &crash]);
+		use std::process::Command;
+
+		#[cfg(unix)]
+		{
+			use std::os::unix::process::CommandExt;
+			let _ = Command::new(&exe).args(&[&crash]).exec();
+		}
+		#[cfg(windows)]
+		{
+			if let Ok(status) = Command::new(&exe).args(&[&crash]).status() {
+				std::process::exit(status.code().unwrap_or_default());
+			}
+		}
 	}
 
 	/* If everything went well, this won't be reached */
@@ -217,11 +272,25 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 
 	let main_loop = glib::MainLoop::new(None, false);
 
-	dialog.connect_response(|_, response| match response {
+	#[allow(unused_variables)]
+	dialog.connect_response(|dialog, response| match response {
 		gtk::ResponseType::Ok => {
 			/* Exec back into new DiNoScore process */
 			if let Ok(exe) = std::env::current_exe() {
-				let _ = exec::execvp(&exe, &[&exe as &dyn AsRef<std::ffi::OsStr>]);
+				use std::process::Command;
+
+				#[cfg(unix)]
+				{
+					use std::os::unix::process::CommandExt;
+					let _ = Command::new(&exe).exec();
+				}
+				#[cfg(windows)]
+				{
+					dialog.destroy();
+					if let Ok(status) = Command::new(&exe).status() {
+						std::process::exit(status.code().unwrap_or_default());
+					}
+				}
 			}
 			/* If everything went well, this won't be reached. */
 			std::process::exit(110);

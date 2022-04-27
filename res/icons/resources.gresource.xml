@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/Adwaita/icons/scalable/">
+    <file compressed="true" preprocess="xml-stripblanks">actions/document-edit-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/go-first-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/go-last-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/go-previous-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/open-menu-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/view-fullscreen-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/view-restore-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/zoom-in-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/zoom-original-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/zoom-out-symbolic.svg</file>
+  </gresource>
+</gresources>
