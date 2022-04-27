@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=DiNoScore Editor
+Comment=Import and edit sheets for DiNoScore
+Type=Application
+Exec=dinoscore-editor
+Terminal=false
+Categories=Music;Utility;GTK;
+Keywords=Score;Sheets;Music Stand;Music;GTK;Rust;
+Icon=de.piegames.dinoscore
+StartupNotify=true

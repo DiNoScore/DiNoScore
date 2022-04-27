@@ -5,6 +5,7 @@ authors = ["piegames <git@piegames.de>"]
 edition = "2021"
 default-run = "viewer"
 
+# https://github.com/rust-lang/cargo/issues/9778
 [[bin]]
 name = "viewer"
 path = "src/viewer/main.rs"
@@ -36,7 +37,7 @@ libadwaita = "0.1.1"
 gtk4 = "0.4.7"
 glib = { version = "*", features = ["log"] }
 cairo-rs = { version = "*", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.19.0", features = ["v21_12"] }
+poppler-rs = { version = "0.19.0", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.3.0"
@@ -62,16 +63,12 @@ zip = "0.5.9"
 xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
 walkdir = "2"
-pyo3 = { version = "0.16.4", features = [ "auto-initialize", "anyhow" ] }
+pyo3 = { version = "0.16.4", features = [ "auto-initialize", "anyhow", "abi3-py37", "generate-abi3-import-lib" ] }
 
 # Xournal
 flate2 = "1.0.20"
 lenient_semver_parser = { version = "0.4.2", default-features = false }
 lenient_version = { version = "0.4.2" }
-
-# Midi
-midi-event = "0.2.0"
-portmidi = "0.2.5"
 
 # Async
 futures = "0.3.5"
@@ -83,7 +80,10 @@ fern = { git = "https://github.com/piegamesde/fern", features = [ "date-based", 
 chrono = "0.4.19"
 anyhow = "1.0.40"
 backtrace = "0.3.60"
-exec = "0.3.1"
+
+# Resource compilation
+gvdb = { version = "0.2.1", features = [ "gresource" ] }
+gvdb-macros = "0.1.4"
 
 # Editor dependencies
 blocking = { version = "1.0.2", optional = true }
@@ -95,8 +95,14 @@ tokio = { version = "1.6.1", features = [ "macros", "rt" ], optional = true }
 # CLI dependencies
 clap = { version = "2.33.3", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+# Midi
+midi-event = "0.2.0"
+portmidi = "0.2.5"
+
 [build-dependencies]
-gtk4 = "0.4.7"
+gio = "0.15"
+xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 
 [features]
 default = ["viewer", "editor", "cli"]

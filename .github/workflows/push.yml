@@ -7,6 +7,20 @@ on:
     branches: [master]
 
 jobs:
+  format:
+    name: cargo fmt (nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: rustfmt
+          profile: minimal
+      - name: Format
+        run: cargo fmt -- --check
+
   test-shell:
     runs-on: ubuntu-latest
     steps:
@@ -46,13 +60,14 @@ jobs:
       - name: Setup environment (hack on Cargo)
         run: |
           mkdir -p ~/.local/bin
-          #cargo=$(which cargo)
           cargo="cargo"
           echo "#!/bin/env bash" >> ~/.local/bin/cargo
           echo 'cmd=$(echo "'$cargo' $@")' >> ~/.local/bin/cargo
           echo 'nix-shell --run "$cmd"' >> ~/.local/bin/cargo
           chmod +x ~/.local/bin/cargo
-          cat ~/.local/bin/cargo
+
+          # Install build dependencies
+          sudo apt install adwaita-icon-theme
       - name: Cache ~/.cargo
         uses: actions/cache@v1
         with:
@@ -73,3 +88,60 @@ jobs:
         with:
           command: test
           args: --verbose
+
+  # https://github.com/MGlolenstine/gtk4-cross/blob/main/gtk4-cross-rust
+  windows:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/mglolenstine/gtk4-cross:gtk-4.6
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install additional dependencies
+        # gio is for the build script
+        run: dnf install mingw64-poppler mingw64-poppler-glib mingw32-python3 rust-gio-devel adwaita-icon-theme wget -y && dnf clean all -y
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+      - name: Cache ~/.cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: windows-dotcargo
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: windows-build-target
+      - name: Cross compile for Windows
+        run: |
+          #!/bin/bash
+          set -euo pipefail
+          export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/share/pkgconfig:$MINGW_PREFIX/lib/pkgconfig/:/usr/x86_64-w64-mingw32/lib/pkgconfig/
+
+          cargo build --target=x86_64-pc-windows-gnu --release --locked
+
+          mkdir -p package
+          cp target/x86_64-pc-windows-gnu/release/*.exe package/
+          # TODO remove
+          mv package/viewer.exe package/DiNoScore-viewer.exe
+          mv package/editor.exe package/DiNoScore-editor.exe
+          mv package/cli.exe package/DiNoScore-cli.exe
+      - name: Package
+        run: |
+          #!/bin/bash
+          set -euo pipefail
+
+          package
+
+          # Application icon
+          wget https://github.com/electron/rcedit/releases/download/v1.1.1/rcedit-x64.exe
+          WINEPREFIX=/root/.wine wine rcedit-x64.exe "package/DiNoScore-viewer.exe" --set-icon "./res/de.piegames.dinoscore.ico"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: DiNoScore-windows-${{ github.sha }}
+          path: |
+            ./package
+          if-no-files-found: error

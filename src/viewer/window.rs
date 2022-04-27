@@ -16,6 +16,10 @@ impl Window {
 	pub fn new(app: &Application) -> Self {
 		Object::new(&[("application", app)]).expect("Failed to create Window")
 	}
+
+	pub fn show_no_gl_toast(&self) {
+		self.imp().show_no_gl_toast();
+	}
 }
 
 mod imp {
@@ -24,6 +28,8 @@ mod imp {
 	#[derive(CompositeTemplate, Default)]
 	#[template(resource = "/de/piegames/dinoscore/viewer/window.ui")]
 	pub struct Window {
+		#[template_child]
+		toasts: TemplateChild<adw::ToastOverlay>,
 		#[template_child]
 		deck: TemplateChild<adw::Leaflet>,
 		#[template_child]
@@ -92,6 +98,12 @@ mod imp {
 
 	#[gtk::template_callbacks]
 	impl Window {
+		pub fn show_no_gl_toast(&self) {
+			log::warn!("No OpenGL context found. Expect degraded performance.");
+			let toast = adw::Toast::new("No OpenGL context found. Expect degraded performance.");
+			self.toasts.add_toast(&toast);
+		}
+
 		#[template_callback]
 		fn update_song_loaded(&self) {
 			let uuid = self.song.property::<Option<String>>("song-id");
