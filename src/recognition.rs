@@ -94,18 +94,17 @@ async fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<Absolu
 /** The code is modeled after a paper from TODO */
 #[cfg(feature = "editor")]
 pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
+	use image::GenericImageView;
+
 	let png = image.save_to_bufferv("png", &[]).unwrap();
 	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
 	let image_width = image.width();
 	let image_height = image.height();
 
 	let mut raw_staves = online_inference(&image).await.unwrap();
-	// return raw_staves.unwrap();
-	// TODO maybe add imageproc dependency? Would it actually help?
-	// https://docs.rs/imageproc/latest/imageproc/
 
 	/* Compute the integral once, and then use it to query arbitrary sub-rectangles */
-	let integral_image = imageproc::integral_image::integral_image(&image);
+	let integral_image = imageproc::integral_image::integral_image::<_, u32>(&image);
 	// /* Blur out horizontal components (1%) */
 	// let blurred_image = imageproc::filter::box_filter(&image, 0, image_height / 100);
 
@@ -122,12 +121,12 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 					&integral_image,
 					staff.left,
 					staff.top,
-					staff.left + window_width,
-					staff.bottom,
+					staff.left + window_width - 1,
+					staff.bottom - 1,
 				)[0];
-				/* Check for the average brightness in the window. Break if less than 2% content */
+				/* Check for the average brightness in the window. Break if less than 1% content */
 				let average = sum as f32 / (window_size as f32 * 255.0);
-				if staff.left == 0 || average >= 0.98 {
+				if staff.left == 0 || average >= 0.99 {
 					break;
 				}
 				staff.left -= 1;
@@ -138,12 +137,12 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 					&integral_image,
 					staff.right - window_width,
 					staff.top,
-					staff.right,
-					staff.bottom,
+					staff.right - 1,
+					staff.bottom - 1,
 				)[0];
-				/* Check for the average brightness in the window. Break if less than 2% content */
+				/* Check for the average brightness in the window. Break if less than 1% content */
 				let average = sum as f32 / (window_size as f32 * 255.0);
-				if staff.right == image_width || average >= 0.98 {
+				if staff.right == image_width - 1 || average >= 0.99 {
 					break;
 				}
 				staff.right += 1;
@@ -193,27 +192,32 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 					return false;
 				}
 
-				/* Search for a strong vertical connection (size 2% of width) at the beginning (in the first 5%) */
-				let window_width = (staff_a.width() / 50).max(4);
-				let window_size = window_width * (staff_b.bottom - staff_a.top);
-				for x in staff_a.left.min(staff_b.left)
-					..staff_a.left.max(staff_b.left) + staff_a.width() / 20
-				{
-					let sum: u32 = imageproc::integral_image::sum_image_pixels(
-						&integral_image,
-						x,
-						staff_a.top,
-						x + window_width,
-						staff_b.bottom,
-					)[0];
-					/* Check for the average brightness in the window. We want at least 20% content */
-					let average = sum as f32 / (window_size as f32 * 255.0);
-					if average < 0.8 {
-						return true;
-					}
-				}
+				/* Search for a vertical connection between both near the start of the staff */
 
-				false
+				/* Search within the first 5% of the staff, on the full height */
+				let window_width = (staff_a.width() / 20).max(4);
+				let window_height = staff_b.bottom - staff_a.top;
+				let connected_image = pipeline::pipe!(
+					image.view(staff_a.left.min(staff_b.left), staff_a.top, window_width, window_height)
+					=> _.to_image()
+					=> imageproc::filter::box_filter(&_, 2, 2)
+					=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 250); img })
+					=> imageproc::region_labelling::connected_components(&_, imageproc::region_labelling::Connectivity::Eight, [255].into())
+				);
+
+				/* Map the content of the top and bottom staff to the components, intersect */
+				let components_a = connected_image.view(0, 0, window_width, staff_a.height())
+					.pixels()
+					.map(|(_x, _y, v)| v.0[0])
+					.filter(|&val| val != 0)
+					.collect::<HashSet<u32>>();
+				let components_b = connected_image.view(0, window_height - staff_b.height(), window_width, staff_b.height())
+					.pixels()
+					.map(|(_x, _y, v)| v.0[0])
+					.filter(|&val| val != 0)
+					.collect::<HashSet<u32>>();
+
+				components_a.intersection(&components_b).next().is_some()
 			})
 			.collect::<Vec<_>>();
 
@@ -227,8 +231,54 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 		}
 	}
 
-	/* Extend staves up and down to content */
+	/* Extend staves up and down to content, but make sure not to overlap with above and below */
 	{
+		/* First of all, include the directly connected component */
+
+		let connected_image = pipeline::pipe!(
+			imageproc::filter::box_filter(&image, 2, 2)
+			=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 220); img })
+			=> imageproc::region_labelling::connected_components(&_, imageproc::region_labelling::Connectivity::Eight, [255].into())
+		);
+
+		for staff in &mut raw_staves {
+			let components = connected_image
+				.view(staff.left, staff.top, staff.width(), staff.height())
+				.pixels()
+				.map(|(_x, _y, v)| v.0[0])
+				.filter(|&val| val != 0)
+				.collect::<HashSet<u32>>();
+
+			/* Follow connected component down */
+			let mut new_bottom = staff.bottom;
+			'outer1: for y in staff.bottom..(staff.bottom + staff.height()).min(image_height) {
+				for x in staff.left..staff.right {
+					if components.contains(&connected_image.get_pixel(x, y).0[0]) {
+						new_bottom = y;
+						continue 'outer1;
+					}
+				}
+				break;
+			}
+
+			/* Follow connected component up */
+			let mut new_top = staff.top;
+			'outer2: for y in (staff.top - (staff.height().min(staff.top))..staff.top).rev() {
+				for x in staff.left..staff.right {
+					if components.contains(&connected_image.get_pixel(x, y).0[0]) {
+						new_top = y;
+						continue 'outer2;
+					}
+				}
+				break;
+			}
+
+			staff.bottom = new_bottom;
+			staff.top = new_top;
+		}
+
+		/* Then, expand based on close-by content. Make backup first though */
+		let backup_staves = raw_staves.clone();
 		for staff in &mut raw_staves {
 			let window_width = (staff.width() / 50).max(4);
 			let window_height = (staff.height() / 20).max(4);
@@ -242,11 +292,11 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 							&integral_image,
 							x,
 							staff.bottom - window_height,
-							x + window_width,
-							staff.bottom,
+							x + window_width - 1,
+							staff.bottom - 1,
 						)[0];
 						let average = sum as f32 / (window_size as f32 * 255.0);
-						if average < 0.97 && staff.bottom < image_height {
+						if average < 0.97 && staff.bottom < image_height - 1 {
 							staff.bottom += 1
 						} else {
 							break;
@@ -258,8 +308,8 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 							&integral_image,
 							x,
 							staff.top,
-							x + window_width,
-							staff.top + window_height,
+							x + window_width - 1,
+							staff.top + window_height - 1,
 						)[0];
 						let average = sum as f32 / (window_size as f32 * 255.0);
 						if average < 0.97 && staff.top > 0 {
@@ -272,22 +322,15 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 			}
 		}
 
-		/* Clip overlaps again */
-		// (0..raw_staves.len()).collect::<Vec<_>>()
-		// 	.windows(2)
-		// 	.for_each(|idx| {
-		// 		macro_rules! staff_a (() => {raw_staves[idx[0]]});
-		// 		macro_rules! staff_b (() => {raw_staves[idx[1]]});
-
-		// 		if staff_a!().bottom > staff_b!().top
-		// 			&& /* 90% horizontal overlap */
-		// 			100 * (staff_a!().right.min(staff_b!().right) - staff_a!().left.max(staff_b!().left)) / (staff_a!().right.max(staff_b!().right) - staff_a!().left.min(staff_b!().left)) > 90
-		// 		{
-		// 			let center = (staff_a!().bottom + staff_b!().top) / 2;
-		// 			staff_a!().bottom = center;
-		// 			staff_b!().top = center;
-		// 		}
-		// 	});
+		/* Clip overlaps again. Use the backup as reference */
+		(0..raw_staves.len())
+			.collect::<Vec<_>>()
+			.windows(2)
+			.for_each(|idx| {
+				let (a, b) = (idx[0], idx[1]);
+				raw_staves[a].bottom = raw_staves[a].bottom.min(backup_staves[b].top);
+				raw_staves[b].top = raw_staves[b].top.max(backup_staves[a].bottom);
+			});
 	}
 
 	/* Convert back to relative positions. Filter for too small artefacts */
