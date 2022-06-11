@@ -104,6 +104,9 @@ portmidi = "0.2.5"
 gio = "0.15"
 xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 
+[dev-dependencies]
+tempdir = "0.3.7"
+
 [features]
 default = ["viewer", "editor", "cli"]
 viewer = []

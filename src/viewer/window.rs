@@ -20,6 +20,16 @@ impl Window {
 	pub fn show_no_gl_toast(&self) {
 		self.imp().show_no_gl_toast();
 	}
+
+	#[cfg(test)]
+	pub fn library(&self) -> crate::library_widget::LibraryWidget {
+		self.imp().library.get()
+	}
+
+	#[cfg(test)]
+	pub fn song(&self) -> crate::song_widget::SongWidget {
+		self.imp().song.get()
+	}
 }
 
 mod imp {
@@ -33,9 +43,9 @@ mod imp {
 		#[template_child]
 		deck: TemplateChild<adw::Leaflet>,
 		#[template_child]
-		library: TemplateChild<crate::library_widget::LibraryWidget>,
+		pub library: TemplateChild<crate::library_widget::LibraryWidget>,
 		#[template_child]
-		song: TemplateChild<crate::song_widget::SongWidget>,
+		pub song: TemplateChild<crate::song_widget::SongWidget>,
 		/// When a song is loaded, prevent the screen from going blank
 		inhibit_cookie: Cell<Option<u32>>,
 	}

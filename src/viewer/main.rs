@@ -17,6 +17,8 @@ mod crash_n_log;
 mod library_widget;
 #[cfg(target_family = "unix")]
 mod pedal;
+#[cfg(test)]
+mod screenshots;
 mod song_page;
 mod song_widget;
 mod window;
