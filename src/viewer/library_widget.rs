@@ -21,6 +21,19 @@ impl LibraryWidget {
 	pub fn update_side_panel(&self) {
 		self.imp().on_item_selected();
 	}
+
+	#[cfg(test)]
+	pub fn select_first_entry(&self) {
+		self.imp()
+			.library_grid
+			.get()
+			.select_path(&gtk::TreePath::new_first());
+	}
+
+	#[cfg(test)]
+	pub fn activate_selected_entry(&self) {
+		self.imp().on_play_button_pressed();
+	}
 }
 
 mod imp {
@@ -32,7 +45,7 @@ mod imp {
 		#[template_child]
 		store_songs: TemplateChild<gtk::ListStore>,
 		#[template_child]
-		library_grid: TemplateChild<gtk::IconView>,
+		pub library_grid: TemplateChild<gtk::IconView>,
 		#[template_child]
 		sidebar_revealer: TemplateChild<gtk::Revealer>,
 		#[template_child]
@@ -231,7 +244,7 @@ mod imp {
 
 		/// The "play" button that appears when selecting a song was pressed
 		#[template_callback]
-		fn on_play_button_pressed(&self) {
+		pub(super) fn on_play_button_pressed(&self) {
 			log::debug!("Activated");
 			let uuid = {
 				/* There is exactly one item */

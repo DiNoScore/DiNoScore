@@ -22,6 +22,21 @@ impl SongWidget {
 	) {
 		self.imp().load_song(song, Arc::new(pages), scale_mode);
 	}
+
+	#[cfg(test)]
+	pub fn part_selection(&self) -> gtk::ComboBoxText {
+		self.imp().part_selection.get()
+	}
+
+	#[cfg(test)]
+	pub fn zoom_button(&self) -> gtk::MenuButton {
+		self.imp().zoom_button.get()
+	}
+
+	#[cfg(test)]
+	pub fn set_zoom_mode(&self, mode: &str) {
+		self.imp().scale_mode_changed(&mode.to_variant());
+	}
 }
 
 mod imp {
@@ -38,11 +53,11 @@ mod imp {
 		#[template_child]
 		size_catcher: TemplateChild<gtk::DrawingArea>,
 		#[template_child]
-		part_selection: TemplateChild<gtk::ComboBoxText>,
+		pub part_selection: TemplateChild<gtk::ComboBoxText>,
 		/* Needed to inhibit that signal sometimes. */
 		part_selection_changed_signal: OnceCell<glib::SignalHandlerId>,
 		#[template_child]
-		zoom_button: TemplateChild<gtk::MenuButton>,
+		pub zoom_button: TemplateChild<gtk::MenuButton>,
 		#[template_child]
 		zoom_menu: TemplateChild<gio::Menu>,
 
@@ -635,7 +650,7 @@ mod imp {
 			self.on_activity();
 		}
 
-		fn scale_mode_changed(&self, mode: &glib::Variant) {
+		pub(super) fn scale_mode_changed(&self, mode: &glib::Variant) {
 			/* Idempotent if the signal came from the action itself */
 			self.sizing_mode_action.set_state(mode);
 			if let Some(song) = self.song.borrow_mut().as_mut() {
