@@ -125,7 +125,7 @@ impl SongFile {
 		log::debug!("Loading legacy sheets");
 		let mut data: Vec<u8> = vec![];
 		std::io::copy(pages, &mut data).context("Failed to load data")?;
-		image_util::explode_pdf_full(&data, mapper).map(Into::into)
+		image_util::explode_pdf(&data, mapper).map(Into::into)
 	}
 
 	pub fn load_pages<T>(

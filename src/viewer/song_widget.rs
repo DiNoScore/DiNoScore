@@ -58,8 +58,6 @@ mod imp {
 		part_selection_changed_signal: OnceCell<glib::SignalHandlerId>,
 		#[template_child]
 		pub zoom_button: TemplateChild<gtk::MenuButton>,
-		#[template_child]
-		zoom_menu: TemplateChild<gio::Menu>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		song: RefCell<Option<SongState>>,
@@ -116,7 +114,6 @@ mod imp {
 				part_selection: Default::default(),
 				part_selection_changed_signal: Default::default(),
 				zoom_button: Default::default(),
-				zoom_menu: Default::default(),
 				library: Default::default(),
 				song: Default::default(),
 
@@ -228,9 +225,6 @@ mod imp {
 				.connect_activate(clone_!(self, move |obj, _a, p| {
 					obj.imp().scale_mode_changed(p.unwrap());
 				}));
-
-			let zoom_popover = gtk::PopoverMenu::from_model(Some(&self.zoom_menu.get()));
-			self.zoom_button.set_popover(Some(&zoom_popover));
 
 			let hide_mouse_controller = gtk4::EventControllerMotion::new();
 			hide_mouse_controller.connect_enter(clone_!(self, move |obj, _, _x, _y| {

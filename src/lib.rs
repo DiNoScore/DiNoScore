@@ -49,19 +49,24 @@ pub mod unsafe_force;
 
 pub use image_util::{PageImage, PageImageBox, RawPageImage};
 
-pub fn create_progress_bar_dialog(text: &str) -> (gtk::Dialog, gtk::ProgressBar) {
-	let progress = gtk::Dialog::new();
-	progress.set_modal(true);
-	// progress.set_skip_taskbar_hint(true);
-	progress.set_destroy_with_parent(true);
-	// progress.set_position(gtk::WindowPosition::CenterOnParent);
+pub fn create_progress_bar_dialog(
+	text: &str,
+	parent: &impl IsA<gtk::Window>,
+) -> (gtk::Dialog, gtk::ProgressBar) {
+	let progress = gtk::Dialog::builder()
+		.modal(true)
+		.destroy_with_parent(true)
+		.transient_for(parent)
+		.title("Loading…")
+		.deletable(false)
+		.build();
+
 	let bar = gtk::ProgressBar::new();
 	bar.set_show_text(true);
 	bar.set_text(Some(text));
-	// progress.content_area().add(&bar);
-	// progress.set_title("Loading…");
-	progress.set_deletable(false);
-	// progress.show_all();
+	progress.content_area().append(&bar);
+
+	progress.show();
 	bar.set_fraction(0.0);
 	(progress, bar)
 }

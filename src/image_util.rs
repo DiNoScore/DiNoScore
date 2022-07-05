@@ -148,7 +148,7 @@ impl PageImage for &RawPageImage {
 }
 
 /// Split a PDF file into its own pages
-pub fn explode_pdf(pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
+pub fn explode_pdf_raw(pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	let gil = pyo3::Python::acquire_gil();
 	let py = gil.python();
@@ -177,11 +177,12 @@ for page in pdf.pages:
 	Ok(locals.get_item("pages").unwrap().extract().unwrap())
 }
 
-pub fn explode_pdf_full<T>(
+/// Split a PDF file into its own pages, map the result to something sensible
+pub fn explode_pdf<T>(
 	pdf: &[u8],
 	mapper: impl Fn(Vec<u8>, poppler::Page) -> T,
 ) -> anyhow::Result<Vec<T>> {
-	explode_pdf(pdf)
+	explode_pdf_raw(pdf)
 		.context("Failed to split PDF into its pages")?
 		.into_iter()
 		.map(|bytes| {
@@ -193,6 +194,34 @@ pub fn explode_pdf_full<T>(
 		})
 		.collect::<anyhow::Result<_>>()
 		.context("Failed to split legacy PDF into its pages")
+}
+
+/// Extract all raster images from a PDF
+pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<Vec<(String, Vec<u8>)>> {
+	use pyo3::{conversion::IntoPy, types::IntoPyDict};
+	let gil = pyo3::Python::acquire_gil();
+	let py = gil.python();
+
+	let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
+	py.run(
+		r#"
+from pikepdf import Pdf, PdfImage
+from io import BytesIO
+
+pdf = Pdf.open(BytesIO(bytes(pdf)))
+
+images = []
+for page in pdf.pages:
+	for image in list(page.images.values()):
+		buf = BytesIO(bytearray())
+		format = PdfImage(image).extract_to(stream=buf)
+		images += [(format[1:], buf.getvalue())]
+"#,
+		None,
+		Some(locals),
+	)?;
+
+	Ok(locals.get_item("images").unwrap().extract().unwrap())
 }
 
 pub fn concat_pdfs(pdfs: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {

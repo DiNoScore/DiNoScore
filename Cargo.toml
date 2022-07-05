@@ -89,8 +89,7 @@ gvdb-macros = "0.1.4"
 blocking = { version = "1.0.2", optional = true }
 image = { version = "0.24.1", features = ["png"], default-features = false, optional = true }
 imageproc = { version = "0.23.0", optional = true }
-reqwest = { version = "0.11.9", features = ["multipart", "json"], optional = true}
-tokio = { version = "1.6.1", features = [ "macros", "rt" ], optional = true }
+attohttpc = { version = "0.19.1", features = ["multipart-form", "json"], optional = true }
 
 # CLI dependencies
 clap = { version = "2.33.3", optional = true }
@@ -113,8 +112,7 @@ viewer = []
 editor = [
     "image",
     "imageproc",
-    "tokio",
-    "reqwest",
+    "attohttpc",
     "blocking",
 ]
 cli = [

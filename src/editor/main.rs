@@ -9,6 +9,32 @@ pub(self) mod editor;
 pub(self) mod page;
 use editor::*;
 
+async fn yield_now() {
+	struct YieldNow(bool);
+
+	impl futures::Future for YieldNow {
+		type Output = ();
+
+		// The futures executor is implemented as a FIFO queue, so all this future
+		// does is re-schedule the future back to the end of the queue, giving room
+		// for other futures to progress.
+		fn poll(
+			mut self: std::pin::Pin<&mut Self>,
+			cx: &mut std::task::Context<'_>,
+		) -> std::task::Poll<Self::Output> {
+			if !self.0 {
+				self.0 = true;
+				cx.waker().wake_by_ref();
+				std::task::Poll::Pending
+			} else {
+				std::task::Poll::Ready(())
+			}
+		}
+	}
+
+	YieldNow(false).await
+}
+
 // TODO https://github.com/gtk-rs/gtk4-rs/issues/993
 fn run_async<D: IsA<gtk::NativeDialog>, F: FnOnce(&D, gtk::ResponseType) + 'static>(
 	this: &D,
@@ -51,6 +77,8 @@ mod imp {
 	pub struct EditorWindow {
 		#[template_child]
 		menubar: TemplateChild<gio::MenuModel>,
+		#[template_child]
+		add_button: TemplateChild<gtk::MenuButton>,
 
 		#[template_child]
 		pages_preview: TemplateChild<gtk::IconView>,
@@ -228,6 +256,37 @@ mod imp {
 		/// Show a dialog to load some images, then load them
 		#[template_callback]
 		pub fn add_pages(&self) {
+			self.add_button.popdown();
+			let obj = self.instance();
+			let filter = gtk::FileFilter::new();
+			filter.add_mime_type("application/pdf");
+			let choose = gtk::FileChooserNative::builder()
+				.title("Select PDFs to load")
+				.action(gtk::FileChooserAction::Open)
+				.transient_for(&obj)
+				.select_multiple(true)
+				.filter(&filter)
+				.build();
+
+			run_async(
+				&choose,
+				clone!(@weak obj => @default-panic, move |choose, response| {
+					if response == gtk::ResponseType::Accept {
+						glib::MainContext::default().spawn_local_with_priority(
+							glib::source::PRIORITY_DEFAULT_IDLE,
+							clone!(@strong obj, @strong choose => async move {
+								obj.clone().imp().load_pages(obj, choose, false).await;
+							}),
+						);
+					}
+				}),
+			);
+		}
+
+		/// Show a dialog to load some images, then load them
+		#[template_callback]
+		pub fn add_pages2(&self) {
+			self.add_button.popdown();
 			let obj = self.instance();
 			let filter = gtk::FileFilter::new();
 			filter.add_pixbuf_formats();
@@ -244,51 +303,10 @@ mod imp {
 				&choose,
 				clone!(@weak obj => @default-panic, move |choose, response| {
 					if response == gtk::ResponseType::Accept {
-						// TODO clean up a bit
 						glib::MainContext::default().spawn_local_with_priority(
 							glib::source::PRIORITY_DEFAULT_IDLE,
 							clone!(@strong obj, @strong choose => async move {
-								let (progress_dialog, progress) =
-									dinoscore::create_progress_bar_dialog("Loading pages …");
-								let total_work = choose.files().n_items();
-
-								for (i, file) in choose.files()
-										.snapshot()
-										.iter()
-										.map(|file| file.clone().downcast::<gio::File>().unwrap())
-										.enumerate() {
-									let path = file.path().unwrap();
-
-									let pages = blocking::unblock(move || {
-										let raw = std::fs::read(path.as_path()).unwrap();
-										let extension =
-											path.as_path().extension().and_then(std::ffi::OsStr::to_str);
-										let pages = if let Some("pdf") = extension {
-											image_util::explode_pdf_full(&raw, |raw, page| {
-												RawPageImage::Vector { page, raw }
-											})
-											.unwrap()
-										} else {
-											vec![RawPageImage::Raster {
-												image: gdk_pixbuf::Pixbuf::from_file(&path).unwrap(),
-												raw,
-												extension: extension
-													.expect("Image files must have an extension")
-													.to_string(),
-											}]
-										};
-										unsafe { unsafe_force::Send::new(pages) }
-									})
-									.await;
-
-									progress.set_fraction((i + 1) as f64 / total_work as f64);
-
-									for page in unsafe { pages.unwrap() } {
-										obj.imp().add_page(page);
-									}
-								}
-								// tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-								progress_dialog.emit_close();
+								obj.clone().imp().load_pages(obj, choose, true).await;
 							}),
 						);
 					}
@@ -296,13 +314,109 @@ mod imp {
 			);
 		}
 
+		async fn load_pages(
+			&self,
+			obj: <Self as ObjectSubclass>::Type,
+			choose: gtk::FileChooserNative,
+			/* Whether to extract all images from the PDFs because they are scans anyways */
+			extract: bool,
+		) {
+			let (progress_dialog, progress) =
+				dinoscore::create_progress_bar_dialog("Loading pages …", &obj);
+
+			let total_work = choose.files().n_items() as f64;
+
+			let mut pages = Vec::new();
+
+			for (i, file) in choose
+				.files()
+				.snapshot()
+				.iter()
+				.map(|file| file.clone().downcast::<gio::File>().unwrap())
+				.enumerate()
+			{
+				let path = file.path().unwrap();
+
+				let (raw, path) = blocking::unblock(move || {
+					let raw = std::fs::read(path.as_path()).unwrap();
+					(raw, path)
+				})
+				.await;
+				let extension = path.as_path().extension().and_then(std::ffi::OsStr::to_str);
+
+				pages.extend(if let Some("pdf") = extension {
+					if extract {
+						let raw = image_util::extract_pdf_images_raw(&raw).unwrap();
+						let total_pages = raw.len() as f64;
+						let mut processed = Vec::with_capacity(raw.len());
+						for (i2, (extension, raw)) in raw.into_iter().enumerate() {
+							let image =
+								gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(raw.clone()))
+									.unwrap();
+							processed.push(RawPageImage::Raster {
+								image: image.render_to_thumbnail(1000).unwrap(),
+								raw,
+								extension,
+							});
+
+							progress.set_fraction(
+								(i as f64 + ((i2 + 1) as f64) / total_pages) as f64 / total_work,
+							);
+							yield_now().await;
+						}
+						processed
+					} else {
+						image_util::explode_pdf(&raw, |raw, page| RawPageImage::Vector {
+							page,
+							raw,
+						})
+						.unwrap()
+					}
+				} else {
+					let image = gdk_pixbuf::Pixbuf::from_file(&path).unwrap();
+					vec![RawPageImage::Raster {
+						image: image.render_to_thumbnail(1000).unwrap(),
+						raw,
+						extension: extension
+							.expect("Image files must have an extension")
+							.to_string(),
+					}]
+				});
+
+				progress.set_fraction((i + 1) as f64 / total_work);
+				yield_now().await;
+			}
+
+			progress.set_text(Some("Generating thumbnails…"));
+			progress.set_fraction(0.0);
+			progress.pulse();
+			yield_now().await;
+
+			// TODO clean up this mess
+			let total_work = pages.len();
+
+			for (i, page) in pages.into_iter().enumerate() {
+				let thumbnail = page.render_to_thumbnail(400).unwrap();
+				obj.imp().add_page_manual(page, thumbnail);
+				progress.set_fraction((i + 1) as f64 / total_work as f64);
+				yield_now().await;
+			}
+			yield_now().await;
+			progress_dialog.emit_close();
+		}
+
 		/// Append a single loaded image to the end
 		fn add_page(&self, page: RawPageImage) {
 			let pixbuf = page.render_to_thumbnail(400).unwrap();
+			self.add_page_manual(page, pixbuf);
+		}
+
+		/// Append a single loaded image to the end
+		fn add_page_manual(&self, page: RawPageImage, thumbnail: gdk_pixbuf::Pixbuf) {
 			self.file.borrow_mut().add_page(page);
 
 			self.pages_preview_data
-				.set(&self.pages_preview_data.append(), &[(0, &pixbuf)]);
+				.set(&self.pages_preview_data.append(), &[(0, &thumbnail)]);
 		}
 
 		/// Callback from the icon view
@@ -328,114 +442,60 @@ mod imp {
 			let selected_items = self.pages_preview.selected_items();
 
 			let pdf_pages = self.file.borrow().get_pages();
+			let obj = self.instance();
 
-			// ctx.spawn(actix::fut::wrap_future(async move {
-			// let (progress_dialog, progress) =
-			// 	dinoscore::create_progress_bar_dialog("Detecting staves …");
-			let total_work = selected_items.len();
-			// tokio::task::yield_now().await;
+			let (progress_dialog, progress) =
+				dinoscore::create_progress_bar_dialog("Detecting staves …", &obj);
 
-			for (i, page) in selected_items
-				.into_iter()
-				.map(|selected| selected.indices()[0] as usize)
-				.enumerate()
-			{
-				let data: gdk_pixbuf::Pixbuf = self.pages_preview_data.get().get(
-					&self
-						.pages_preview_data
-						.iter_nth_child(None, page as i32)
-						.unwrap(),
-					0,
-				);
-				let pdf_page = &pdf_pages[page];
-				let width = pdf_page.get_width() as f64;
-				let height = pdf_page.get_height() as f64;
+			glib::MainContext::default().spawn_local_with_priority(
+				glib::source::PRIORITY_DEFAULT_IDLE,
+				async move {
+					let total_work = selected_items.len();
+					yield_now().await;
 
-				let data = unsafe { unsafe_force::Send::new(data) };
-				let (page, bars_inner) = /*blocking::unblock(move ||*/ {
-					log::info!("Autodetecting {} ({}/{})", page, i, total_work);
-					let page = PageIndex(page);
-					let bars_inner: Vec<Staff> = tokio::runtime::Builder::new_current_thread().enable_time().enable_io().build().unwrap().block_on(async {
-						recognition::recognize_staves(&unsafe { data.unwrap() })
-						.await
-					})
-						.iter()
-						.cloned()
-						.map(|staff| staff.into_staff(page, width, height))
-						.collect();
-					(page, bars_inner)
-				}/*)
-				.await*/;
-				// progress.set_fraction((i + 1) as f64 / total_work as f64);
+					for (i, page) in selected_items
+						.into_iter()
+						.map(|selected| selected.indices()[0] as usize)
+						.enumerate()
+					{
+						let data: gdk_pixbuf::Pixbuf = obj.imp().pages_preview_data.get().get(
+							&obj.imp()
+								.pages_preview_data
+								.iter_nth_child(None, page as i32)
+								.unwrap(),
+							0,
+						);
+						let pdf_page = &pdf_pages[page];
+						let width = pdf_page.get_width() as f64;
+						let height = pdf_page.get_height() as f64;
 
-				self.add_staves(page, bars_inner);
-			}
+						let data = unsafe { unsafe_force::Send::new(data) };
+						let (page, bars_inner) = blocking::unblock(move || {
+							log::info!("Autodetecting {} ({}/{})", page, i, total_work);
+							let page = PageIndex(page);
+							let bars_inner: Vec<Staff> =
+								recognition::recognize_staves(&unsafe { data.unwrap() })
+									.iter()
+									.cloned()
+									.map(|staff| staff.into_staff(page, width, height))
+									.collect();
+							(page, bars_inner)
+						})
+						.await;
+						progress.set_fraction((i + 1) as f64 / total_work as f64);
 
-			// tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-			// progress_dialog.emit_close();
-			// tokio::task::yield_now().await;
-			log::info!("Autodetected");
-			// }));
+						obj.imp().add_staves(page, bars_inner);
+					}
+
+					// tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+					progress_dialog.emit_close();
+					yield_now().await;
+					log::info!("Autodetected");
+				},
+			);
 		}
 	}
 }
-
-// 	fn add_pages2(&mut self) {
-// 		// 				let selected_items = pages_preview.get_selected_items();
-// 		// 				selected_items.iter()
-// 		// 					.map(|selected| selected.get_indices()[0] as usize)
-// 		// 					.for_each(|i| {
-// 		// 						let bars_inner = vec![Staff {
-// 		// 							left: 0.0, right: 1.0, top: 0.0, bottom: 1.0,
-// 		// 						}];
-// 		// 						state.borrow_mut().add_staves(i.into(), bars_inner);
-// 		// 					});
-
-// 		// let filter = gtk::FileFilter::new();
-// 		// filter.add_pixbuf_formats();
-// 		// let choose = gtk::FileChooserNativeBuilder::new()
-// 		// 	.title("Select images to load")
-// 		// 	.action(gtk::FileChooserAction::Open)
-// 		// 	.select_multiple(true)
-// 		// 	.filter(&filter)
-// 		// 	.build();
-// 		// if choose.run() == gtk::ResponseType::Accept {
-// 		// 	for file in choose.get_files() {
-// 		// 		let path = file.get_path().unwrap();
-// 		// 		let image = opencv::imgcodecs::imread(&path.to_str().unwrap(), 0).unwrap();
-
-// 		// 		let mut image_binarized = opencv::core::Mat::default().unwrap();
-// 		// 		opencv::imgproc::adaptive_threshold(&image, &mut image_binarized, 255.0,
-// 		// 			opencv::imgproc::AdaptiveThresholdTypes::ADAPTIVE_THRESH_MEAN_C as i32,
-// 		// 			opencv::imgproc::ThresholdTypes::THRESH_BINARY as i32,
-// 		// 			101, 30.0
-// 		// 		).unwrap();
-
-// 		// 		let mut image_binarized_median = opencv::core::Mat::default().unwrap();
-// 		// 		opencv::imgproc::median_blur(&image_binarized, &mut image_binarized_median, 3).unwrap();
-
-// 		// 		dbg!(opencv::imgcodecs::imwrite("./tmp.png", &image_binarized_median, &opencv::core::Vector::new()).unwrap());
-// 		// 		/* The easiest way to convert Mat to Pixbuf is to write it to a PNG buffer */
-// 		// 		let mut png = opencv::core::Vector::new();
-// 		// 		dbg!(opencv::imgcodecs::imencode(
-// 		// 			".png",
-// 		// 			&image_binarized_median,
-// 		// 			&mut png,
-// 		// 			&opencv::core::Vector::new(),
-// 		// 		).unwrap());
-// 		// 		let pixbuf = gdk_pixbuf::Pixbuf::from_stream(
-// 		// 			/* How many type conversion layers will we pile today? */
-// 		// 			&gio::MemoryInputStream::from_bytes(&glib::Bytes::from(&png.to_vec())),
-// 		// 			Option::<&gio::Cancellable>::None,
-// 		// 		).unwrap();
-// 		// 		let pdf = pixbuf_to_pdf(&pixbuf);
-// 		// 		for page in 0..pdf.get_n_pages() {
-// 		// 			let page = pdf.get_page(page).unwrap();
-// 		// 			state.borrow_mut().add_page(page);
-// 		// 		}
-// 		// 	}
-// 		// }
-// 	}
 
 #[allow(clippy::all)]
 fn main() -> anyhow::Result<()> {

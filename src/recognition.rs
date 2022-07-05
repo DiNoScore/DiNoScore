@@ -55,7 +55,7 @@ impl AbsoluteStaff {
 
 /** Get only the staff bounding boxes, without the surrounding notes */
 #[cfg(feature = "editor")]
-async fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaff>> {
+fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaff>> {
 	let mut png = Vec::with_capacity(8096);
 	image::write_buffer_with_format(
 		&mut std::io::Cursor::new(&mut png),
@@ -65,18 +65,17 @@ async fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<Absolu
 		image::ColorType::L8,
 		image::ImageOutputFormat::Png,
 	)?;
-	let response: serde_json::Value = reqwest::Client::new()
-		.post("https://inference.piegames.de/dinoscore/upload")
-		// .post("http://localhost:8000/upload")
-		.multipart(reqwest::multipart::Form::new().part(
-			"file",
-			reqwest::multipart::Part::bytes(png).file_name("file"),
-		))
-		.send()
-		.await?
-		.error_for_status()?
-		.json()
-		.await?;
+	let response: serde_json::Value =
+		attohttpc::post("https://inference.piegames.de/dinoscore/upload")
+			// post("http://localhost:8000/upload")
+			.body(
+				attohttpc::MultipartBuilder::new()
+					.with_file(attohttpc::MultipartFile::new("file", &png).with_filename("file"))
+					.build()?,
+			)
+			.send()?
+			.error_for_status()?
+			.json()?;
 	let response: Vec<Response> = serde_json::from_value(response).unwrap();
 	let response = &response[0];
 	Ok(response.staves.clone())
@@ -91,9 +90,8 @@ async fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<Absolu
 	// )
 }
 
-/** The code is modeled after a paper from TODO */
 #[cfg(feature = "editor")]
-pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
+pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	use image::GenericImageView;
 
 	let png = image.save_to_bufferv("png", &[]).unwrap();
@@ -101,7 +99,7 @@ pub async fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> 
 	let image_width = image.width();
 	let image_height = image.height();
 
-	let mut raw_staves = online_inference(&image).await.unwrap();
+	let mut raw_staves = online_inference(&image).unwrap();
 
 	/* Compute the integral once, and then use it to query arbitrary sub-rectangles */
 	let integral_image = imageproc::integral_image::integral_image::<_, u32>(&image);

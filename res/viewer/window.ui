@@ -35,23 +35,4 @@
       </object>
     </child>
   </template>
-
-  <object class="GtkPopover" id="view_menu_widget">
-    <property name="focusable">False</property>
-    <!-- <property name="relative-to">header_bar</property> -->
-    <property name="position">bottom</property>
-    <child>
-      <object class="GtkBox">
-        <property name="width-request">160</property>
-        <property name="visible">True</property>
-        <property name="focusable">False</property>
-        <!-- <property name="border-width">9</property> -->
-        <property name="orientation">vertical</property>
-        <property name="spacing">3</property>
-        <child>
-        </child>
-      </object>
-    </child>
-  </object>
-
 </interface>
