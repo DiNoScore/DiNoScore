@@ -24,6 +24,15 @@ A digital music stand written in Rust with Gtk 4 and Libadwaita. It is comparabl
 - Four hands mode/duet on single device?
 - Song detection (just start playing and it will load the song for you)
 
+## Gallery
+
+![Screenshot of the song collection view of the application.](gallery/01-overview.png "Song library")
+![A waltz from Chopin is loaded for playing, there are two columns with four staves each on display](gallery/02-song.png "A loaded song")
+![The drop down for selecting a section is opened, showing that there are two more waltzes in that document](gallery/03-parts.png "Quickly jump between sections")
+![The zoom menu is opened. As per the setting, only the first three staves of the song are shown, which corresponds to a zoom factor of 134%](gallery/04-zoom.png "Powerful zoom settings")
+![The previous screenshot but in dark mode with inverted colors](gallery/05-dark.png "Dark mode")
+
+
 ## How it works
 
 Cool features that assist you while playing need to be backed by data. Fully typeset files, for example in the MusicXML format, would contain all the information needed in a machine readable format. However, getting those is pretty difficult and/or expensive. Since DiNoScore wants to be affordable, you should be able to import image-based scores so that it'll even work with paper scans.
