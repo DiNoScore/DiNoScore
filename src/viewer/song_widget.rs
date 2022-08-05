@@ -17,10 +17,12 @@ impl SongWidget {
 	pub fn load_song(
 		&self,
 		song: collection::SongMeta,
-		pages: TiVec<collection::PageIndex, PageImageBox>,
+		pages: TiVec<collection::PageIndex, PageImage>,
 		scale_mode: ScaleMode,
+		start_at: collection::StaffIndex,
 	) {
-		self.imp().load_song(song, Arc::new(pages), scale_mode);
+		self.imp()
+			.load_song(song, Arc::new(pages), scale_mode, start_at);
 	}
 
 	#[cfg(test)]
@@ -52,6 +54,8 @@ mod imp {
 		/* Hack to get resize notifications for the carousel (it is transparent and overlaid) */
 		#[template_child]
 		size_catcher: TemplateChild<gtk::DrawingArea>,
+		#[template_child]
+		song_progress: TemplateChild<gtk::ProgressBar>,
 		#[template_child]
 		pub part_selection: TemplateChild<gtk::ComboBoxText>,
 		/* Needed to inhibit that signal sometimes. */
@@ -111,6 +115,7 @@ mod imp {
 				header: Default::default(),
 				carousel: Default::default(),
 				size_catcher: Default::default(),
+				song_progress: Default::default(),
 				part_selection: Default::default(),
 				part_selection_changed_signal: Default::default(),
 				zoom_button: Default::default(),
@@ -272,12 +277,12 @@ mod imp {
 		pub fn load_song(
 			&self,
 			song: collection::SongMeta,
-			pages: Arc<TiVec<collection::PageIndex, PageImageBox>>,
+			pages: Arc<TiVec<collection::PageIndex, PageImage>>,
 			scale_mode: ScaleMode,
+			start_at: collection::StaffIndex,
 		) {
+			log::debug!("Loading song");
 			let song = Arc::new(song);
-			// TODO make this per page, and less ugly please
-			let pdf_page_width = pages[collection::PageIndex(0)].get_width();
 			let (renderer, update_page) = spawn_song_renderer(pages.clone(), song.version_uuid);
 			let width = self.carousel.allocated_width();
 			let height = self.carousel.allocated_height();
@@ -302,7 +307,6 @@ mod imp {
 				song,
 				width as f64,
 				height as f64,
-				pdf_page_width,
 				scale_mode,
 			);
 
@@ -326,10 +330,29 @@ mod imp {
 
 			self.load_annotations();
 			self.update_content();
+			self.song_progress.get().set_fraction(0.0);
 
 			let now = std::time::Instant::now();
 			self.last_interaction.set(now);
 			self.song_load_time.set(Some(now));
+
+			/* Scroll to the requested page */
+			/* Hack: defer this because of reasons. Also this may be racy */
+			let obj = self.instance();
+			let carousel = &self.carousel.get();
+			glib::MainContext::default().spawn_local(
+				clone!(@weak obj, @strong carousel => @default-panic, async move {
+					glib::timeout_future(std::time::Duration::from_millis(50)).await;
+					let page = obj.imp()
+						.song
+						.borrow()
+						.as_ref()
+						.unwrap()
+						.layout
+						.get_page_of_staff(start_at);
+					carousel.scroll_to(&carousel.nth_page(*page as u32), false);
+				}),
+			);
 		}
 
 		/// Unload the song
@@ -367,6 +390,7 @@ mod imp {
 
 		/// Settings or sizes have changed, update the layout and redraw
 		fn update_content(&self) {
+			log::debug!("Updating content");
 			let carousel = &self.carousel;
 			let width = carousel.width();
 			let height = carousel.height();
@@ -457,8 +481,18 @@ mod imp {
 				return;
 			}
 
-			(*song.rendered_pages[update_page.index].borrow_mut()).0 =
-				Some((update_page.image, update_page.scale_factor));
+			self.song_progress.get().set_fraction(update_page.progress);
+			/* Hide the progress bar automatically after full load */
+			if update_page.progress > 0.999 {
+				glib::source::timeout_add_local_once(
+					std::time::Duration::from_secs(1),
+					clone_!(self, move |obj| {
+						obj.imp().song_progress.get().set_fraction(0.0);
+					}),
+				);
+			}
+
+			(*song.rendered_pages[update_page.index].borrow_mut()).0 = Some(update_page.image);
 			let carousel = &self.carousel;
 			for i in 0..carousel.n_pages() {
 				carousel.nth_page(i).queue_draw();
@@ -815,14 +849,12 @@ struct SongState {
 	page: layout::PageIndex,
 	layout: Arc<layout::PageLayout>,
 	renderer: Sender<(collection::PageIndex, Option<i32>)>,
-	rendered_pages: Rc<
-		TiVec<collection::PageIndex, RefCell<(Option<(gdk::Texture, f64)>, Option<poppler::Page>)>>,
-	>,
+	rendered_pages:
+		Rc<TiVec<collection::PageIndex, RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>>>,
 	zoom: f64,
 	scale_mode: ScaleMode,
 	/* Backup for when a gesture starts */
 	zoom_before_gesture: Option<f64>,
-	pdf_page_width: f64,
 	/* For each explicit page turn, track the visible staves. Use that to
 	 * synchronize the view on layout changes
 	 */
@@ -833,26 +865,16 @@ impl SongState {
 	fn new(
 		renderer: Sender<(collection::PageIndex, Option<i32>)>,
 		rendered_pages: Rc<
-			TiVec<
-				collection::PageIndex,
-				RefCell<(Option<(gdk::Texture, f64)>, Option<poppler::Page>)>,
-			>,
+			TiVec<collection::PageIndex, RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>>,
 		>,
 		song: Arc<collection::SongMeta>,
 		width: f64,
 		height: f64,
-		pdf_page_width: f64,
 		scale_mode: ScaleMode,
 	) -> Self {
 		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, 10.0));
 		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height));
-		let layout = Arc::new(layout::layout_fixed_scale(
-			&song,
-			width,
-			height,
-			1.0,
-			pdf_page_width,
-		));
+		let layout = Arc::new(layout::layout_fixed_scale(&song, width, height, 1.0));
 		Self {
 			song,
 			page: 0.into(),
@@ -863,7 +885,6 @@ impl SongState {
 			zoom: 1.0,
 			scale_mode,
 			zoom_before_gesture: None,
-			pdf_page_width,
 		}
 	}
 
@@ -873,31 +894,15 @@ impl SongState {
 		match self.scale_mode {
 			ScaleMode::Zoom(_) => {},
 			ScaleMode::FitStaves(num) => {
-				self.zoom = layout::find_scale_for_fixed_staves(
-					&self.song,
-					width,
-					height,
-					num,
-					self.pdf_page_width,
-				)
+				self.zoom = layout::find_scale_for_fixed_staves(&self.song, width, height, num)
 			},
 			ScaleMode::FitPages(num) => {
-				self.zoom = layout::find_scale_for_fixed_columns(
-					&self.song,
-					width,
-					height,
-					num,
-					self.pdf_page_width,
-				)
+				self.zoom = layout::find_scale_for_fixed_columns(&self.song, width, height, num)
 			},
 		}
 
 		self.layout = Arc::new(layout::layout_fixed_scale(
-			&self.song,
-			width,
-			height,
-			self.zoom,
-			self.pdf_page_width,
+			&self.song, width, height, self.zoom,
 		));
 		/* Calculate the new page, which has the most staves in common with the previous layout/page */
 		self.page = {
@@ -999,9 +1004,9 @@ impl SongState {
 struct ScaledPage {
 	index: collection::PageIndex,
 	image: gdk::Texture,
-	scale_factor: f64,
 	/* To filter out old/stale values */
 	song: uuid::Uuid,
+	progress: f64,
 }
 
 /// A background thread renderer
@@ -1011,7 +1016,7 @@ struct ScaledPage {
 ///
 /// Drop one of the channels when you are no longer interested in that song.
 fn spawn_song_renderer(
-	pages: Arc<TiVec<collection::PageIndex, PageImageBox>>,
+	pages: Arc<TiVec<collection::PageIndex, PageImage>>,
 	song: uuid::Uuid,
 ) -> (
 	Sender<(collection::PageIndex, Option<i32>)>,
@@ -1020,10 +1025,7 @@ fn spawn_song_renderer(
 	let (in_tx, in_rx) = channel();
 	let (out_tx, out_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
 
-	/* SAFETY: It's not safe. Sorry. */
-	let pages = unsafe { unsafe_force::Send::new(pages) };
 	std::thread::spawn(move || {
-		let pages = unsafe { pages.unwrap() };
 		use std::collections::VecDeque;
 		let reset_work_queue = || {
 			(0..pages.len())
@@ -1034,13 +1036,13 @@ fn spawn_song_renderer(
 
 		/* For a start, render everything sequentially at minimum resolution. This should not take long */
 		for i in reset_work_queue() {
-			let image = gdk::Texture::for_pixbuf(&pages[i].render_to_thumbnail(250).unwrap());
+			let image = gdk::Texture::for_pixbuf(&pages[i].render_scaled(250));
 			if out_tx
 				.send(ScaledPage {
 					index: i,
 					image,
-					scale_factor: pages[i].get_width() / 250.0,
 					song,
+					progress: i.0 as f64 / pages.len() as f64 / pages.len() as f64,
 				})
 				.is_err()
 			{
@@ -1121,16 +1123,15 @@ fn spawn_song_renderer(
 
 			if let Some(page) = work_queue.pop_front() {
 				/* Now we can finally do some work */
-				let image =
-					gdk::Texture::for_pixbuf(&pages[page].render_to_thumbnail(work_width).unwrap());
+				let image = gdk::Texture::for_pixbuf(&pages[page].render_scaled(work_width));
 
 				/* Send it off */
 				if out_tx
 					.send(ScaledPage {
 						index: page,
 						image,
-						scale_factor: pages[page].get_width() / work_width as f64,
 						song,
+						progress: (pages.len() - work_queue.len()) as f64 / pages.len() as f64,
 					})
 					.is_err()
 				{

@@ -72,8 +72,8 @@ fn main() -> anyhow::Result<()> {
 
 			let output_path = output_dir.join(input.file_name().unwrap());
 			let mut song = collection::SongFile::new(input).context("Corrupt song file")?;
-			let sheets: TiVec<_, RawPageImage> =
-				song.load_sheets_raw().context("Failed to load sheets")?;
+			let sheets: TiVec<_, PageImage> =
+				song.load_sheets().context("Failed to load sheets")?;
 			let thumbnail = song.thumbnail().cloned();
 			let mut meta = song.index;
 			meta.version_uuid = uuid::Uuid::new_v4();

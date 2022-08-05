@@ -9,7 +9,7 @@ use uuid::Uuid;
  * [`SongMeta`](collection::SongMeta) as required by the editor
  */
 pub struct EditorSongFile {
-	pub pages: Vec<(Rc<RawPageImage>, Vec<Staff>)>,
+	pub pages: Vec<(Arc<PageImage>, Vec<Staff>)>,
 
 	pub piece_starts: BTreeMap<StaffIndex, String>,
 	pub section_starts: BTreeMap<StaffIndex, SectionMeta>,
@@ -18,6 +18,8 @@ pub struct EditorSongFile {
 	song_uuid: Uuid,
 	/* /// Effectively a random string generated on each save. Useful for caching
 	 * version_uuid: Uuid, */
+	pub song_name: String,
+	pub song_composer: String,
 }
 
 impl Default for EditorSongFile {
@@ -41,19 +43,20 @@ impl EditorSongFile {
 				map
 			},
 			song_uuid: Uuid::new_v4(),
+			song_name: "".into(),
+			song_composer: "".into(),
 		}
 	}
 
 	pub fn get_staves(&self) -> TiVec<StaffIndex, Staff> {
 		self.pages
 			.iter()
-			.enumerate()
-			.flat_map(|(_page_index, page)| page.1.iter())
+			.flat_map(|page| page.1.iter())
 			.cloned()
 			.collect()
 	}
 
-	pub fn get_pages(&self) -> Vec<Rc<RawPageImage>> {
+	pub fn get_pages(&self) -> Vec<Arc<PageImage>> {
 		self.pages.iter().map(|(page, _)| page).cloned().collect()
 	}
 
@@ -91,8 +94,8 @@ impl EditorSongFile {
 			.collect();
 	}
 
-	pub fn add_page(&mut self, page: RawPageImage) {
-		self.pages.push((Rc::new(page), vec![]));
+	pub fn add_page(&mut self, page: PageImage) {
+		self.pages.push((Arc::new(page), vec![]));
 	}
 
 	pub fn remove_page(&mut self, page_index: PageIndex) {
@@ -157,8 +160,12 @@ impl EditorSongFile {
 			section_starts: self.section_starts.clone(),
 			song_uuid: self.song_uuid,
 			version_uuid: uuid::Uuid::new_v4(),
-			title: None,
-			composer: None,
+			title: Some(&self.song_name)
+				.filter(|name| !name.is_empty())
+				.cloned(),
+			composer: Some(&self.song_composer)
+				.filter(|name| !name.is_empty())
+				.cloned(),
 		};
 		use std::ops::Deref;
 		let thumbnail =

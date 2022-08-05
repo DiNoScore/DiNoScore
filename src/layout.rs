@@ -75,11 +75,13 @@ impl PageLayout {
 }
 
 pub fn find_scale_for_fixed_staves(
+	/* Song staff positions */
 	song: &collection::SongMeta,
+	/* Canvas size */
 	width: f64,
 	height: f64,
+	/* Requested layout */
 	num_staves: u32,
-	pdf_page_width: f64,
 ) -> f64 {
 	let average_height: f64 =
 		song.staves.iter().map(Staff::height).sum::<f64>() / (song.staves.len() as f64);
@@ -88,7 +90,7 @@ pub fn find_scale_for_fixed_staves(
 	 * Same for pages with n+1 staves.
 	 * Ideally, we'd use some percentile (median? maybe upper quartile?) instead of the average …
 	 */
-	pdf_page_width / average_height / (num_staves as f64 + 0.5)
+	1.0 / (average_height * (num_staves as f64 + 0.5))
 }
 
 pub fn find_scale_for_fixed_columns(
@@ -96,11 +98,10 @@ pub fn find_scale_for_fixed_columns(
 	width: f64,
 	height: f64,
 	num_columns: u32,
-	pdf_page_width: f64,
 ) -> f64 {
 	let average_width: f64 =
 		song.staves.iter().map(Staff::width).sum::<f64>() / (song.staves.len() as f64);
-	pdf_page_width / height * width / average_width / (num_columns as f64 + 0.5)
+	width / (height * average_width * (num_columns as f64 + 0.5))
 }
 
 pub fn layout_fixed_scale(
@@ -108,9 +109,8 @@ pub fn layout_fixed_scale(
 	width: f64,
 	height: f64,
 	scale: f64,
-	pdf_page_width: f64,
 ) -> PageLayout {
-	let scale = scale * height / pdf_page_width;
+	let scale: f64 = scale * height;
 
 	/* 1. Find out where the columns of each page start */
 	let column_starts = {
@@ -242,6 +242,7 @@ pub fn layout_fixed_scale(
 	}
 }
 
+#[deprecated(note = "This has not been used in a while and also uses the old coordinate space")]
 pub fn layout_fixed_width(
 	song: &collection::SongMeta,
 	width: f64,
@@ -359,6 +360,7 @@ pub fn layout_fixed_width(
 	}
 }
 
+#[deprecated(note = "This has not been used in a while and also uses the old coordinate space")]
 pub fn layout_fixed_height(
 	song: &collection::SongMeta,
 	width: f64,

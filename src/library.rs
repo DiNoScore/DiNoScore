@@ -130,10 +130,11 @@ pub struct Library {
 }
 
 impl Library {
-	pub fn load() -> anyhow::Result<Self> {
+	pub fn load() -> anyhow::Result<(Self, HashSet<String>)> {
 		// TODO don't hardcode here
 		let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
-		let songs = collection::load().context("Failed to load song collection")?;
+		let (songs, outdated_format) =
+			collection::load().context("Failed to load song collection")?;
 		let mut stats: HashMap<Uuid, LibrarySong> = catch!({
 			anyhow::Result::<_>::Ok(match xdg.find_data_file("library.json") {
 				Some(path) => {
@@ -153,12 +154,11 @@ impl Library {
 		.context("Failed to load statistics database")?;
 		/* Create stats for all new songs */
 		for uuid in songs.keys() {
-			if stats.contains_key(uuid) {
-				continue;
+			if !stats.contains_key(uuid) {
+				stats.insert(*uuid, LibrarySong::new(*uuid));
 			}
-			stats.insert(*uuid, LibrarySong::new(*uuid));
 		}
-		Ok(Library { songs, stats })
+		Ok((Library { songs, stats }, outdated_format))
 	}
 
 	/* Spawning a background thread is reasonably safe because our file operations are atomic.

@@ -5,6 +5,7 @@
     <file compressed="true" preprocess="xml-stripblanks">actions/go-first-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/go-last-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/go-previous-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">actions/media-playback-start-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/open-menu-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/view-fullscreen-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/view-restore-symbolic.svg</file>

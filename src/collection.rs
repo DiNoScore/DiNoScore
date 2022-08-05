@@ -18,12 +18,16 @@ use std::{
 	collections::{BTreeMap, HashMap},
 	ops::{Deref, DerefMut, RangeInclusive},
 	path::Path,
+	sync::{Arc, Mutex, MutexGuard},
 };
 use typed_index_collections::TiVec;
 use uuid::Uuid;
 
-pub fn load() -> anyhow::Result<HashMap<Uuid, SongFile>> {
+/* The HashSet contains the names of all song files with out of date format */
+pub fn load() -> anyhow::Result<(HashMap<Uuid, SongFile>, HashSet<String>)> {
 	use itertools::Itertools;
+
+	let mut outdated_format = HashSet::new();
 
 	// TODO don't hardcode here
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
@@ -34,16 +38,17 @@ pub fn load() -> anyhow::Result<HashMap<Uuid, SongFile>> {
 		.filter_ok(|path| path.extension() == Some(std::ffi::OsStr::new("zip")))
 		.map(|path| {
 			let path = path?;
-			let song = SongFile::new(&path)
+			let song = SongFile::new(&path, &mut outdated_format)
 				.context(anyhow::format_err!("Could not load '{}'", path.display()))?;
 			Ok((*song.uuid(), song))
 		})
-		.collect()
+		.collect::<anyhow::Result<_>>()
+		.map(|songs| (songs, outdated_format))
 }
 
 #[derive(Debug)]
 pub struct SongFile {
-	file: zip::read::ZipArchive<std::fs::File>,
+	file: Arc<Mutex<zip::read::ZipArchive<std::fs::File>>>,
 	pub index: SongMeta,
 	thumbnail: Option<gdk_pixbuf::Pixbuf>,
 }
@@ -53,8 +58,12 @@ impl SongFile {
 		&self.index.song_uuid
 	}
 
-	pub fn new(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+	pub fn new(
+		path: impl AsRef<Path>,
+		outdated_format: &mut HashSet<String>,
+	) -> anyhow::Result<Self> {
 		let path = path.as_ref();
+		log::debug!("Loading: {}", path.display());
 		let mut song = zip::read::ZipArchive::new(std::fs::File::open(path)?)?;
 
 		let (mut index, mut song): (SongMeta, _) = {
@@ -64,22 +73,36 @@ impl SongFile {
 				=> serde_json::from_reader(_)?
 			);
 			/* Backwards compatibility handling */
-			let index: SongMeta = match index.update() {
-				either::Either::Left(index) => index,
-				either::Either::Right(index) => {
-					let pdf = {
-						let mut pages = song.by_name("sheet.pdf")?;
-						let mut data: Vec<u8> = vec![];
-						std::io::copy(&mut pages, &mut data)?;
-						let data = glib::Bytes::from_owned(data);
-						std::mem::drop(pages);
-						poppler::Document::from_bytes(&data, None)?
-					};
-					index.update(&pdf)
-				},
-			};
+			use std::cell::RefCell;
+			let song = RefCell::new(song);
+			let index: SongMeta = index.update(|n_pages| {
+				/* Warning: n_pages might be zero in the case of guaranteed legacy path! */
 
-			(index, song)
+				outdated_format.insert(path.file_name().unwrap().to_string_lossy().to_string());
+
+				let mut song = song.borrow_mut();
+				Ok(
+					Self::load_pages_inner(&mut song, n_pages, |index, file, data| {
+						let image = if file == format!("page_{}.pdf", index) {
+							PageImage::from_pdf(data)?
+						} else {
+							let extension = file
+								.split('.')
+								.last()
+								.ok_or_else(|| {
+									anyhow::format_err!("File name for needs to have an extension")
+								})?
+								.to_owned();
+							PageImage::from_image(data, extension)?
+						};
+						anyhow::Ok((image.reference_width(), image.reference_height()) as (f64, f64))
+					})?
+					.raw
+					.into_boxed_slice(),
+				)
+			})?;
+
+			(index, song.into_inner())
 		};
 		if index.title.is_none() {
 			index.title = path
@@ -112,33 +135,40 @@ impl SongFile {
 			.context("Could not load thumbnail")?;
 
 		Ok(SongFile {
-			file: song,
+			file: Arc::new(Mutex::new(song)),
 			index,
 			thumbnail,
 		})
 	}
 
-	fn load_sheets_legacy<T>(
-		pages: &mut zip::read::ZipFile<'_>,
-		mapper: impl Fn(Vec<u8>, poppler::Page) -> T,
-	) -> anyhow::Result<TiVec<PageIndex, T>> {
-		log::debug!("Loading legacy sheets");
-		let mut data: Vec<u8> = vec![];
-		std::io::copy(pages, &mut data).context("Failed to load data")?;
-		image_util::explode_pdf(&data, mapper).map(Into::into)
-	}
-
-	pub fn load_pages<T>(
-		&mut self,
+	fn load_pages_inner<T>(
+		file: &mut zip::ZipArchive<std::fs::File>,
+		n_pages: usize,
 		loader: impl Fn(usize, &str, Vec<u8>) -> anyhow::Result<T>,
 	) -> anyhow::Result<TiVec<PageIndex, T>> {
-		let files_pre_filtered = self
-			.file
+		/* Warning: n_pages might be zero in the case of guaranteed legacy path! */
+
+		/* Legacy code path */
+		if let Ok(mut pages) = file.by_name("sheet.pdf") {
+			log::debug!("Loading legacy sheets");
+			let mut data: Vec<u8> = vec![];
+			std::io::copy(&mut pages, &mut data).context("Failed to load data")?;
+			return Ok(image_util::explode_pdf(&data)?
+				.enumerate()
+				.map(|(index, result)| {
+					let (bytes, page) = result?;
+					loader(index, "pdf", bytes)
+				})
+				.collect::<anyhow::Result<Vec<_>>>()?
+				.into());
+		}
+
+		let files_pre_filtered = file
 			.file_names()
 			.filter(|name| name.starts_with("page_"))
 			.map(str::to_owned)
 			.collect::<HashSet<_>>();
-		(0..self.index.n_pages)
+		(0..n_pages)
 			.into_iter()
 			.map(|index| {
 				(|| {
@@ -155,95 +185,50 @@ impl SongFile {
 						index,
 						matching_files
 					);
-					let file = matching_files[0];
+					let file_name = matching_files[0];
 
 					let mut data: Vec<u8> = vec![];
-					std::io::copy(&mut self.file.by_name(file)?, &mut data)
+					std::io::copy(&mut file.by_name(file_name)?, &mut data)
 						.context("Failed to read data")?;
-					loader(index, file, data)
+					loader(index, file_name, data)
 				})()
 				.context(anyhow::format_err!("Failed to load page {}", index))
 			})
 			.collect::<anyhow::Result<_>>()
 	}
 
-	pub fn load_sheets(&mut self) -> anyhow::Result<TiVec<PageIndex, PageImageBox>> {
-		/* Legacy code path */
-		if let Ok(mut pages) = self.file.by_name("sheet.pdf") {
-			return Self::load_sheets_legacy(&mut pages, |_, page| Box::new(page) as PageImageBox);
-		}
-
-		let pages: TiVec<PageIndex, PageImageBox> = self.load_pages(|index, file, data| {
-			let data = glib::Bytes::from_owned(data);
-
-			if file == format!("page_{}.pdf", index) {
-				let pdf =
-					poppler::Document::from_bytes(&data, None).context("Failed to load PDF")?;
-				anyhow::ensure!(
-					pdf.n_pages() == 1,
-					"Each PDF file must have exactly one page"
-				);
-				Ok(Box::new(pdf.page(0).unwrap()) as PageImageBox)
-			} else {
-				Ok(Box::new(
-					gdk_pixbuf::Pixbuf::from_stream(
-						&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(data)),
-						Option::<&gio::Cancellable>::None,
-					)
-					.context("Failed to load image")?,
-				) as PageImageBox)
-			}
-		})?;
-
-		anyhow::ensure!(!pages.is_empty(), "No pages found");
-		Ok(pages)
+	/* Returns a deferred that should be spawned on a background thread */
+	pub fn load_pages<T>(
+		&self,
+		loader: impl Fn(usize, &str, Vec<u8>) -> anyhow::Result<T>,
+	) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, T>>) {
+		let file = self.file.clone();
+		let n_pages = self.index.n_pages;
+		move || Self::load_pages_inner(&mut *file.lock().unwrap(), n_pages, loader)
 	}
 
-	pub fn load_sheets_raw(&mut self) -> anyhow::Result<TiVec<PageIndex, RawPageImage>> {
-		/* Legacy code path */
-		if let Ok(mut pages) = self.file.by_name("sheet.pdf") {
-			return Self::load_sheets_legacy(&mut pages, |raw, page| RawPageImage::Vector {
-				raw,
-				page,
-			});
-		}
-
-		let pages: TiVec<PageIndex, RawPageImage> = self.load_pages(|index, file, raw| {
-			let data = glib::Bytes::from_owned(raw.clone());
-
+	/* Returns a deferred that should be spawned on a background thread */
+	pub fn load_sheets(&self) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, PageImage>>) {
+		let load_pages = self.load_pages(|index, file, data| {
 			if file == format!("page_{}.pdf", index) {
-				let pdf =
-					poppler::Document::from_bytes(&data, None).context("Failed to load PDF")?;
-				anyhow::ensure!(
-					pdf.n_pages() == 1,
-					"Each PDF file must have exactly one page"
-				);
-				Ok(RawPageImage::Vector {
-					page: pdf.page(0).unwrap(),
-					raw,
-				})
+				PageImage::from_pdf(data)
 			} else {
 				let extension = file
 					.split('.')
 					.last()
 					.ok_or_else(|| anyhow::format_err!("File name for needs to have an extension"))?
 					.to_owned();
-				Ok(RawPageImage::Raster {
-					image: pipeline::pipe! {
-						data
-						=> &glib::Bytes::from_owned
-						=> &gio::MemoryInputStream::from_bytes
-						=> gdk_pixbuf::Pixbuf::from_stream(_, Option::<&gio::Cancellable>::None)
-					}
-					.context("Failed to load image")?,
-					raw,
-					extension,
-				})
+				PageImage::from_image(data, extension)
 			}
-		})?;
+		});
+		|| {
+			let start = std::time::Instant::now();
+			let pages: TiVec<PageIndex, PageImage> = load_pages()?;
 
-		anyhow::ensure!(!pages.is_empty(), "No pages found");
-		Ok(pages)
+			anyhow::ensure!(!pages.is_empty(), "No pages found");
+			log::debug!("Loading sheets took: {:?}", start.elapsed());
+			Ok(pages)
+		}
 	}
 
 	pub fn title(&self) -> Option<&str> {
@@ -251,13 +236,13 @@ impl SongFile {
 	}
 
 	pub fn thumbnail(&self) -> Option<&gdk_pixbuf::Pixbuf> {
-		self.thumbnail.as_ref() //.map(fragile::Fragile::get)
+		self.thumbnail.as_ref()
 	}
 
 	pub fn save<'a, P: AsRef<std::path::Path>>(
 		path: P,
 		metadata: SongMeta,
-		pages: impl IntoIterator<Item = &'a RawPageImage>,
+		pages: impl IntoIterator<Item = &'a PageImage>,
 		thumbnail: Option<gdk_pixbuf::Pixbuf>,
 		overwrite: bool,
 	) -> anyhow::Result<()> {
@@ -300,7 +285,7 @@ impl SongFile {
 
 	pub fn generate_thumbnail<'a>(
 		song: &SongMeta,
-		pages: impl IntoIterator<Item = &'a (impl PageImage + 'a)>,
+		pages: impl IntoIterator<Item = &'a PageImage>,
 	) -> cairo::Result<Option<gdk_pixbuf::Pixbuf>> {
 		let mut pages = pages.into_iter();
 		let staff = if let Some(staff) = song.staves.first() {
@@ -308,7 +293,7 @@ impl SongFile {
 		} else {
 			return Ok(None);
 		};
-		let page: &dyn PageImage = if let Some(page) = pages.nth(*staff.page) {
+		let page: &PageImage = if let Some(page) = pages.nth(*staff.page) {
 			page
 		} else {
 			return Ok(None);
@@ -323,7 +308,7 @@ impl SongFile {
 		context.translate(-staff.left(), -staff.top());
 		context.set_source_rgb(1.0, 1.0, 1.0);
 		context.paint()?;
-		page.render(&context)?;
+		page.render_cairo(&context)?;
 
 		surface.flush();
 
@@ -387,7 +372,7 @@ pub struct StaffIndex(pub usize);
 )]
 pub struct PageIndex(pub usize);
 
-pub type SongMeta = SongMetaV3;
+pub type SongMeta = SongMetaV4;
 
 impl SongMeta {
 	pub fn sections(&self) -> Vec<(RangeInclusive<StaffIndex>, bool)> {
@@ -471,10 +456,29 @@ impl Serialize for SongMeta {
 // Remove once https://github.com/serde-rs/serde/issues/1183 is closed
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(remote = "Self")] /* Call custom ser/de for invariants checking */
+#[serde(remote = "Self")] /* Call custom ser/de for invariants checking. ONLY FOR LATEST VERSION! */
+pub struct SongMetaV4 {
+	pub n_pages: usize,
+	pub staves: TiVec<StaffIndex, StaffV3>,
+	#[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
+	pub piece_starts: BTreeMap<StaffIndex, String>,
+	/// The bool tells if it is a repetition or not
+	#[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
+	pub section_starts: BTreeMap<StaffIndex, SectionMeta>,
+	/// A unique identifier for this song that is stable across file modifications
+	pub song_uuid: Uuid,
+	/// Effectively a random string generated on each save. Useful for caching
+	pub version_uuid: Uuid,
+	pub title: Option<String>,
+	pub composer: Option<String>,
+}
+
+// Remove once https://github.com/serde-rs/serde/issues/1183 is closed
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SongMetaV3 {
 	pub n_pages: usize,
-	pub staves: TiVec<StaffIndex, Staff>,
+	pub staves: TiVec<StaffIndex, StaffV2>,
 	#[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
 	pub piece_starts: BTreeMap<StaffIndex, String>,
 	/// The bool tells if it is a repetition or not
@@ -492,7 +496,7 @@ pub struct SongMetaV3 {
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SongMetaV2 {
-	pub staves: Vec<Staff>,
+	pub staves: Vec<StaffV2>,
 	#[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
 	pub piece_starts: BTreeMap<StaffIndex, Option<String>>,
 	/// The bool tells if it is a repetition or not
@@ -529,14 +533,44 @@ struct SongMetaV0 {
 	pub section_starts: BTreeMap<StaffIndex, bool>,
 }
 
-trait UpdateSongMeta {
-	fn update(self, pdf: &poppler::Document) -> SongMeta;
+impl SongMetaV3 {
+	fn update(self, page_sizes: &[(f64, f64)]) -> SongMeta {
+		log::debug!("Updating file: v3 -> v4");
+		/* What changed: staves are in relative coordinates again (but differently, see comment below)
+		 * Pages may now explicitly be non-PDF and of varying size
+		 */
+		SongMetaV4 {
+			n_pages: self.n_pages,
+			staves: self
+				.staves
+				.into_iter()
+				.map(|staff| {
+					// Convert from pixels to normalized coordinates by dividing by the page width
+					let scale = 1.0 / page_sizes[staff.page.0].0 as f64;
+
+					StaffV3 {
+						page: staff.page,
+						start: (staff.start.0 * scale, staff.start.1 * scale),
+						end: (staff.end.0 * scale, staff.end.1 * scale),
+					}
+				})
+				.collect(),
+			piece_starts: self.piece_starts,
+			section_starts: self.section_starts,
+			song_uuid: self.song_uuid,
+			version_uuid: self.version_uuid,
+			composer: self.composer,
+			title: self.title,
+		}
+	}
 }
 
-impl UpdateSongMeta for SongMetaV2 {
-	fn update(self, pdf: &poppler::Document) -> SongMeta {
+impl SongMetaV2 {
+	fn update(self, page_sizes: &[(f64, f64)]) -> SongMeta {
+		log::debug!("Updating file: v2 -> v3");
+		/* What changed: piece_starts now uses TiVec instead of BTreeMap */
 		SongMetaV3 {
-			n_pages: pdf.n_pages() as usize,
+			n_pages: page_sizes.len(),
 			staves: self.staves.into(),
 			piece_starts: self
 				.piece_starts
@@ -549,20 +583,24 @@ impl UpdateSongMeta for SongMetaV2 {
 			composer: self.composer,
 			title: self.title,
 		}
+		.update(page_sizes)
 	}
 }
 
-impl UpdateSongMeta for SongMetaV1 {
-	fn update(self, pdf: &poppler::Document) -> SongMeta {
+impl SongMetaV1 {
+	fn update(self, page_sizes: &[(f64, f64)]) -> SongMeta {
+		log::debug!("Updating file: v1 -> v2");
+		/* What changed: staves now use absolute instead of relative coordinates.
+		 * Added UUID fields. Pages are now page_XX.pdf instead of staves.pdf
+		 */
 		SongMetaV2 {
 			staves: self
 				.staves
 				.iter()
 				.map(|staff| {
-					let page = pdf.page(staff.page.0 as i32).unwrap();
 					// Convert from relative sizes back to pixels
-					let scale_x = page.size().0 as f64;
-					let scale_y = page.size().1 as f64;
+					let scale_x = page_sizes[staff.page.0].0 as f64;
+					let scale_y = page_sizes[staff.page.0].1 as f64;
 
 					StaffV2 {
 						page: staff.page,
@@ -579,12 +617,14 @@ impl UpdateSongMeta for SongMetaV1 {
 			composer: None,
 			title: None,
 		}
-		.update(pdf)
+		.update(page_sizes)
 	}
 }
 
-impl UpdateSongMeta for SongMetaV0 {
-	fn update(self, pdf: &poppler::Document) -> SongMeta {
+impl SongMetaV0 {
+	fn update(self, page_sizes: &[(f64, f64)]) -> SongMeta {
+		log::debug!("Updating file: v0 -> v1");
+		/* What changed: section_start representation */
 		SongMetaV1 {
 			staves: self.staves,
 			piece_starts: self.piece_starts,
@@ -602,7 +642,7 @@ impl UpdateSongMeta for SongMetaV0 {
 				})
 				.collect(),
 		}
-		.update(pdf)
+		.update(page_sizes)
 	}
 }
 
@@ -610,8 +650,10 @@ impl UpdateSongMeta for SongMetaV0 {
 #[serde(tag = "version")]
 enum SongMetaVersioned {
 	// The newest variant is always called "V" to reduce renamings
+	#[serde(rename = "4")]
+	V(SongMetaV4),
 	#[serde(rename = "3")]
-	V(SongMetaV3),
+	V3(SongMetaV3),
 	#[serde(rename = "2")]
 	V2(SongMetaV2),
 	#[serde(rename = "1")]
@@ -621,22 +663,18 @@ enum SongMetaVersioned {
 }
 
 impl SongMetaVersioned {
-	/// Happy case for when no update is needed
-	fn update(self) -> either::Either<SongMeta, impl UpdateSongMeta> {
+	fn update(
+		self,
+		load_page_sizes: impl FnOnce(usize) -> anyhow::Result<Box<[(f64, f64)]>>,
+	) -> anyhow::Result<SongMeta> {
 		match self {
-			SongMetaVersioned::V(meta) => either::Either::Left(meta),
-			_ => either::Either::Right(self),
-		}
-	}
-}
-
-impl UpdateSongMeta for SongMetaVersioned {
-	fn update(self, pdf: &poppler::Document) -> SongMeta {
-		match self {
-			SongMetaVersioned::V(meta) => meta,
-			SongMetaVersioned::V2(meta) => meta.update(pdf),
-			SongMetaVersioned::V1(meta) => meta.update(pdf),
-			SongMetaVersioned::V0(meta) => meta.update(pdf),
+			SongMetaVersioned::V(meta) => Ok(meta),
+			SongMetaVersioned::V3(meta @ SongMetaV3 { n_pages, .. }) => {
+				Ok(meta.update(&load_page_sizes(n_pages)?))
+			},
+			SongMetaVersioned::V2(meta) => Ok(meta.update(&load_page_sizes(0)?)),
+			SongMetaVersioned::V1(meta) => Ok(meta.update(&load_page_sizes(0)?)),
+			SongMetaVersioned::V0(meta) => Ok(meta.update(&load_page_sizes(0)?)),
 		}
 	}
 }
@@ -647,17 +685,37 @@ impl From<SongMeta> for SongMetaVersioned {
 	}
 }
 
-pub type Staff = StaffV2;
+/* As you can see, we've gone through quite a few iterations on which coordinate
+ * space to use for describing staff coordinates. Here's what didn't work out in the
+ * past any why:
+ *
+ * V1: Relative coordinates. This makes it impossible to calculate the aspect
+ * ratio without knowing the actual paper size, and all scaling operations need
+ * to be corrected for that aspect ratio mismatch.
+ *
+ * V2: Absolute coordinates. This mostly works, but it requires tracking the
+ * original paper size along everywhere. This makes it annoying to work with
+ * when the base images get scaled. Many code assumes that all pages have the
+ * same size in their way how the coordinates are calculated with. This breaks
+ * in some really subtle ways once that assumption gets violated.
+ *
+ * V3: Coordinates scaled to a reference paper width of 1. This preserves aspect
+ * ratio while remaining independent of the original image size.
+ */
+pub type Staff = StaffV3;
 
-// Absolute coordinates, on the PDF, in the unit of the PDF
+// Coordinates are scaled to a reference paper width of 1.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StaffV2 {
+pub struct StaffV3 {
 	pub page: PageIndex,
 	pub start: (f64, f64),
 	pub end: (f64, f64),
 }
 
 impl Staff {
+	pub fn page(&self) -> PageIndex {
+		self.page
+	}
 	pub fn width(&self) -> f64 {
 		self.end.0 - self.start.0
 	}
@@ -681,14 +739,22 @@ impl Staff {
 	}
 }
 
+// Absolute coordinates, on the page image, in the unit of the current page
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StaffV2 {
+	page: PageIndex,
+	start: (f64, f64),
+	end: (f64, f64),
+}
+
 pub type Line = StaffV1;
 
 // Relative coordinates
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StaffV1 {
-	pub page: PageIndex,
-	pub start: (f64, f64),
-	pub end: (f64, f64),
+	page: PageIndex,
+	start: (f64, f64),
+	end: (f64, f64),
 }
 
 impl StaffV1 {

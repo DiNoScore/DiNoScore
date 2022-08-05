@@ -2,30 +2,6 @@ use super::*;
 use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
 use itertools::Itertools;
 
-/* Origin top left corner */
-#[derive(Debug, Copy, Clone)]
-pub struct RelativeStaff {
-	pub left: f64,
-	pub top: f64,
-	pub right: f64,
-	pub bottom: f64,
-}
-
-impl RelativeStaff {
-	pub fn into_staff(
-		self,
-		page: collection::PageIndex,
-		width: f64,
-		height: f64,
-	) -> collection::Staff {
-		collection::Staff {
-			page,
-			start: (self.left * width, self.top * height),
-			end: (self.right * width, self.bottom * height),
-		}
-	}
-}
-
 #[derive(serde::Deserialize, Debug, Clone)]
 struct Response {
 	width: u32,
@@ -91,7 +67,10 @@ fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaf
 }
 
 #[cfg(feature = "editor")]
-pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
+pub fn recognize_staves(
+	image: &gdk_pixbuf::Pixbuf,
+	page: collection::PageIndex,
+) -> Vec<collection::Staff> {
 	use image::GenericImageView;
 
 	let png = image.save_to_bufferv("png", &[]).unwrap();
@@ -334,16 +313,21 @@ pub fn recognize_staves(image: &gdk_pixbuf::Pixbuf) -> Vec<RelativeStaff> {
 	/* Convert back to relative positions. Filter for too small artefacts */
 	let staves = raw_staves
 		.iter()
-		.map(|staff| RelativeStaff {
-			top: staff.top as f64 / image_height as f64,
-			bottom: staff.bottom as f64 / image_height as f64,
-			left: staff.left as f64 / image_width as f64,
-			right: staff.right as f64 / image_width as f64,
+		.map(|staff| collection::Staff {
+			page,
+			start: (
+				staff.left as f64 / image_width as f64,
+				staff.top as f64 / image_width as f64,
+			),
+			end: (
+				staff.right as f64 / image_width as f64,
+				staff.bottom as f64 / image_width as f64,
+			),
 		})
 		/* At least 20% width */
-		.filter(|staff| staff.right - staff.left >= 0.2)
+		.filter(|staff| staff.width() >= 0.2)
 		/* At least 1% height */
-		.filter(|staff| staff.bottom - staff.top >= 0.01)
+		.filter(|staff| staff.height() >= 0.01)
 		.collect::<Vec<_>>();
 
 	// /* Post processing */

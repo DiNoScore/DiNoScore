@@ -13,13 +13,19 @@ impl LibraryWidget {
 		library: Rc<RefCell<library::Library>>,
 		song: crate::song_widget::SongWidget,
 	) {
-		self.imp().library.set(library).unwrap();
+		self.imp().library.set(library.clone()).unwrap();
 		self.imp().song.set(song).unwrap();
 		self.imp().reload_songs_filtered();
+		self.imp().side_bar.get().init(library, self.clone());
 	}
 
+	/* Called when leaving a song to update the statistics */
 	pub fn update_side_panel(&self) {
 		self.imp().on_item_selected();
+	}
+
+	pub fn load_song(&self, song: uuid::Uuid, start_at: collection::StaffIndex) {
+		self.imp().load_song(song, start_at);
 	}
 
 	#[cfg(test)]
@@ -32,7 +38,23 @@ impl LibraryWidget {
 
 	#[cfg(test)]
 	pub fn activate_selected_entry(&self) {
-		self.imp().on_play_button_pressed();
+		let uuid = {
+			/* There is exactly one item */
+			let song = self
+				.imp()
+				.library_grid
+				.selected_items()
+				.into_iter()
+				.next()
+				.unwrap();
+			let uuid = self
+				.imp()
+				.store_songs
+				.get()
+				.get::<glib::GString>(&self.imp().store_songs.iter(&song).unwrap(), 2);
+			uuid::Uuid::parse_str(uuid.as_str()).unwrap()
+		};
+		self.load_song(uuid, 0.into());
 	}
 }
 
@@ -43,21 +65,14 @@ mod imp {
 	#[template(resource = "/de/piegames/dinoscore/viewer/library.ui")]
 	pub struct LibraryWidget {
 		#[template_child]
-		store_songs: TemplateChild<gtk::ListStore>,
+		pub store_songs: TemplateChild<gtk::ListStore>,
 		#[template_child]
 		pub library_grid: TemplateChild<gtk::IconView>,
 		#[template_child]
-		sidebar_revealer: TemplateChild<gtk::Revealer>,
-		#[template_child]
 		search_entry: TemplateChild<gtk::SearchEntry>,
-
 		/* Revealer (when clicked on song) */
 		#[template_child]
-		stats_times_played: TemplateChild<gtk::Label>,
-		#[template_child]
-		stats_time_played: TemplateChild<gtk::Label>,
-		#[template_child]
-		stats_last_played: TemplateChild<gtk::Label>,
+		pub side_bar: TemplateChild<crate::song_preview::SongPreview>,
 
 		/**
 		 * Our scores decay over time, so we need to fix a point in time for the values to be comparable.
@@ -75,15 +90,12 @@ mod imp {
 			LibraryWidget {
 				store_songs: Default::default(),
 				library_grid: Default::default(),
-				sidebar_revealer: Default::default(),
 				search_entry: Default::default(),
+				side_bar: Default::default(),
 				reference_time: std::time::SystemTime::now(),
 				library: Default::default(),
 				song: Default::default(),
 				song_filter: RefCell::new(Box::new(|_| true)),
-				stats_times_played: Default::default(),
-				stats_time_played: Default::default(),
-				stats_last_played: Default::default(),
 			}
 		}
 	}
@@ -150,7 +162,7 @@ mod imp {
 		}
 
 		/// Play a song
-		fn load_song(&self, uuid: uuid::Uuid) {
+		pub fn load_song(&self, uuid: uuid::Uuid, start_at: collection::StaffIndex) {
 			log::info!("Loading song: {}", uuid);
 
 			let mut library = self.library.get().unwrap().borrow_mut();
@@ -177,7 +189,8 @@ mod imp {
 			let song = library.songs.get_mut(&uuid).unwrap();
 
 			let index = song.index.clone();
-			let sheet = song.load_sheets().unwrap();
+			// TODO load lazily
+			let sheets = song.load_sheets()().unwrap();
 			let scale_mode = library
 				.stats
 				.get_mut(&uuid)
@@ -187,7 +200,10 @@ mod imp {
 				.copied()
 				.unwrap_or_default();
 			std::mem::drop(library);
-			self.song.get().unwrap().load_song(index, sheet, scale_mode);
+			self.song
+				.get()
+				.unwrap()
+				.load_song(index, sheets, scale_mode, start_at);
 		}
 
 		#[template_callback]
@@ -206,29 +222,10 @@ mod imp {
 			};
 
 			if let Some(song) = song {
-				let library = self.library.get().unwrap().borrow();
-				let stats = library.stats.get(&song).unwrap();
-				self.stats_times_played
-					.set_label(&stats.times_played.to_string());
-				self.stats_time_played
-					.set_label(&format!("{:.1}", stats.seconds_played as f64 / 3600.0));
-				self.stats_last_played.set_label(
-					&stats
-						.last_played
-						.and_then(|last_played| {
-							last_played
-								.duration_since(std::time::SystemTime::UNIX_EPOCH)
-								.ok()
-						})
-						.and_then(|last_played| {
-							glib::DateTime::from_unix_local(last_played.as_secs() as i64).ok()
-						})
-						.and_then(|last_played| last_played.format("%_x").ok())
-						.unwrap_or_else(|| "never".into()),
-				);
+				self.side_bar.on_item_selected(song);
 			}
 
-			self.sidebar_revealer.set_reveal_child(song.is_some());
+			self.side_bar.set_sensitive(song.is_some());
 		}
 
 		/// A song entry from the IconView was activated through double-click or enter
@@ -239,28 +236,7 @@ mod imp {
 				.get()
 				.get::<glib::GString>(&self.store_songs.iter(item).unwrap(), 2);
 			let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
-			self.load_song(uuid);
-		}
-
-		/// The "play" button that appears when selecting a song was pressed
-		#[template_callback]
-		pub(super) fn on_play_button_pressed(&self) {
-			log::debug!("Activated");
-			let uuid = {
-				/* There is exactly one item */
-				let song = self
-					.library_grid
-					.selected_items()
-					.into_iter()
-					.next()
-					.unwrap();
-				let uuid = self
-					.store_songs
-					.get()
-					.get::<glib::GString>(&self.store_songs.iter(&song).unwrap(), 2);
-				uuid::Uuid::parse_str(uuid.as_str()).unwrap()
-			};
-			self.load_song(uuid);
+			self.load_song(uuid, 0.into());
 		}
 
 		#[template_callback]

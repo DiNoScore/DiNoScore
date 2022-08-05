@@ -45,7 +45,7 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 	let background_pdf: Vec<u8> = catch!({
 		log::debug!("Creating the PDF background for the file");
 		let background_pdf = pipeline::pipe!(
-			song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))))
+			song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))))()
 				.context("Failed to load pages")?
 			=> Into::into
 			=> image_util::concat_files

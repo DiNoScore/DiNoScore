@@ -90,95 +90,15 @@
           </object>
         </child>
         <child>
-          <object class="GtkRevealer" id="sidebar_revealer">
-            <property name="hexpand">False</property>
-            <property name="transition-type">slide-left</property>
-            <property name="reveal-child">False</property>
+          <object class="GtkScrolledWindow">
+            <property name="hscrollbar-policy">never</property>
             <child>
-              <object class="GtkScrolledWindow">
-                <property name="hscrollbar-policy">never</property>
-                <child>
-                  <object class="GtkBox">
-                    <property name="spacing">10</property>
-                    <property name="margin_start">5</property>
-                    <property name="margin_end">5</property>
-                    <property name="margin_top">5</property>
-                    <property name="margin_bottom">5</property>
-                    <property name="orientation">vertical</property>
-                    <child>
-                      <object class="GtkButton">
-                        <property name="label" translatable="yes">Play</property>
-                        <property name="sensitive" bind-source="sidebar_revealer" bind-property="reveal-child" bind-flags="sync-create"/>
-                        <signal name="clicked" handler="on_play_button_pressed" swapped="true" />
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkGrid">
-                        <property name="row-spacing">15</property>
-                        <property name="column-spacing">3</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Times played:</property>
-                            <property name="halign">start</property>
-                            <layout>
-                              <property name="row">0</property>
-                              <property name="column">0</property>
-                            </layout>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="stats_times_played">
-                            <property name="halign">end</property>
-                            <layout>
-                              <property name="row">0</property>
-                              <property name="column">1</property>
-                            </layout>
-                          </object>
-                        </child>
-
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="halign">start</property>
-                            <property name="label" translatable="yes">Hours played:</property>
-                            <layout>
-                              <property name="row">1</property>
-                              <property name="column">0</property>
-                            </layout>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="stats_time_played">
-                            <property name="halign">end</property>
-                            <layout>
-                              <property name="row">1</property>
-                              <property name="column">1</property>
-                            </layout>
-                          </object>
-                        </child>
-
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Last played:</property>
-                            <property name="halign">start</property>
-                            <layout>
-                              <property name="row">2</property>
-                              <property name="column">0</property>
-                            </layout>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="stats_last_played">
-                            <property name="halign">end</property>
-                            <layout>
-                              <property name="row">2</property>
-                              <property name="column">1</property>
-                            </layout>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
+              <object class="SongPreview" id="side_bar">
+                <property name="margin_start">6</property>
+                <property name="margin_end">6</property>
+                <property name="margin_top">12</property>
+                <property name="margin_bottom">6</property>
+                <property name="sensitive">False</property>
               </object>
             </child>
           </object>

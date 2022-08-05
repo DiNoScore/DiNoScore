@@ -87,6 +87,10 @@ mod imp {
 		pages_preview_data: TemplateChild<gtk::ListStore>,
 		#[template_child]
 		editor: TemplateChild<page::EditorPage>,
+		#[template_child]
+		song_name: TemplateChild<gtk::Entry>,
+		#[template_child]
+		song_composer: TemplateChild<gtk::Entry>,
 
 		file: Rc<RefCell<EditorSongFile>>,
 	}
@@ -157,6 +161,8 @@ mod imp {
 		fn unload_and_clear(&self) {
 			self.pages_preview_data.clear();
 			*self.file.borrow_mut() = EditorSongFile::new();
+			self.song_name.set_text("");
+			self.song_composer.set_text("");
 		}
 
 		fn load_with_dialog(&self) {
@@ -178,15 +184,15 @@ mod imp {
 					if response == gtk::ResponseType::Accept {
 						if let Some(file) = choose.file() {
 							let path = file.path().unwrap();
-							let mut song = SongFile::new(path).unwrap();
-							obj.imp().load(song.load_sheets_raw().unwrap(), song.index);
+							let song = SongFile::new(path, &mut Default::default()).unwrap();
+							obj.imp().load(song.load_sheets()().unwrap(), song.index);
 						}
 					}
 				}),
 			);
 		}
 
-		fn load(&self, pages: TiVec<PageIndex, RawPageImage>, song: SongMeta) {
+		fn load(&self, pages: TiVec<PageIndex, PageImage>, song: SongMeta) {
 			self.unload_and_clear();
 			for (index, page) in pages.into_iter().enumerate() {
 				self.add_page(page);
@@ -201,6 +207,10 @@ mod imp {
 			}
 			self.file.borrow_mut().piece_starts = song.piece_starts;
 			self.file.borrow_mut().section_starts = song.section_starts;
+			/* This will call the callbacks that also update self.file */
+			self.song_name.set_text(song.title.as_deref().unwrap_or(""));
+			self.song_composer
+				.set_text(song.composer.as_deref().unwrap_or(""));
 		}
 
 		fn save_with_ui(&self) {
@@ -350,14 +360,7 @@ mod imp {
 						let total_pages = raw.len() as f64;
 						let mut processed = Vec::with_capacity(raw.len());
 						for (i2, (extension, raw)) in raw.into_iter().enumerate() {
-							let image =
-								gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(raw.clone()))
-									.unwrap();
-							processed.push(RawPageImage::Raster {
-								image: image.render_to_thumbnail(1000).unwrap(),
-								raw,
-								extension,
-							});
+							processed.push(PageImage::from_image(raw, extension).unwrap());
 
 							progress.set_fraction(
 								(i as f64 + ((i2 + 1) as f64) / total_pages) as f64 / total_work,
@@ -366,21 +369,23 @@ mod imp {
 						}
 						processed
 					} else {
-						image_util::explode_pdf(&raw, |raw, page| RawPageImage::Vector {
-							page,
-							raw,
-						})
-						.unwrap()
+						image_util::explode_pdf(&raw)
+							.unwrap()
+							.map(|result| {
+								let (raw, _) = result?;
+								PageImage::from_pdf(raw)
+							})
+							.collect::<anyhow::Result<Vec<_>>>()
+							.unwrap()
 					}
 				} else {
-					let image = gdk_pixbuf::Pixbuf::from_file(&path).unwrap();
-					vec![RawPageImage::Raster {
-						image: image.render_to_thumbnail(1000).unwrap(),
+					vec![PageImage::from_image(
 						raw,
-						extension: extension
+						extension
 							.expect("Image files must have an extension")
 							.to_string(),
-					}]
+					)
+					.unwrap()]
 				});
 
 				progress.set_fraction((i + 1) as f64 / total_work);
@@ -396,7 +401,7 @@ mod imp {
 			let total_work = pages.len();
 
 			for (i, page) in pages.into_iter().enumerate() {
-				let thumbnail = page.render_to_thumbnail(400).unwrap();
+				let thumbnail = page.render_scaled(400);
 				obj.imp().add_page_manual(page, thumbnail);
 				progress.set_fraction((i + 1) as f64 / total_work as f64);
 				yield_now().await;
@@ -406,13 +411,13 @@ mod imp {
 		}
 
 		/// Append a single loaded image to the end
-		fn add_page(&self, page: RawPageImage) {
-			let pixbuf = page.render_to_thumbnail(400).unwrap();
+		fn add_page(&self, page: PageImage) {
+			let pixbuf = page.render_scaled(400);
 			self.add_page_manual(page, pixbuf);
 		}
 
 		/// Append a single loaded image to the end
-		fn add_page_manual(&self, page: RawPageImage, thumbnail: gdk_pixbuf::Pixbuf) {
+		fn add_page_manual(&self, page: PageImage, thumbnail: gdk_pixbuf::Pixbuf) {
 			self.file.borrow_mut().add_page(page);
 
 			self.pages_preview_data
@@ -441,7 +446,6 @@ mod imp {
 		fn autodetect(&self) {
 			let selected_items = self.pages_preview.selected_items();
 
-			let pdf_pages = self.file.borrow().get_pages();
 			let obj = self.instance();
 
 			let (progress_dialog, progress) =
@@ -465,20 +469,14 @@ mod imp {
 								.unwrap(),
 							0,
 						);
-						let pdf_page = &pdf_pages[page];
-						let width = pdf_page.get_width() as f64;
-						let height = pdf_page.get_height() as f64;
 
 						let data = unsafe { unsafe_force::Send::new(data) };
 						let (page, bars_inner) = blocking::unblock(move || {
 							log::info!("Autodetecting {} ({}/{})", page, i, total_work);
 							let page = PageIndex(page);
 							let bars_inner: Vec<Staff> =
-								recognition::recognize_staves(&unsafe { data.unwrap() })
-									.iter()
-									.cloned()
-									.map(|staff| staff.into_staff(page, width, height))
-									.collect();
+								recognition::recognize_staves(&unsafe { data.unwrap() }, page);
+							log::debug!("Found {} staves", bars_inner.len());
 							(page, bars_inner)
 						})
 						.await;
@@ -493,6 +491,16 @@ mod imp {
 					log::info!("Autodetected");
 				},
 			);
+		}
+
+		#[template_callback]
+		fn update_song_name(&self) {
+			self.file.borrow_mut().song_name = self.song_name.text().to_string();
+		}
+
+		#[template_callback]
+		fn update_song_composer(&self) {
+			self.file.borrow_mut().song_composer = self.song_composer.text().to_string();
 		}
 	}
 }

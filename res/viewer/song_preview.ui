@@ -1,0 +1,191 @@
+<interface>
+  <template class="SongPreview" parent="GtkBox">
+    <property name="spacing">10</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkLabel" id="song_composer">
+        <property name="halign">end</property>
+        <property name="margin_start">12</property>
+        <property name="margin_end">12</property>
+        <style>
+          <class name="title-4"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkLabel" id="song_title">
+        <property name="margin_start">12</property>
+        <property name="margin_end">12</property>
+        <style>
+          <class name="title-2"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparator">
+        <style>
+          <class name="spacer"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkOverlay">
+        <child>
+          <object class="AdwCarousel" id="part_preview">
+            <property name="vexpand">False</property>
+            <property name="hexpand">False</property>
+            <property name="margin_top">20</property>
+            <property name="margin_bottom">50</property>
+            <signal name="page-changed" handler="preview_page_changed" swapped="true" />
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="valign">end</property>
+            <property name="halign">center</property>
+            <!-- Don't tab-focus the overlay -->
+            <property name="can-focus">False</property>
+            <child>
+              <object class="GtkBox" id="part_overlay">
+                <property name="visible">False</property>
+                <property name="halign">center</property>
+                <style>
+                  <class name="osd"/>
+                  <class name="toolbar"/>
+                </style>
+                <child>
+                  <object class="GtkLabel" id="part_name">
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="part_quick_play">
+                    <property name="icon-name">media-playback-start-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Start playing there</property>
+                    <signal name="clicked" handler="on_quick_play_button_pressed" swapped="true" />
+                    <style>
+                      <class name="raised"/>
+                    </style>
+                </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwCarouselIndicatorLines" id="part_carousel_dots">
+                <property name="carousel">part_preview</property>
+              </object>
+            </child> 
+          </object>
+        </child>
+        <child>
+          <object class="GtkEventControllerMotion">
+            <signal name="enter" handler="on_carousel_mouse_enter" swapped="true" />
+            <signal name="leave" handler="on_carousel_mouse_leave" swapped="true" />
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkButton">
+        <!-- <property name="sensitive" bind-source="sidebar_revealer" bind-property="reveal-child" bind-flags="sync-create"/> -->
+        <signal name="clicked" handler="on_play_button_pressed" swapped="true" />
+        <property name="margin_start">12</property>
+        <property name="margin_end">12</property>
+        <style>
+          <class name="pill"/>
+          <class name="suggested-action"/>
+        </style>
+        <child>
+          <object class="AdwButtonContent">
+            <property name="icon-name">media-playback-start-symbolic</property>
+            <property name="label" translatable="yes">Play</property>
+            <property name="halign">center</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparator">
+        <property name="vexpand">True</property>
+        <style>
+          <class name="spacer" />
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparator"/>
+    </child>
+    <child>
+      <object class="GtkGrid">
+        <property name="row-spacing">15</property>
+        <property name="column-spacing">3</property>
+        <property name="hexpand">False</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="label" translatable="yes">Times played:</property>
+            <property name="halign">start</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">0</property>
+              <property name="column">0</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="stats_times_played">
+            <property name="halign">end</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">0</property>
+              <property name="column">1</property>
+            </layout>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkLabel">
+            <property name="label" translatable="yes">Hours played:</property>
+            <property name="halign">start</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">1</property>
+              <property name="column">0</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="stats_time_played">
+            <property name="halign">end</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">1</property>
+              <property name="column">1</property>
+            </layout>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkLabel">
+            <property name="label" translatable="yes">Last played:</property>
+            <property name="halign">start</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">2</property>
+              <property name="column">0</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="stats_last_played">
+            <property name="halign">end</property>
+            <property name="hexpand">True</property>
+            <layout>
+              <property name="row">2</property>
+              <property name="column">1</property>
+            </layout>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

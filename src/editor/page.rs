@@ -1,6 +1,8 @@
 use crate::EditorSongFile;
 use dinoscore::{collection::*, prelude::*, *};
 
+use std::sync::mpsc::*;
+
 glib::wrapper! {
 	pub struct EditorPage(ObjectSubclass<imp::EditorPage>)
 		@extends gtk::Box, gtk::Widget,
@@ -88,8 +90,8 @@ mod imp {
 		pub fn update_page(&self) {
 			let file = self.file.get().unwrap().borrow();
 			if let Some(page) = self.current_page.borrow_mut().as_mut() {
-				let (image, bars) = file.pages[page.page.0].clone();
-				page.image = image;
+				let bars = file.pages[page.page.0].1.clone();
+
 				page.bars = bars;
 				page.staves_before = file.count_staves_before(page.page);
 			};
@@ -103,12 +105,30 @@ mod imp {
 			let file = self.file.get().unwrap().borrow();
 			*self.current_page.borrow_mut() = current_page.map(|page_index| {
 				let (image, bars) = file.pages[page_index.0].clone();
+				let (renderer, update_page) = spawn_song_renderer(page_index, image);
+
+				update_page.attach(
+					None,
+					clone_!(self, move |obj, (image, index)| {
+						if let Some(page) = obj.imp().current_page.borrow_mut().as_mut() {
+							if index == page.page {
+								page.image = Some(image);
+							}
+						}
+						obj.imp().editor.queue_draw();
+						Continue(true)
+					}),
+				);
+
+				renderer.send(self.editor.get().width()).unwrap();
+
 				PageState {
 					page: page_index,
-					image,
+					image: None,
 					bars,
 					staves_before: file.count_staves_before(page_index),
 					selected_staff: None,
+					renderer,
 				}
 			});
 			self.editor.queue_draw();
@@ -182,6 +202,17 @@ mod imp {
 
 		/// The drawingarea got clicked
 		#[template_callback]
+		fn on_resize(&self, width: i32, _height: i32) {
+			let mut page_ = self.current_page.borrow_mut();
+			let page = match page_.as_mut() {
+				Some(page) => page,
+				None => return,
+			};
+			page.renderer.send(width).unwrap();
+		}
+
+		/// The drawingarea got clicked
+		#[template_callback]
 		fn on_click(&self, _n_press: i32, x_: f64, y_: f64) {
 			self.editor.grab_focus();
 
@@ -190,8 +221,13 @@ mod imp {
 				Some(page) => page,
 				None => return,
 			};
+			let image = match page.image.as_ref() {
+				Some(image) => image,
+				None => return,
+			};
 
-			let scale = self.editor.get().height() as f64 / page.image.get_height();
+			let scale =
+				self.editor.get().height() as f64 / image.height() as f64 * image.width() as f64;
 			let x = x_ / scale;
 			let y = y_ / scale;
 			let selected_staff = page.cast_ray(x, y).map(|(i, _)| i);
@@ -213,8 +249,14 @@ mod imp {
 				Some(page) => page,
 				None => return,
 			};
+			let image = match page.image.as_ref() {
+				Some(image) => image,
+				None => return,
+			};
 
-			match page.cast_ray(x, y) {
+			let scale =
+				self.editor.get().height() as f64 / image.height() as f64 * image.width() as f64;
+			match page.cast_ray(x / scale, y / scale) {
 				Some((_index, StaffHandle::Corner)) => {
 					// self.drag_state.set(true);
 					todo!()
@@ -240,7 +282,11 @@ mod imp {
 				Some(page) => page,
 				None => return,
 			};
-			let scale = self.editor.get().height() as f64 / page.image.get_height();
+			let image = match page.image.as_ref() {
+				Some(image) => image,
+				None => return,
+			};
+			let scale = self.editor.get().height() as f64 / image.height() as f64;
 			let (mut x, mut y) = self.drag_gesture.start_point().unwrap();
 			let (mut w, mut h) = self.drag_gesture.offset().unwrap();
 			x /= scale;
@@ -254,8 +300,14 @@ mod imp {
 							page.page,
 							Staff {
 								page: page.page,
-								start: (x.min(x + w), y.min(y + h)),
-								end: (x.max(x + w), y.max(y + h)),
+								start: (
+									x.min(x + w) / image.width() as f64,
+									y.min(y + h) / image.width() as f64,
+								),
+								end: (
+									x.max(x + w) / image.width() as f64,
+									y.max(y + h) / image.width() as f64,
+								),
 							},
 						);
 						page.selected_staff = Some(index);
@@ -266,12 +318,12 @@ mod imp {
 					}
 				},
 				Some(DragState::Move(index)) => {
-					let index = self
-						.file
-						.get()
-						.unwrap()
-						.borrow_mut()
-						.move_staff(page.page, index, w, h);
+					let index = self.file.get().unwrap().borrow_mut().move_staff(
+						page.page,
+						index,
+						w / image.width() as f64,
+						h / image.width() as f64,
+					);
 					page.selected_staff = Some(index);
 					std::mem::drop(page_);
 					self.update_page();
@@ -298,7 +350,7 @@ mod imp {
 
 		#[template_callback]
 		fn on_leave(&self, _controller: gtk::EventControllerMotion) {
-			// self.instance().set_cursor(None);
+			self.instance().set_cursor(None);
 		}
 
 		#[template_callback]
@@ -308,12 +360,15 @@ mod imp {
 				Some(page) => page,
 				None => return,
 			};
+			let image = match page.image.as_ref() {
+				Some(image) => image,
+				None => return,
+			};
 
 			if self.drag_state.get().is_some() {
-				let scale = self.editor.get().height() as f64 / page.image.get_height();
-				let x = x / scale;
-				let y = y / scale;
-				match page.cast_ray(x, y) {
+				let scale = self.editor.get().height() as f64 / image.height() as f64
+					* image.width() as f64;
+				match page.cast_ray(x / scale, y / scale) {
 					Some((index, StaffHandle::Center)) if Some(index) == page.selected_staff => {
 						self.instance().set_cursor_from_name(Some("move"));
 					},
@@ -475,25 +530,31 @@ mod imp {
 				Some(page) => page,
 				None => return,
 			};
+			let image = match page.image.as_ref() {
+				Some(image) => image,
+				None => return, // TODO draw gray area or something
+			};
+			if editor.height() < 1 {
+				return;
+			}
 			catch!({
 				context.set_source_rgb(1.0, 1.0, 1.0);
 				context.paint()?;
 
-				let scale = editor.height() as f64 / page.image.get_height();
+				let scale = editor.height() as f64 / image.height() as f64;
+				context.save()?;
 				context.scale(scale, scale);
-				page.image.render(context)?;
+				context.set_source_pixbuf(&gdk::pixbuf_get_from_texture(image).unwrap(), 0.0, 0.0);
+				context.paint()?;
+				context.restore()?;
+
+				let effective_image_width = image.width() as f64 * scale;
 
 				context.save()?;
 				context.set_source_rgba(0.1, 0.2, 0.4, 0.3);
 				if let Some(DragState::New) = self.drag_state.get() {
-					let scale = self.editor.get().height() as f64 / page.image.get_height();
-					let (mut x, mut y) = self.drag_gesture.start_point().unwrap();
-					let (mut w, mut h) = self.drag_gesture.offset().unwrap();
-					// TODO maybe apply some global transformation instead?
-					x /= scale;
-					y /= scale;
-					w /= scale;
-					h /= scale;
+					let (x, y) = self.drag_gesture.start_point().unwrap();
+					let (w, h) = self.drag_gesture.offset().unwrap();
 					context.rectangle(x, y, w, h);
 					context.fill_preserve()?;
 					context.stroke()?;
@@ -501,11 +562,18 @@ mod imp {
 				for (i, staff) in page.bars.iter().enumerate() {
 					context.save()?;
 
+					/* Transform coordinates */
+					let staff_left = staff.left() * effective_image_width;
+					let staff_right = staff.right() * effective_image_width;
+					let staff_top = staff.top() * effective_image_width;
+					let staff_bottom = staff.bottom() * effective_image_width;
+					let staff_width = staff.width() * effective_image_width;
+					let staff_height = staff.height() * effective_image_width;
+
 					if let Some(DragState::Move(index)) = self.drag_state.get() {
 						if index == i {
-							let scale = self.editor.get().height() as f64 / page.image.get_height();
 							let (w, h) = self.drag_gesture.offset().unwrap();
-							context.translate(w / scale, h / scale);
+							context.translate(w, h);
 						}
 					}
 					if Some(i) == page.selected_staff {
@@ -514,39 +582,33 @@ mod imp {
 
 						/* Main shape */
 						context.set_source_rgba(0.15, 0.3, 0.5, 0.3);
-						context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
+						context.rectangle(staff_left, staff_top, staff_width, staff_height);
 						context.fill_preserve()?;
 						context.stroke()?;
 
 						/* White handles on the corners */
 						context.set_source_rgba(0.35, 0.6, 0.8, 1.0);
+						context.arc(staff_left, staff_top, 10.0, 0.0, 2.0 * std::f64::consts::PI);
+						context.fill()?;
 						context.arc(
-							staff.left(),
-							staff.top(),
+							staff_right,
+							staff_top,
 							10.0,
 							0.0,
 							2.0 * std::f64::consts::PI,
 						);
 						context.fill()?;
 						context.arc(
-							staff.right(),
-							staff.top(),
+							staff_left,
+							staff_bottom,
 							10.0,
 							0.0,
 							2.0 * std::f64::consts::PI,
 						);
 						context.fill()?;
 						context.arc(
-							staff.left(),
-							staff.bottom(),
-							10.0,
-							0.0,
-							2.0 * std::f64::consts::PI,
-						);
-						context.fill()?;
-						context.arc(
-							staff.right(),
-							staff.bottom(),
+							staff_right,
+							staff_bottom,
 							10.0,
 							0.0,
 							2.0 * std::f64::consts::PI,
@@ -555,14 +617,14 @@ mod imp {
 
 						context.restore()?;
 					} else {
-						context.rectangle(staff.left(), staff.top(), staff.width(), staff.height());
+						context.rectangle(staff_left, staff_top, staff_width, staff_height);
 						context.fill_preserve()?;
 						context.stroke()?;
 					}
 					context.save()?;
 					context.set_font_size(25.0);
 					context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
-					context.move_to(staff.left() + 5.0, staff.bottom() - 5.0);
+					context.move_to(staff_left + 5.0, staff_bottom - 5.0);
 					context.show_text(&(page.staves_before + i).to_string())?;
 					context.restore()?;
 					context.restore()?;
@@ -594,13 +656,15 @@ enum StaffHandle {
 /// When a page is loaded, store our state in here
 struct PageState {
 	page: PageIndex,
-	image: Rc<RawPageImage>,
+	image: Option<gdk::Texture>,
 	/// Only those from the current page
 	bars: Vec<Staff>,
 	staves_before: usize,
 	// selected_page: PageIndex,
 	/* Relative to the currently selected page */
 	selected_staff: Option<usize>,
+	/// Send new canvas size to background thread
+	renderer: Sender<i32>,
 }
 
 impl PageState {
@@ -611,6 +675,7 @@ impl PageState {
 
 	/// If we hit, return staff index of page and hit kind
 	fn cast_ray(&self, x: f64, y: f64) -> Option<(usize, StaffHandle)> {
+		let image = self.image.as_ref()?;
 		let radius = 10.0;
 		for (i, bar) in self.bars.iter().enumerate() {
 			/* Check for corners first */
@@ -636,4 +701,76 @@ impl PageState {
 
 		None
 	}
+}
+
+/// A background thread renderer
+///
+/// It will take the raw PDFs and images and render them scaled down to an appropriate
+/// size. It is flexible with in-flight requests and invalidation.
+///
+/// Drop one of the channels when you are no longer interested in that image.
+///
+/// This is as scoped down version of the background renderer in `song_widget.rs`
+fn spawn_song_renderer(
+	index: PageIndex,
+	page: Arc<PageImage>,
+) -> (Sender<i32>, glib::Receiver<(gdk::Texture, PageIndex)>) {
+	let (in_tx, in_rx) = channel();
+	let (out_tx, out_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+
+	std::thread::spawn(move || {
+		/* For a start, render at minimum resolution. This should not take long */
+		let mut last_width = 250;
+		let image = gdk::Texture::for_pixbuf(&page.render_scaled(250));
+		if out_tx.send((image, index)).is_err() {
+			return;
+		}
+		log::debug!("Background renderer ready");
+
+		/* We always only want the latest value */
+		fn fetch_latest(rx: &Receiver<i32>) -> Option<i32> {
+			let mut last = None::<i32>;
+			loop {
+				match (rx.try_recv(), &mut last) {
+					(Ok(val), last) => {
+						*last = Some(val);
+					},
+					(Err(TryRecvError::Empty), None) => {
+						/* Don't return empty handed */
+						return rx.recv().ok();
+					},
+					(Err(TryRecvError::Empty), Some(last)) => return Some(*last),
+					(Err(TryRecvError::Disconnected), _) => return None,
+				}
+			}
+		}
+
+		loop {
+			match fetch_latest(&in_rx) {
+				Some(requested_width) => {
+					/* Round the width to the nearest level. Never round down, never round more than
+					 * 66% (the levels are 2/3 apart each, exponentially). Never go below 250 pixels.
+					 */
+					let actual_width = (1.5f64)
+						.powf((requested_width as f64).log(1.5).ceil())
+						.ceil()
+						.max(250.0) as i32;
+					if actual_width != last_width {
+						last_width = actual_width;
+						log::debug!("Background thread rendering width changed: {actual_width}");
+
+						let image = gdk::Texture::for_pixbuf(&page.render_scaled(actual_width));
+
+						/* Send it off */
+						if out_tx.send((image, index)).is_err() {
+							return;
+						}
+					}
+				},
+				None => return,
+			}
+		}
+	});
+
+	(in_tx, out_rx)
 }

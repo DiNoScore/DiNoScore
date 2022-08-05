@@ -11,138 +11,125 @@ use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use gtk4 as gtk;
 use libadwaita as adw;
 
-pub trait PageImage {
-	fn render(&self, context: &cairo::Context) -> cairo::Result<()>;
-
-	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf>;
-
-	fn get_width(&self) -> f64;
-
-	fn get_height(&self) -> f64;
+/// An image file, in memory but compressed
+///
+/// It may be either an image or a single-page PDF. This invariant is checked at
+/// first load. The image is kept as-is in memory, and it is only decompressed
+/// when needed to save RAM.
+pub struct PageImage {
+	raw: Vec<u8>,
+	/// File name extension; the format of the bytes
+	extension: String,
+	// For raster images: Size in pixels
+	// For vector images: Size of the PDF page in *units*
+	width: f64,
+	height: f64,
 }
 
-impl PageImage for gdk_pixbuf::Pixbuf {
-	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
-		context.set_source_pixbuf(self, 0.0, 0.0);
-		context.paint()
+impl PageImage {
+	pub fn from_pdf(raw: Vec<u8>) -> anyhow::Result<Self> {
+		let pdf = poppler::Document::from_bytes(&glib::Bytes::from(&raw), None)
+			.context("Failed to load PDF")?;
+		anyhow::ensure!(pdf.n_pages() == 1, "PDF file must have exactly one page");
+		let page = pdf.page(0).unwrap();
+		Ok(Self::from_pdf_page(raw, &page))
 	}
 
-	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
-		Ok(self
-			.scale_simple(
-				width,
-				(width as f64 * self.get_height() / self.get_width()) as i32,
-				gdk_pixbuf::InterpType::Bilinear,
-			)
-			.unwrap())
-	}
-
-	fn get_width(&self) -> f64 {
-		self.width() as f64
-	}
-
-	fn get_height(&self) -> f64 {
-		self.height() as f64
-	}
-}
-
-pub type PageImageBox = Box<dyn PageImage>;
-
-impl PageImage for poppler::Page {
-	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
-		self.render(context);
-		context.status()
-	}
-
-	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
-		pdf_to_pixbuf(self, width)
-	}
-
-	fn get_width(&self) -> f64 {
-		self.size().0
-	}
-
-	fn get_height(&self) -> f64 {
-		self.size().1
-	}
-}
-
-/// A loaded image, together with the raw bytes to save it losslessly
-pub enum RawPageImage {
-	Raster {
-		image: gdk_pixbuf::Pixbuf,
-		raw: Vec<u8>,
-		/// File name extension; the format of the bytes
-		extension: String,
-	},
-	Vector {
-		page: poppler::Page,
-		raw: Vec<u8>,
-	},
-}
-
-impl RawPageImage {
-	pub fn extension(&self) -> &str {
-		match self {
-			Self::Raster { extension, .. } => extension,
-			Self::Vector { .. } => "pdf",
+	/// Only used by the legacy API
+	pub fn from_pdf_page(raw: Vec<u8>, page: &poppler::Page) -> Self {
+		Self {
+			raw,
+			extension: "pdf".into(),
+			width: page.size().0,
+			height: page.size().1,
 		}
+	}
+
+	pub fn from_image(raw: Vec<u8>, extension: String) -> anyhow::Result<Self> {
+		let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(raw.clone()))
+			.context("Failed to load image")?;
+		Ok(Self {
+			raw,
+			extension,
+			width: pixbuf.width() as f64,
+			height: pixbuf.height() as f64,
+		})
+	}
+
+	pub fn is_pdf(&self) -> bool {
+		&self.extension == "pdf"
+	}
+
+	pub fn extension(&self) -> &str {
+		&self.extension
 	}
 
 	pub fn raw(&self) -> &[u8] {
-		match self {
-			Self::Raster { raw, .. } | Self::Vector { raw, .. } => raw,
+		&self.raw
+	}
+
+	/// The width of the coordinate system for this image
+	pub fn reference_width(&self) -> f64 {
+		self.width
+	}
+
+	/// The height of the coordinate system for this image
+	pub fn reference_height(&self) -> f64 {
+		self.height
+	}
+
+	/// The maximum sensible width to render at (None for vector images)
+	pub fn max_width(&self) -> Option<f64> {
+		(!self.is_pdf()).then(|| self.width)
+	}
+
+	/// Load and render this image to a pixbuf.
+	///
+	/// The result will have at most the requested width and be scaled with
+	/// preserved aspect ratio. If the source is a raster image, it will never
+	/// be scaled up.
+	pub fn render_scaled(&self, width: i32) -> gdk_pixbuf::Pixbuf {
+		/* We can panic on error here because we are just double-checking a previously-enforced invariant */
+
+		if self.is_pdf() {
+			let pdf = poppler::Document::from_bytes(&glib::Bytes::from(&self.raw), None)
+				.expect("Failed to load PDF");
+			assert!(pdf.n_pages() == 1, "PDF file must have exactly one page");
+			let page = pdf.page(0).unwrap();
+			pdf_to_pixbuf(&page, width).expect("Failed to render PDF")
+		} else {
+			let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(self.raw.clone()))
+				.expect("Failed to load image");
+			if width as f64 >= self.width {
+				pixbuf
+			} else {
+				pixbuf
+					.scale_simple(
+						width,
+						(width as f64 * self.height / self.width).ceil() as i32,
+						gdk_pixbuf::InterpType::Bilinear,
+					)
+					.expect("Failed to scale image")
+			}
 		}
 	}
-}
 
-impl PageImage for RawPageImage {
-	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
-		(&self).render(context)
-	}
+	/// Load and render this image to a [cairo::Context].
+	pub fn render_cairo(&self, context: &cairo::Context) -> cairo::Result<()> {
+		/* We can panic on error here because we are just double-checking a previously-enforced invariant */
 
-	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
-		(&self).render_to_thumbnail(width)
-	}
-
-	fn get_width(&self) -> f64 {
-		(&self).get_width()
-	}
-
-	fn get_height(&self) -> f64 {
-		(&self).get_height()
-	}
-}
-
-impl PageImage for &RawPageImage {
-	fn render(&self, context: &cairo::Context) -> cairo::Result<()> {
-		match self {
-			RawPageImage::Vector { page, .. } => {
-				page.render(context);
-				context.status()
-			},
-			RawPageImage::Raster { image, .. } => image.render(context),
-		}
-	}
-
-	fn render_to_thumbnail(&self, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
-		match self {
-			RawPageImage::Vector { page, .. } => page.render_to_thumbnail(width),
-			RawPageImage::Raster { image, .. } => image.render_to_thumbnail(width),
-		}
-	}
-
-	fn get_width(&self) -> f64 {
-		match self {
-			RawPageImage::Vector { page, .. } => page.get_width(),
-			RawPageImage::Raster { image, .. } => image.get_width() as f64,
-		}
-	}
-
-	fn get_height(&self) -> f64 {
-		match self {
-			RawPageImage::Vector { page, .. } => page.get_height(),
-			RawPageImage::Raster { image, .. } => image.get_height() as f64,
+		if self.is_pdf() {
+			let pdf = poppler::Document::from_bytes(&glib::Bytes::from(&self.raw), None)
+				.expect("Failed to load PDF");
+			assert!(pdf.n_pages() == 1, "PDF file must have exactly one page");
+			let page = pdf.page(0).unwrap();
+			page.render(&context);
+			context.status()
+		} else {
+			let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(self.raw.clone()))
+				.expect("Failed to load image");
+			context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+			context.paint()
 		}
 	}
 }
@@ -178,26 +165,26 @@ for page in pdf.pages:
 }
 
 /// Split a PDF file into its own pages, map the result to something sensible
-pub fn explode_pdf<T>(
+pub fn explode_pdf(
 	pdf: &[u8],
-	mapper: impl Fn(Vec<u8>, poppler::Page) -> T,
-) -> anyhow::Result<Vec<T>> {
-	explode_pdf_raw(pdf)
+) -> anyhow::Result<impl Iterator<Item = anyhow::Result<(Vec<u8>, poppler::Page)>>> {
+	Ok(explode_pdf_raw(pdf)
 		.context("Failed to split PDF into its pages")?
 		.into_iter()
 		.map(|bytes| {
 			let document =
-				poppler::Document::from_bytes(&glib::Bytes::from_owned(bytes.clone()), None)?;
+				poppler::Document::from_bytes(&glib::Bytes::from_owned(bytes.clone()), None)
+					.context("Failed to split legacy PDF into its pages")?;
 			/* This is a guarantee from our explode_pdf function */
 			assert!(document.n_pages() == 1);
-			Ok(mapper(bytes, document.page(0).unwrap()))
-		})
-		.collect::<anyhow::Result<_>>()
-		.context("Failed to split legacy PDF into its pages")
+			Ok((bytes, document.page(0).unwrap()))
+		}))
 }
 
 /// Extract all raster images from a PDF
-pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<Vec<(String, Vec<u8>)>> {
+///
+/// Return type: `([(format, bytes)], pdf_n_pages)`
+pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<(Vec<(String, Vec<u8>)>, usize)> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	let gil = pyo3::Python::acquire_gil();
 	let py = gil.python();
@@ -205,17 +192,35 @@ pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<Vec<(String, Vec<u8>
 	let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
 	py.run(
 		r#"
+import pikepdf
 from pikepdf import Pdf, PdfImage
 from io import BytesIO
 
 pdf = Pdf.open(BytesIO(bytes(pdf)))
+n_pages = len(pdf.pages)
 
 images = []
+
 for page in pdf.pages:
 	for image in list(page.images.values()):
 		buf = BytesIO(bytearray())
 		format = PdfImage(image).extract_to(stream=buf)
 		images += [(format[1:], buf.getvalue())]
+
+# If the extractor did not find enough images, try some harder methods
+# https://github.com/pikepdf/pikepdf/issues/366
+if len(images) < n_pages:
+	images = []
+	for object in pdf.objects:
+		if isinstance(object, pikepdf.objects.Array):
+			continue
+		if getattr(object, "Type", None) == "/XObject" and getattr(object, "Subtype", None) == "/Image":
+			buf = BytesIO(bytearray())
+			format = PdfImage(object).extract_to(stream=buf)
+			images += [(format[1:], buf.getvalue())]
+
+# Return type: have the images plus the number of PDF pages in a tuple
+images = (images, n_pages)
 "#,
 		None,
 		Some(locals),
@@ -275,12 +280,9 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 /// Create a PDF Document with a single page that wraps a raster image
 pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
 	let pdf_binary: Vec<u8> = Vec::new();
-	let surface = cairo::PdfSurface::for_stream(
-		image.get_width() as f64,
-		image.get_height() as f64,
-		pdf_binary,
-	)
-	.unwrap();
+	let surface =
+		cairo::PdfSurface::for_stream(image.width() as f64, image.height() as f64, pdf_binary)
+			.unwrap();
 
 	let context = cairo::Context::new(&surface)?;
 	context.set_source_pixbuf(image, 0.0, 0.0);

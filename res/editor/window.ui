@@ -25,7 +25,7 @@
   </menu>
 
   <template class="EditorWindow" parent="AdwApplicationWindow">
-    <property name="title" translatable="yes">First GTK+ Program</property>
+    <property name="title" translatable="yes">DiNoScore Editor</property>
     <property name="default_width">800</property>
     <property name="default_height">600</property>
     <child>
@@ -61,11 +61,6 @@
               <object class="GtkButton" id="autodetect">
                 <signal name="clicked" handler="autodetect" swapped="true"/>
                 <property name="label">Autodetect</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkButton" id="autodetect2">
-                <property name="label">Single page mode</property>
               </object>
             </child>
           </object>
@@ -109,7 +104,50 @@
             </child>
           </object>
         </child>
-      </object>
+        <child>
+          <object class="GtkBox">
+            <property name="hexpand">True</property>
+            <property name="spacing">10</property>
+            <property name="margin-top">10</property>
+            <property name="margin-start">5</property>
+            <property name="margin-end">5</property>
+            <property name="margin-bottom">5</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Song name</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkEntry" id="song_name">
+                <property name="placeholder-text">Waltzes, Op.64</property>
+                <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
+                <property name="width-chars">35</property>
+                <signal name="notify::text" handler="update_song_name" swapped="true"/>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator">
+                <style>
+                  <class name="spacer"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Song composer</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkEntry" id="song_composer">
+                <property name="placeholder-text">Chopin, Frédéric</property>
+                <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
+                <property name="width-chars">25</property>
+                <signal name="notify::text" handler="update_song_composer" swapped="true"/>
+              </object>
+            </child>
+          </object>
+        </child>
+  </object>
     </child>
   </template>
 
@@ -117,6 +155,9 @@
     <property name="focusable">False</property>
     <!-- <property name="relative-to">header_bar</property> -->
     <property name="position">bottom</property>
+    <style>
+      <class name="menu"/>
+    </style>
     <child>
       <object class="GtkBox">
         <property name="width-request">160</property>
@@ -130,21 +171,30 @@
             <property name="label">Vector graphics…</property>
             <property name="tooltip_text">Add pages from vector PDF files. No embedded images allowed.</property>
             <signal name="clicked" handler="add_pages" swapped="true"/>
+            <style>
+              <class name="flat"/>
+            </style>
           </object>
         </child>
         <child>
           <object class="GtkButton">
             <property name="label">Scanned images, processed…</property>
-            <property name="tooltip_text">Add pages from images or PDF files. PDF files must contain exactly one image per page. Images must be processed (dewarped, black-white, binarized)</property>
+            <property name="tooltip-text">Add pages from images or PDF files. PDF files must contain exactly one image per page. Images must be processed (dewarped, black-white, binarized)</property>
             <signal name="clicked" handler="add_pages2" swapped="true"/>
+            <style>
+              <class name="flat"/>
+            </style>
           </object>
         </child>
         <child>
           <object class="GtkButton" id="add_pages3">
             <property name="sensitive">False</property>
             <property name="label">Unprocessed photos and scans…</property>
-            <property name="tooltip_text">Add pages from images that need more processing.</property>
+            <property name="tooltip-text">Add pages from images that need more processing.</property>
             <!-- <signal name="clicked" handler="AppActor::add_pages3"/> -->
+            <style>
+              <class name="flat"/>
+            </style>
           </object>
         </child>
       </object>

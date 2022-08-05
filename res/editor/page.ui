@@ -9,6 +9,7 @@
         <property name="vexpand">True</property>
         <property name="focusable">True</property>
         <property name="focus-on-click">True</property>
+        <signal name="resize" handler="on_resize" swapped="true"/>
         <child>
           <object class="GtkGestureClick">
             <signal name="pressed" handler="on_click" swapped="true" />
@@ -39,7 +40,6 @@
         <property name="margin_start">5</property>
         <property name="margin_end">5</property>
         <property name="margin_top">5</property>
-        <property name="margin_bottom">5</property>
         <property name="orientation">vertical</property>
         <property name="spacing">10</property>
         <child>

@@ -71,7 +71,27 @@ mod imp {
 			self.parent_constructed(obj);
 
 			log::debug!("Loading songs");
-			let library = Rc::new(RefCell::new(library::Library::load().unwrap()));
+			let (library, outdated_format) = library::Library::load().unwrap();
+			if !outdated_format.is_empty() {
+				log::warn!(
+					"{} song files are not using the latest format version: {:?}",
+					outdated_format.len(),
+					outdated_format
+				);
+				log::warn!("Upgrade them with the CLI to reduce loading time.");
+				let toast = match outdated_format.len() {
+					0 => unreachable!(),
+					1 => adw::Toast::new(
+						&format!("Song '{}' has an old format version. Upgrade it with the CLI to reduce loading time.", outdated_format.iter().next().unwrap())
+					),
+					n => adw::Toast::new(
+						&format!("'{}' and {} more songs have an old format version. Upgrade them with the CLI to reduce loading time.", outdated_format.iter().next().unwrap(), n - 1)
+					),
+				};
+				self.toasts.add_toast(&toast);
+			}
+
+			let library = Rc::new(RefCell::new(library));
 			self.song.init(library.clone());
 			self.library.init(library, self.song.get());
 

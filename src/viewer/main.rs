@@ -1,7 +1,10 @@
-//! Application structure
+//! Main application.
+//!
+//! Widget hierarchy (only custom widgets):
 //!
 //! - [`window`]: Application window. Also does fullscreen handling
 //!   - [`library_widget`]: The library/song selection pane
+//!     - [`song_preview`]: The song preview statistics on the right
 //!   - [`song_widget`]: The "play song" pane
 //!     - [`song_page`]: A single page on the song carousel
 
@@ -20,6 +23,7 @@ mod pedal;
 #[cfg(test)]
 mod screenshots;
 mod song_page;
+mod song_preview;
 mod song_widget;
 mod window;
 mod xournal;

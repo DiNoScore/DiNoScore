@@ -105,6 +105,7 @@
             <signal name="resize" handler="on_resize" swapped="true"/>
           </object>
         </child>
+        <!-- Wrap in another overlay to add the progress bar -->
         <child type="overlay">
           <object class="AdwCarousel" id="carousel">
             <property name="focusable">True</property>
@@ -137,6 +138,14 @@
                 <signal name="key-pressed" handler="carousel_key" swapped="true" />
               </object>
             </child>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkProgressBar" id="song_progress">
+            <property name="can-target">False</property>
+            <style>
+              <class name="osd"/>
+            </style>
           </object>
         </child>
       </object>

@@ -29,6 +29,13 @@ macro_rules! clone_ {
 			$body
 		}
 	});
+	($this:expr, move |$obj:tt| $body:block ) => ({
+		let obj = $this.instance().downgrade();
+		move || {
+			let $obj = obj.upgrade().expect("Failed to upgrade `self`");
+			$body
+		}
+	});
 }
 
 /// Stolen from https://docs.rs/try-block/0.1.0/src/try_block/lib.rs.html#22-29
@@ -47,7 +54,7 @@ pub mod library;
 pub mod recognition;
 pub mod unsafe_force;
 
-pub use image_util::{PageImage, PageImageBox, RawPageImage};
+pub use image_util::PageImage;
 
 pub fn create_progress_bar_dialog(
 	text: &str,

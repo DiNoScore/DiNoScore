@@ -24,10 +24,7 @@ impl SongPage {
 		song: Arc<collection::SongMeta>,
 		layout: PageLayout,
 		pages: Rc<
-			TiVec<
-				collection::PageIndex,
-				RefCell<(Option<(gdk::Texture, f64)>, Option<poppler::Page>)>,
-			>,
+			TiVec<collection::PageIndex, RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>>,
 		>,
 	) -> Self {
 		let obj: Self = Object::new(&[]).unwrap();
@@ -54,7 +51,7 @@ mod imp {
 			Rc<
 				TiVec<
 					collection::PageIndex,
-					RefCell<(Option<(gdk::Texture, f64)>, Option<poppler::Page>)>,
+					RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>,
 				>,
 			>,
 		>,
@@ -118,7 +115,7 @@ mod imp {
 						let (rendered_page, annotations) =
 							&*self.pages.get().unwrap()[staff.page].borrow();
 						match rendered_page.as_ref() {
-							Some((page, page_scale)) => {
+							Some(page) => {
 								/* Render the image */
 								snapshot.push_clip(&graphene::Rect::new(
 									0.0,
@@ -133,8 +130,8 @@ mod imp {
 									&graphene::Rect::new(
 										-staff.start.0 as f32,
 										-staff.start.1 as f32,
-										page.width() as f32 * *page_scale as f32,
-										page.height() as f32 * *page_scale as f32,
+										1.0,
+										page.height() as f32 / page.width() as f32,
 									),
 								);
 								snapshot.pop();
