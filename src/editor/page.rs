@@ -198,6 +198,7 @@ mod imp {
 					.unwrap()
 					.selected_staff = selected_staff_backup;
 			}
+			self.editor.queue_draw();
 		}
 
 		/// The drawingarea got clicked
@@ -534,6 +535,7 @@ mod imp {
 				Some(image) => image,
 				None => return, // TODO draw gray area or something
 			};
+			let file = self.file.get().unwrap().borrow();
 			if editor.height() < 1 {
 				return;
 			}
@@ -560,7 +562,20 @@ mod imp {
 					context.stroke()?;
 				}
 				for (i, staff) in page.bars.iter().enumerate() {
+					let absolute_index = page.staves_before + i;
+					let section_number = file
+						.section_starts
+						.range(..=StaffIndex(absolute_index))
+						.count();
+
 					context.save()?;
+					match section_number % 4 {
+						0 => context.set_source_rgba(0.2, 0.1, 0.4, 0.3),
+						1 => context.set_source_rgba(0.1, 0.4, 0.2, 0.3),
+						2 => context.set_source_rgba(0.4, 0.2, 0.1, 0.3),
+						3 => context.set_source_rgba(0.4, 0.1, 0.2, 0.3),
+						_ => unreachable!(),
+					}
 
 					/* Transform coordinates */
 					let staff_left = staff.left() * effective_image_width;
@@ -625,7 +640,7 @@ mod imp {
 					context.set_font_size(25.0);
 					context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
 					context.move_to(staff_left + 5.0, staff_bottom - 5.0);
-					context.show_text(&(page.staves_before + i).to_string())?;
+					context.show_text(&absolute_index.to_string())?;
 					context.restore()?;
 					context.restore()?;
 				}
