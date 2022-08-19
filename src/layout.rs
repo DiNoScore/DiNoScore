@@ -175,29 +175,137 @@ pub fn layout_fixed_scale(
 				let mut column = Vec::new();
 				let staves: &TiSlice<_, Staff> = &song.staves[column_start..column_end];
 
-				let staves_total_height = staves
-					.iter()
-					.map(|staff| staff.height() * scale)
-					.sum::<f64>();
-				let excess_space = height - staves_total_height;
-				/* We limit the spacing to 10% of the average staff height. Thus, it won't spread the staves in
-				 * the case there are only a few
+				/* Merge staves that overlap (on the original image) in our column. Otherwise, there will be
+				 * artifacts (some cut off bits and/or duplication between staves and they will also have more
+				 * spacing than necessary. The only remaining artifacts will be at the top and bottom border
+				 * of the column.
+				 *
+				 * This will result in staves overlapping in the final layout, drawing on top of each other.
+				 * This is the intended effect and should not cause any visual artifacts since the overlapping
+				 * area will show the same contents. Therefore, drawing order won't matter either.
 				 */
-				let max_spacing = staves_total_height / 10.0 / staves.len() as f64;
-				let spacing = f64::min(excess_space / staves.len() as f64, max_spacing);
+
+				#[derive(Debug)]
+				struct MergedStaff {
+					/// The "virtual" staff containing the other ones for layouting
+					bounds: Staff,
+					staves: std::ops::RangeInclusive<collection::StaffIndex>,
+				}
+
+				impl MergedStaff {
+					fn merge(&mut self, other: MergedStaff) {
+						self.bounds = self.bounds.merge(&other.bounds);
+						assert_eq!(
+							*self.staves.end() + collection::StaffIndex(1),
+							*other.staves.start()
+						);
+						self.staves = std::ops::RangeInclusive::new(
+							*self.staves.start(),
+							*other.staves.end(),
+						);
+					}
+				}
+
+				let mut merged_staves: Vec<MergedStaff> = staves
+					.iter_enumerated()
+					.map(|(idx, staff)| MergedStaff {
+						bounds: staff.clone(),
+						staves: std::ops::RangeInclusive::new(idx, idx),
+					})
+					.collect();
+
+				/* First pass: Merge all staves that definitely overlap */
+				{
+					/* Merge in backwards order so that we don't have to shift indices */
+					let to_merge: Vec<usize> = merged_staves
+						.windows(2)
+						.map(|win| (&win[0], &win[1]))
+						.enumerate()
+						.rev()
+						.filter(|(_, (a, b))| {
+							a.bounds.page == b.bounds.page
+								&& a.bounds.bottom() - b.bounds.top() > 0.0
+						})
+						.map(|(idx, _)| idx)
+						.collect();
+					for idx in to_merge {
+						let to_merge = merged_staves.remove(idx + 1);
+						merged_staves[idx].merge(to_merge);
+					}
+				}
+
+				/* Calculate an upper bound for the available space */
+
+				let staves_total_height = merged_staves
+					.iter()
+					.map(|staff| staff.bounds.height())
+					.sum::<f64>();
+				let excess_space = height / scale - staves_total_height;
+
+				/* We limit the spacing to 10% of the average staff height. Thus, it won't spread the
+				 * staves thinly when there are only a few (most commonly on the last page).
+				 */
+				let max_spacing = staves_total_height / staves.len() as f64 / 10.0;
+				let spacing = f64::min(excess_space / (staves.len() - 1) as f64, max_spacing);
+
+				/* Second pass: Merge staves that are closer than their calculated spacing
+				 * (In theory, we could iterate this part until it converges, but there's no real need)
+				 */
+				{
+					/* Merge in backwards order so that we don't have to shift indices */
+					let to_merge: Vec<usize> = merged_staves
+						.windows(2)
+						.map(|win| (&win[0], &win[1]))
+						.enumerate()
+						.rev()
+						.filter(|(_, (a, b))| {
+							a.bounds.page == b.bounds.page
+								&& b.bounds.top() - a.bounds.bottom() < spacing
+						})
+						.map(|(idx, _)| idx)
+						.collect();
+					for idx in to_merge {
+						let to_merge = merged_staves.remove(idx + 1);
+						merged_staves[idx].merge(to_merge);
+					}
+				}
+
+				/* Calculate spacing again */
+				let staves_total_height = merged_staves
+					.iter()
+					.map(|staff| staff.bounds.height())
+					.sum::<f64>();
+				let excess_space = height / scale - staves_total_height;
+				let spacing = f64::min(excess_space / (staves.len() - 1) as f64, max_spacing);
+
+				/* Add some more air to the top, but keep it roughly centered if possible */
 				let mut y = f64::min(
-					(excess_space - spacing * (staves.len() - 1) as f64) / 2.0,
+					(excess_space - spacing * (merged_staves.len() - 1) as f64) / 2.0,
 					max_spacing * 3.0,
 				);
-				for (index, staff) in staves.iter().enumerate() {
-					column.push(StaffLayout {
-						index: column_start + StaffIndex(index),
-						x: (column_width - staff.width() * scale) / 2.0,
-						y,
-						width: staff.width() * scale,
-					});
-					y += staff.height() * scale + spacing;
+				for merged_staff in merged_staves.iter() {
+					/* Tricky layout calculation. The merged staff is centered horizontally
+					 * and put on its appropriate vertical position. Its contained staves are
+					 * shifted and scaled accordingly, but without distoring their respective relation.
+					 */
+					let x: f64 = (column_width - merged_staff.bounds.width() * scale) / 2.0;
+					for index in (**merged_staff.staves.start()..=**merged_staff.staves.end())
+						.map(StaffIndex)
+					{
+						let staff = &staves[index];
+						let dx = staff.left() - merged_staff.bounds.left();
+						let dy = staff.top() - merged_staff.bounds.top();
+						column.push(StaffLayout {
+							index: column_start + index,
+							x: x + dx * scale,
+							y: (y + dy) * scale,
+							width: staff.width() * scale,
+						});
+					}
+					y += merged_staff.bounds.height() + spacing;
 				}
+
+				assert_eq!(column.len(), staves.len());
 
 				(column, column_width)
 			})
@@ -210,6 +318,7 @@ pub fn layout_fixed_scale(
 	 */
 	let pages = pages
 		.map(|columns| {
+			/* Horizontal spacing calculation */
 			let excess_space = width
 				- columns
 					.iter()
