@@ -283,7 +283,14 @@ mod imp {
 		) {
 			log::debug!("Loading song");
 			let song = Arc::new(song);
-			let (renderer, update_page) = spawn_song_renderer(pages.clone(), song.version_uuid);
+			let (renderer, update_page) = spawn_song_renderer(
+				pages.clone(),
+				song.version_uuid,
+				song.piece_starts
+					.keys()
+					.map(|&staff| song.staves[staff].page)
+					.collect(),
+			);
 			let width = self.carousel.allocated_width();
 			let height = self.carousel.allocated_height();
 
@@ -1018,23 +1025,49 @@ struct ScaledPage {
 fn spawn_song_renderer(
 	pages: Arc<TiVec<collection::PageIndex, PageImage>>,
 	song: uuid::Uuid,
+	mut piece_starts: Vec<collection::PageIndex>,
 ) -> (
 	Sender<(collection::PageIndex, Option<i32>)>,
 	glib::Receiver<ScaledPage>,
 ) {
+	/* Sometimes, two pieces start on the same page. Irrelevant for our purposes */
+	piece_starts.dedup();
+
 	let (in_tx, in_rx) = channel();
 	let (out_tx, out_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
 
 	std::thread::spawn(move || {
 		use std::collections::VecDeque;
+		/* This used to create a simple list of all staves in order.
+		 * Except for the initial load, the order does not matter, since
+		 * the queue is reordered according to the currently visible page.
+		 * Here, we interleave the pages across different parts so that
+		 * the users gets a quick initial response, even when jumping directly
+		 * to one of the later sections of the song.
+		 */
 		let reset_work_queue = || {
-			(0..pages.len())
-				.into_iter()
-				.map(collection::PageIndex)
-				.collect::<VecDeque<_>>()
+			let mut piece_starts: Vec<std::ops::Range<collection::PageIndex>> = piece_starts
+				.windows(2)
+				.map(|win| (win[0], win[1]))
+				.map(|(start, end)| start..end)
+				.chain(std::iter::once(
+					piece_starts[piece_starts.len() - 1]..collection::PageIndex(pages.len()),
+				))
+				.collect();
+			let mut work_queue = VecDeque::with_capacity(pages.len());
+			while !piece_starts.is_empty() {
+				for piece in &mut piece_starts {
+					work_queue.push_back(piece.start);
+					piece.start += collection::PageIndex(1);
+				}
+				piece_starts.retain(|r| !r.is_empty());
+			}
+			assert_eq!(work_queue.len(), pages.len());
+			work_queue
 		};
 
 		/* For a start, render everything sequentially at minimum resolution. This should not take long */
+		let start = std::time::Instant::now();
 		for i in reset_work_queue() {
 			let image = gdk::Texture::for_pixbuf(&pages[i].render_scaled(250));
 			if out_tx
@@ -1047,6 +1080,13 @@ fn spawn_song_renderer(
 				.is_err()
 			{
 				return;
+			}
+
+			/* Limit the initial step to one second. Otherwise it will take too long to render the first
+			 * full resolution image
+			 */
+			if start.elapsed() > std::time::Duration::from_secs(1) {
+				break;
 			}
 		}
 		log::debug!("Background renderer ready");
