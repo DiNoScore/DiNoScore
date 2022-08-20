@@ -78,10 +78,10 @@ mod imp {
 		#[template_child]
 		menubar: TemplateChild<gio::MenuModel>,
 		#[template_child]
-		add_button: TemplateChild<gtk::MenuButton>,
+		add_button: TemplateChild<adw::SplitButton>,
 
 		#[template_child]
-		pages_preview: TemplateChild<gtk::IconView>,
+		pub pages_preview: TemplateChild<gtk::IconView>,
 		/* Pixbufs preview cache */
 		#[template_child(id = "store_pages")]
 		pages_preview_data: TemplateChild<gtk::ListStore>,
@@ -285,7 +285,11 @@ mod imp {
 						glib::MainContext::default().spawn_local_with_priority(
 							glib::source::PRIORITY_DEFAULT_IDLE,
 							clone!(@strong obj, @strong choose => async move {
-								obj.clone().imp().load_pages(obj, choose, false).await;
+								obj.clone().imp().load_pages(&obj, choose
+									.files()
+									.snapshot()
+									.iter()
+									.map(|file| file.clone().downcast::<gio::File>().unwrap()), false).await;
 							}),
 						);
 					}
@@ -316,7 +320,11 @@ mod imp {
 						glib::MainContext::default().spawn_local_with_priority(
 							glib::source::PRIORITY_DEFAULT_IDLE,
 							clone!(@strong obj, @strong choose => async move {
-								obj.clone().imp().load_pages(obj, choose, true).await;
+								obj.clone().imp().load_pages(&obj, choose
+									.files()
+									.snapshot()
+									.iter()
+									.map(|file| file.clone().downcast::<gio::File>().unwrap()), true).await;
 							}),
 						);
 					}
@@ -324,27 +332,25 @@ mod imp {
 			);
 		}
 
-		async fn load_pages(
+		pub async fn load_pages(
 			&self,
-			obj: <Self as ObjectSubclass>::Type,
-			choose: gtk::FileChooserNative,
+			obj: &<Self as ObjectSubclass>::Type,
+			files: impl ExactSizeIterator<Item = gio::File>,
 			/* Whether to extract all images from the PDFs because they are scans anyways */
 			extract: bool,
 		) {
 			let (progress_dialog, progress) =
-				dinoscore::create_progress_bar_dialog("Loading pages …", &obj);
+				dinoscore::create_progress_bar_dialog("Loading pages …", obj);
+			yield_now().await;
 
-			let total_work = choose.files().n_items() as f64;
+			let total_work = files.len() as f64;
 
 			let mut pages = Vec::new();
 
-			for (i, file) in choose
-				.files()
-				.snapshot()
-				.iter()
-				.map(|file| file.clone().downcast::<gio::File>().unwrap())
-				.enumerate()
-			{
+			/* Warn the user if the import did not yield the expected amount of pages */
+			let mut warn_pages = false;
+
+			for (i, file) in files.enumerate() {
 				let path = file.path().unwrap();
 
 				let (raw, path) = blocking::unblock(move || {
@@ -356,8 +362,9 @@ mod imp {
 
 				pages.extend(if let Some("pdf") = extension {
 					if extract {
-						let raw = image_util::extract_pdf_images_raw(&raw).unwrap();
+						let (raw, pdf_pages) = image_util::extract_pdf_images_raw(&raw).unwrap();
 						let total_pages = raw.len() as f64;
+						warn_pages |= pdf_pages != raw.len();
 						let mut processed = Vec::with_capacity(raw.len());
 						for (i2, (extension, raw)) in raw.into_iter().enumerate() {
 							processed.push(PageImage::from_image(raw, extension).unwrap());
@@ -408,6 +415,19 @@ mod imp {
 			}
 			yield_now().await;
 			progress_dialog.emit_close();
+
+			if warn_pages {
+				let dialog = gtk::MessageDialog::new(
+					Some(obj),
+					gtk::DialogFlags::MODAL,
+					gtk::MessageType::Warning,
+					gtk::ButtonsType::Ok,
+					"Extracting PDF images did not yield exactly one image per page, so be prepared for weird results. If they are not satisfying, try importing the PDF as vector graphic, or extract the images with an external tool first.",
+				);
+				dialog.set_default_response(gtk::ResponseType::Ok);
+				dialog.connect_response(|dialog, _response| dialog.close());
+				dialog.present();
+			}
 		}
 
 		/// Append a single loaded image to the end
@@ -443,7 +463,7 @@ mod imp {
 		}
 
 		#[template_callback]
-		fn autodetect(&self) {
+		pub fn autodetect(&self) {
 			let selected_items = self.pages_preview.selected_items();
 
 			let obj = self.instance();
@@ -470,6 +490,7 @@ mod imp {
 							0,
 						);
 
+						// TODO already convert pixbuf to bytes here, then remove the unsafe
 						let data = unsafe { unsafe_force::Send::new(data) };
 						let (page, bars_inner) = blocking::unblock(move || {
 							log::info!("Autodetecting {} ({}/{})", page, i, total_work);
@@ -572,6 +593,25 @@ fn main() -> anyhow::Result<()> {
 		window.present();
 
 		log::info!("Application started");
+
+		/* Load some test data for debugging (enable by hard-coding) */
+		if cfg!(any()) {
+			glib::MainContext::default().spawn_local_with_priority(
+				glib::source::PRIORITY_DEFAULT_IDLE,
+				async move {
+					/* Load pages */
+					window.clone().imp().load_pages(&window, [
+						gio::File::for_path("test/recognition/Beethoven, Ludwig van – Piano Sonata No.2, Op.2 No.2.pdf"),
+						gio::File::for_path("test/recognition/Saint-Saëns, Camille – Danse macabre, Op.40.pdf"),
+					].into_iter(), false).await;
+
+					/* Auto-auto-detect */
+					let imp = window.imp();
+					imp.pages_preview.select_all();
+					imp.autodetect();
+				},
+			);
+		}
 	});
 
 	application.run_with_args(&[] as &[&str]);

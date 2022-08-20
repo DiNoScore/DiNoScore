@@ -1,6 +1,7 @@
 use super::*;
 use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
 use itertools::Itertools;
+use typed_index_collections::TiVec;
 
 #[derive(serde::Deserialize, Debug, Clone)]
 struct Response {
@@ -67,18 +68,35 @@ fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaf
 }
 
 #[cfg(feature = "editor")]
-pub fn recognize_staves(
-	image: &gdk_pixbuf::Pixbuf,
+fn post_process(
+	mut raw_staves: Vec<AbsoluteStaff>,
+	image: &image::GrayImage,
 	page: collection::PageIndex,
 ) -> Vec<collection::Staff> {
 	use image::GenericImageView;
 
-	let png = image.save_to_bufferv("png", &[]).unwrap();
-	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
 	let image_width = image.width();
 	let image_height = image.height();
 
-	let mut raw_staves = online_inference(&image).unwrap();
+	/* Debugging: return unprocessed staves */
+	if false {
+		// println!("{}", serde_json::to_string_pretty(&
+		return raw_staves
+			.iter()
+			.map(|staff| collection::Staff {
+				page,
+				start: (
+					staff.left as f64 / image_width as f64,
+					staff.top as f64 / image_width as f64,
+				),
+				end: (
+					staff.right as f64 / image_width as f64,
+					staff.bottom as f64 / image_width as f64,
+				),
+			})
+			.collect::<Vec<_>>();
+		// ).unwrap());
+	}
 
 	/* Compute the integral once, and then use it to query arbitrary sub-rectangles */
 	let integral_image = imageproc::integral_image::integral_image::<_, u32>(&image);
@@ -128,6 +146,7 @@ pub fn recognize_staves(
 	}
 
 	/* Sort them from top to bottom. Also remove overlap */
+	// TODO we don't really care about overlap here, and there should not be any regardless.
 	raw_staves.sort_by_key(|staff| staff.top);
 	(0..raw_staves.len()).collect::<Vec<_>>()
 		.windows(2)
@@ -144,6 +163,16 @@ pub fn recognize_staves(
 				staff_b!().top = center;
 			}
 		});
+
+	/* Double all staves in height (expand 50% up and down). This is important because it
+	 * has an impact on overlap clipping later on. We need to do it before merging though,
+	 * to be invariant across multi-staff systems.
+	 */
+	for staff in &mut raw_staves {
+		let height = staff.height() / 2;
+		staff.top = (staff.top - height).max(0);
+		staff.bottom = (staff.bottom + height).min(image_height - 1);
+	}
 
 	/* Merge staves from the same system */
 	{
@@ -210,6 +239,9 @@ pub fn recognize_staves(
 
 	/* Extend staves up and down to content, but make sure not to overlap with above and below */
 	{
+		/* Make a backup. This will be used as a reference for clipping overlaps later on */
+		let backup_staves = raw_staves.clone();
+
 		/* First of all, include the directly connected component */
 
 		let connected_image = pipeline::pipe!(
@@ -254,14 +286,16 @@ pub fn recognize_staves(
 			staff.top = new_top;
 		}
 
-		/* Then, expand based on close-by content. Make backup first though */
-		let backup_staves = raw_staves.clone();
+		/* Then, expand based on close-by content. */
 		for staff in &mut raw_staves {
-			let window_width = (staff.width() / 50).max(4);
-			let window_height = (staff.height() / 20).max(4);
+			let window_width = (staff.width() / 80).max(4);
+			let window_height = (staff.height() / 80).max(4);
 			let window_size = window_width * window_height;
 
-			for _ in 0..3 {
+			/* Iterate multiple times */
+			for _ in 0..1 {
+				// previously: 0..3
+				/* Traverse the the staff horizontally with a sliding window */
 				for x in staff.left..staff.right - window_width {
 					/* Down */
 					loop {
@@ -273,7 +307,7 @@ pub fn recognize_staves(
 							staff.bottom - 1,
 						)[0];
 						let average = sum as f32 / (window_size as f32 * 255.0);
-						if average < 0.97 && staff.bottom < image_height - 1 {
+						if average < 0.92 && staff.bottom < image_height - 1 {
 							staff.bottom += 1
 						} else {
 							break;
@@ -289,7 +323,7 @@ pub fn recognize_staves(
 							staff.top + window_height - 1,
 						)[0];
 						let average = sum as f32 / (window_size as f32 * 255.0);
-						if average < 0.97 && staff.top > 0 {
+						if average < 0.92 && staff.top > 0 {
 							staff.top -= 1
 						} else {
 							break;
@@ -299,15 +333,47 @@ pub fn recognize_staves(
 			}
 		}
 
-		/* Clip overlaps again. Use the backup as reference */
-		(0..raw_staves.len())
-			.collect::<Vec<_>>()
-			.windows(2)
-			.for_each(|idx| {
-				let (a, b) = (idx[0], idx[1]);
-				raw_staves[a].bottom = raw_staves[a].bottom.min(backup_staves[b].top);
-				raw_staves[b].top = raw_staves[b].top.max(backup_staves[a].bottom);
-			});
+		/* Clipping of too much overlap */
+		for idx in 0..raw_staves.len() - 1 {
+			let (a, b) = (idx, idx + 1);
+
+			/* Clamp to the backup as reference */
+			raw_staves[a].bottom = raw_staves[a].bottom.min(backup_staves[b].top);
+			raw_staves[b].top = raw_staves[b].top.max(backup_staves[a].bottom);
+
+			/* If there is overlap but we can find a straight empty horizontal line then use that as separator */
+			if raw_staves[a].bottom > raw_staves[b].top {
+				/* If we find multiple such positions, then use the outermost ones */
+				let mut lines = Vec::new();
+				let left = raw_staves[a].left.min(raw_staves[b].left);
+				let right = raw_staves[a].right.max(raw_staves[b].right);
+				for y in raw_staves[b].top..raw_staves[a].bottom {
+					let sum: u32 = imageproc::integral_image::sum_image_pixels(
+						&integral_image,
+						left,
+						(y - 1).max(0),
+						right,
+						(y + 1).min(image_height - 1),
+					)[0];
+					let average = sum as f64 / (right - left) as f64 / 3.0 / 255.0;
+					if average > 0.9995 {
+						lines.push(y);
+					}
+				}
+				match &*lines {
+					[] => {},
+					[y] => {
+						raw_staves[a].bottom = *y;
+						raw_staves[b].top = *y;
+					},
+					/* Multiple candidates: use the first and last one, respectively */
+					[y1, .., y2] => {
+						raw_staves[a].bottom = *y1;
+						raw_staves[b].top = *y2;
+					},
+				}
+			}
+		}
 	}
 
 	/* Convert back to relative positions. Filter for too small artefacts */
@@ -330,20 +396,37 @@ pub fn recognize_staves(
 		.filter(|staff| staff.height() >= 0.01)
 		.collect::<Vec<_>>();
 
-	// /* Post processing */
-	// /* Overlapping is bad */
-	// /* Fixup fuckups */
-	// for staff in &mut staves {
-	// 	if staff.top > staff.bottom {
-	// 		std::mem::swap(&mut staff.top, &mut staff.bottom);
-	// 	}
-	// 	if staff.left > staff.right {
-	// 		std::mem::swap(&mut staff.left, &mut staff.right);
-	// 	}
-	// }
-
-	// log::debug!("Done");
 	staves
+}
+
+#[cfg(feature = "editor")]
+pub fn recognize_staves(
+	image: &gdk_pixbuf::Pixbuf,
+	page: collection::PageIndex,
+) -> Vec<collection::Staff> {
+	let png = image.save_to_bufferv("png", &[]).unwrap();
+	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
+
+	/* For manual debugging only: replace inference with local results to avoid doing it over and over again */
+	let raw_staves: Vec<AbsoluteStaff> = if cfg!(any()) {
+		#[derive(serde::Deserialize)]
+		struct ReferenceData {
+			staves_per_page: TiVec<collection::PageIndex, usize>,
+			raw_staves: TiVec<collection::PageIndex, Vec<AbsoluteStaff>>,
+		}
+		serde_json::from_slice::<std::collections::BTreeMap<String, ReferenceData>>(
+			&*include_bytes!("../test/recognition/reference_data.json"),
+		)
+		.unwrap()
+		.into_values()
+		.flat_map(|value| value.raw_staves)
+		.nth(*page)
+		.unwrap()
+	} else {
+		online_inference(&image).unwrap()
+	};
+
+	post_process(raw_staves, &image, page)
 }
 
 #[cfg(test)]
@@ -365,4 +448,50 @@ mod test {
 	// 	online_inference(&image).await?;
 	// 	Ok(())
 	// }
+
+	#[derive(serde::Deserialize)]
+	struct ReferenceData {
+		staves_per_page: TiVec<collection::PageIndex, usize>,
+		raw_staves: TiVec<collection::PageIndex, Vec<AbsoluteStaff>>,
+	}
+
+	#[test]
+	fn test_post_processing() {
+		let reference_data: HashMap<String, ReferenceData> =
+			serde_json::from_slice(&*include_bytes!("../test/recognition/reference_data.json"))
+				.unwrap();
+
+		for (name, reference_data) in &reference_data {
+			let pdf: Vec<Vec<u8>> = pipeline::pipe!(
+				std::fs::read(format!("test/recognition/{name}.pdf")).unwrap()
+				=> image_util::explode_pdf_raw(&_).unwrap()
+			);
+			for (page, (index, raw_staves)) in pdf
+				.into_iter()
+				.zip(reference_data.raw_staves.iter_enumerated())
+			{
+				let image: image::GrayImage = pipeline::pipe!(
+					page
+					=> image_util::PageImage::from_pdf
+					=> Result::unwrap
+					=> _.render_scaled(400)
+					=> _.save_to_bufferv("png", &[]).unwrap()
+					=> image::load_from_memory(&_).unwrap().into_luma8()
+				);
+
+				let processed = post_process(raw_staves.clone(), &image, index);
+				println!(
+					"{name} {index} {} {} {}",
+					raw_staves.len(),
+					processed.len(),
+					reference_data.staves_per_page[index]
+				);
+				assert_eq!(
+					processed.len(),
+					reference_data.staves_per_page[index],
+					"Invalid number of staves found! File {name}, page {index}"
+				);
+			}
+		}
+	}
 }

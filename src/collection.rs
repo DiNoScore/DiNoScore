@@ -737,6 +737,20 @@ impl Staff {
 	pub fn bottom(&self) -> f64 {
 		self.end.1
 	}
+	/** "Merge" two staves by calculating their common bounding box.
+	 * Only valid for staves of the same page of the same song
+	 */
+	pub fn merge(&self, other: &Self) -> Self {
+		assert_eq!(self.page, other.page);
+		Self {
+			page: self.page,
+			start: (
+				self.start.0.min(other.start.0),
+				self.start.1.min(other.start.1),
+			),
+			end: (self.end.0.max(other.end.0), self.end.1.max(other.end.1)),
+		}
+	}
 }
 
 // Absolute coordinates, on the page image, in the unit of the current page
