@@ -214,7 +214,7 @@ mod imp {
 
 		/// The drawingarea got clicked
 		#[template_callback]
-		fn on_click(&self, _n_press: i32, x_: f64, y_: f64) {
+		fn on_click(&self, _n_press: i32, x: f64, y: f64) {
 			self.editor.grab_focus();
 
 			let mut page_ = self.current_page.borrow_mut();
@@ -229,18 +229,27 @@ mod imp {
 
 			let scale =
 				self.editor.get().height() as f64 / image.height() as f64 * image.width() as f64;
-			let x = x_ / scale;
-			let y = y_ / scale;
-			let selected_staff = page.cast_ray(x, y).map(|(i, _)| i);
-			if selected_staff != page.selected_staff {
-				page.selected_staff = selected_staff;
+			let cast_result = page
+				.cast_ray(x, y, scale)
+				.map(|(i, _)| i)
+				.collect::<Vec<_>>();
+
+			if cast_result
+				.iter()
+				.find(|index| Some(**index) == page.selected_staff)
+				.is_some()
+			{
+				/* Don't change selection if it is part of the result to avoid glitches */
+				std::mem::drop(page_);
+			} else if let Some(&selected_staff) = cast_result.iter().next() {
+				page.selected_staff = Some(selected_staff);
 				self.editor.queue_draw();
 				std::mem::drop(page_);
 				self.update_page_state();
 			} else {
 				std::mem::drop(page_);
 			}
-			self.on_motion(x_, y_);
+			self.on_motion(x, y);
 		}
 
 		#[template_callback]
@@ -257,22 +266,26 @@ mod imp {
 
 			let scale =
 				self.editor.get().height() as f64 / image.height() as f64 * image.width() as f64;
-			match page.cast_ray(x / scale, y / scale) {
-				Some((_index, StaffHandle::Corner)) => {
-					// self.drag_state.set(true);
-					todo!()
-				},
-				Some((_index, StaffHandle::Edge)) => todo!(),
-				Some((index, StaffHandle::Center)) => {
-					if Some(index) == page.selected_staff {
+			let cast_result = page.cast_ray(x, y, scale).collect::<Vec<_>>();
+			if let Some((index, handle)) = cast_result
+				.iter()
+				.find(|(index, _)| Some(*index) == page.selected_staff)
+				.copied()
+			{
+				match handle {
+					StaffHandle::Center => {
 						self.drag_state.set(Some(DragState::Move(index)));
-						self.instance().set_cursor_from_name(Some("move"));
-					}
-				},
-				None => {
-					self.drag_state.set(Some(DragState::New));
-					self.instance().set_cursor_from_name(Some("cell"));
-				},
+					},
+					StaffHandle::Corner(dir) => {
+						self.drag_state.set(Some(DragState::DragCorner(index, dir)));
+					},
+					StaffHandle::Edge(dir) => {
+						self.drag_state.set(Some(DragState::DragEdge(index, dir)));
+					},
+				}
+				page.selected_staff = Some(index);
+			} else if cast_result.is_empty() {
+				self.drag_state.set(Some(DragState::New));
 			}
 		}
 
@@ -329,6 +342,39 @@ mod imp {
 					std::mem::drop(page_);
 					self.update_page();
 				},
+				Some(DragState::DragCorner(index, dir) | DragState::DragEdge(index, dir)) => {
+					let index = self.file.get().unwrap().borrow_mut().modify_staff(
+						page.page,
+						index,
+						|staff| {
+							let dx = w / image.width() as f64;
+							let dy = h / image.width() as f64;
+
+							if dir.contains('n') {
+								staff.start.1 += dy;
+							}
+							if dir.contains('e') {
+								staff.end.0 += dx;
+							}
+							if dir.contains('s') {
+								staff.end.1 += dy;
+							}
+							if dir.contains('w') {
+								staff.start.0 += dx;
+							}
+							/* Fixups */
+							if staff.start.0 > staff.end.0 {
+								std::mem::swap(&mut staff.start.0, &mut staff.end.0);
+							}
+							if staff.start.1 > staff.end.1 {
+								std::mem::swap(&mut staff.start.1, &mut staff.end.1);
+							}
+						},
+					);
+					page.selected_staff = Some(index);
+					std::mem::drop(page_);
+					self.update_page();
+				},
 				None => {
 					self.editor.queue_draw();
 				},
@@ -351,6 +397,7 @@ mod imp {
 
 		#[template_callback]
 		fn on_leave(&self, _controller: gtk::EventControllerMotion) {
+			log::debug!("Cursor: none");
 			self.instance().set_cursor(None);
 		}
 
@@ -366,16 +413,32 @@ mod imp {
 				None => return,
 			};
 
-			if self.drag_state.get().is_some() {
+			if self.drag_state.get().is_none() {
 				let scale = self.editor.get().height() as f64 / image.height() as f64
 					* image.width() as f64;
-				match page.cast_ray(x / scale, y / scale) {
-					Some((index, StaffHandle::Center)) if Some(index) == page.selected_staff => {
-						self.instance().set_cursor_from_name(Some("move"));
-					},
-					_ => {
-						self.instance().set_cursor(None);
-					},
+				let cast_result = page.cast_ray(x, y, scale).collect::<Vec<_>>();
+
+				if let Some((_, handle)) = cast_result
+					.iter()
+					.find(|(index, _)| Some(*index) == page.selected_staff)
+				{
+					match handle {
+						StaffHandle::Center => {
+							log::debug!("Cursor: move");
+							self.instance().set_cursor_from_name(Some("move"));
+						},
+						StaffHandle::Corner(dir) | StaffHandle::Edge(dir) => {
+							log::debug!("Cursor: {dir}");
+							self.instance()
+								.set_cursor_from_name(Some(&format!("{dir}-resize")));
+						},
+					}
+				} else if !cast_result.is_empty() {
+					log::debug!("Cursor: none");
+					self.instance().set_cursor(None);
+				} else {
+					log::debug!("Cursor: cell");
+					self.instance().set_cursor_from_name(Some("cell"));
 				}
 			}
 		}
@@ -578,19 +641,46 @@ mod imp {
 					}
 
 					/* Transform coordinates */
-					let staff_left = staff.left() * effective_image_width;
-					let staff_right = staff.right() * effective_image_width;
-					let staff_top = staff.top() * effective_image_width;
-					let staff_bottom = staff.bottom() * effective_image_width;
-					let staff_width = staff.width() * effective_image_width;
-					let staff_height = staff.height() * effective_image_width;
+					let mut staff_left = staff.left() * effective_image_width;
+					let mut staff_right = staff.right() * effective_image_width;
+					let mut staff_top = staff.top() * effective_image_width;
+					let mut staff_bottom = staff.bottom() * effective_image_width;
 
-					if let Some(DragState::Move(index)) = self.drag_state.get() {
-						if index == i {
-							let (w, h) = self.drag_gesture.offset().unwrap();
-							context.translate(w, h);
-						}
+					match self.drag_state.get() {
+						Some(DragState::Move(index)) if index == i => {
+							let (dx, dy) = self.drag_gesture.offset().unwrap();
+							context.translate(dx, dy);
+						},
+						Some(
+							DragState::DragCorner(index, dir) | DragState::DragEdge(index, dir),
+						) if index == i => {
+							let (dx, dy) = self.drag_gesture.offset().unwrap();
+							if dir.contains('n') {
+								staff_top += dy;
+							}
+							if dir.contains('e') {
+								staff_right += dx;
+							}
+							if dir.contains('s') {
+								staff_bottom += dy;
+							}
+							if dir.contains('w') {
+								staff_left += dx;
+							}
+							/* Fixups */
+							if staff_left > staff_right {
+								std::mem::swap(&mut staff_left, &mut staff_right);
+							}
+							if staff_top > staff_bottom {
+								std::mem::swap(&mut staff_top, &mut staff_bottom);
+							}
+						},
+						_ => {},
 					}
+
+					let staff_width = staff_right - staff_left;
+					let staff_height = staff_bottom - staff_top;
+
 					if Some(i) == page.selected_staff {
 						/* Draw focused */
 						context.save()?;
@@ -656,15 +746,18 @@ mod imp {
 enum DragState {
 	Move(usize),
 	New,
-	// DragCorner {
-	// 	staff: usize,
-	// }
+	/* The string is one of ne, nw, sw, se */
+	DragCorner(usize, &'static str),
+	/* The string is one of n, e, s, w */
+	DragEdge(usize, &'static str),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StaffHandle {
-	Corner,
-	Edge,
+	/* The string is one of ne, nw, sw, se */
+	Corner(&'static str),
+	/* The string is one of n, e, s, w */
+	Edge(&'static str),
 	Center,
 }
 
@@ -689,32 +782,50 @@ impl PageState {
 	}
 
 	/// If we hit, return staff index of page and hit kind
-	fn cast_ray(&self, x: f64, y: f64) -> Option<(usize, StaffHandle)> {
-		let image = self.image.as_ref()?;
-		let radius = 10.0;
-		for (i, bar) in self.bars.iter().enumerate() {
+	fn cast_ray(
+		&self,
+		x: f64,
+		y: f64,
+		scale: f64,
+	) -> impl Iterator<Item = (usize, StaffHandle)> + '_ {
+		let x = x / scale;
+		let y = y / scale;
+		let radius = 10.0 / scale;
+		let edge_width = radius / 2.0;
+		self.bars.iter().enumerate().filter_map(move |(i, bar)| {
 			/* Check for corners first */
-			// for (corner_x, corner_y) in [
-			// 	(bar.left(), bar.top()),
-			// 	(bar.left(), bar.bottom()),
-			// 	(bar.right(), bar.top()),
-			// 	(bar.right(), bar.bottom()),
-			// ] {
-			// 	if f64::sqrt((corner_x - x) * (corner_x - x) + (corner_y - y) * (corner_y - y)) < radius {
-			// 		return Some((i, StaffHandle::Corner))
-			// 	}
-			// }
+			for (dir, corner_x, corner_y) in [
+				("nw", bar.left(), bar.top()),
+				("sw", bar.left(), bar.bottom()),
+				("ne", bar.right(), bar.top()),
+				("se", bar.right(), bar.bottom()),
+			] {
+				if f64::sqrt((corner_x - x) * (corner_x - x) + (corner_y - y) * (corner_y - y))
+					< radius
+				{
+					return Some((i, StaffHandle::Corner(dir)));
+				}
+			}
 
 			/* Then, check for edges */
-			// TODO
+			for (dir, edge_x) in [("w", bar.left()), ("e", bar.right())] {
+				if (x - edge_x).abs() < edge_width {
+					return Some((i, StaffHandle::Edge(dir)));
+				}
+			}
+			for (dir, edge_y) in [("n", bar.top()), ("s", bar.bottom())] {
+				if (y - edge_y).abs() < edge_width {
+					return Some((i, StaffHandle::Edge(dir)));
+				}
+			}
 
 			/* Last, check for inner */
 			if x > bar.left() && x < bar.right() && y > bar.top() && y < bar.bottom() {
 				return Some((i, StaffHandle::Center));
 			}
-		}
 
-		None
+			None
+		})
 	}
 }
 

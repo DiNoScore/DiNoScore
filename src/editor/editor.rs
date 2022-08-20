@@ -152,6 +152,19 @@ impl EditorSongFile {
 		self.add_staff(page_index, staff)
 	}
 
+	/// Modify a single staff, update the y ordering
+	pub fn modify_staff(
+		&mut self,
+		page_index: PageIndex,
+		staff: usize,
+		modify: impl FnOnce(&mut Staff),
+	) -> usize {
+		self.shift_items(self.count_staves_before(page_index) + staff, -1);
+		let mut staff = self.pages[*page_index].1.remove(staff);
+		modify(&mut staff);
+		self.add_staff(page_index, staff)
+	}
+
 	pub fn save(&self, file: std::path::PathBuf) -> anyhow::Result<()> {
 		let song = SongMeta {
 			n_pages: self.pages.len(),
