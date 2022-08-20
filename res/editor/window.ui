@@ -51,10 +51,11 @@
             <property name="margin-end">6</property>
             <property name="spacing">6</property>
             <child type="end">
-              <object class="GtkMenuButton" id="add_button">
+              <object class="AdwSplitButton" id="add_button">
                 <property name="label" translatable="yes">Add pages</property>
-                <property name="tooltip_text">Depending on the quality of your source material, there are differen options</property>
                 <property name="popover">add_menu</property>
+                <property name="tooltip-text">Depending on the quality of your source material, there are different options. By default, images must be already processed (= dewarped, black-white). You may add PDFs, but they must embed exactly one image per page.</property>
+                <signal name="clicked" handler="add_pages2" swapped="true"/>
               </object>
             </child>
             <child>
@@ -168,19 +169,9 @@
         <property name="spacing">3</property>
         <child>
           <object class="GtkButton">
-            <property name="label">Vector graphics…</property>
-            <property name="tooltip_text">Add pages from vector PDF files. No embedded images allowed.</property>
+            <property name="label">Import raw PDF files…</property>
+            <property name="tooltip_text">Use this for high quality vector PDF files or as fallback when the default image extraction fails.</property>
             <signal name="clicked" handler="add_pages" swapped="true"/>
-            <style>
-              <class name="flat"/>
-            </style>
-          </object>
-        </child>
-        <child>
-          <object class="GtkButton">
-            <property name="label">Scanned images, processed…</property>
-            <property name="tooltip-text">Add pages from images or PDF files. PDF files must contain exactly one image per page. Images must be processed (dewarped, black-white, binarized)</property>
-            <signal name="clicked" handler="add_pages2" swapped="true"/>
             <style>
               <class name="flat"/>
             </style>
