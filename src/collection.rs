@@ -317,10 +317,13 @@ impl SongFile {
 		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100)?;
 		let context = cairo::Context::new(&surface)?;
 
-		let scale = surface.width() as f64 / staff.width();
+		let scale = surface.width() as f64 / page.reference_width() / staff.width();
 		context.scale(scale, scale);
 
-		context.translate(-staff.left(), -staff.top());
+		context.translate(
+			-staff.left() * page.reference_width(),
+			-staff.top() * page.reference_width(),
+		);
 		context.set_source_rgb(1.0, 1.0, 1.0);
 		context.paint()?;
 		page.render_cairo(&context)?;
