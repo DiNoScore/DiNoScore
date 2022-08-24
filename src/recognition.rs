@@ -73,6 +73,10 @@ fn post_process(
 	image: &image::GrayImage,
 	page: collection::PageIndex,
 ) -> Vec<collection::Staff> {
+	if raw_staves.len() == 0 {
+		return vec![];
+	}
+
 	use image::GenericImageView;
 
 	let image_width = image.width();
@@ -96,6 +100,12 @@ fn post_process(
 			})
 			.collect::<Vec<_>>();
 		// ).unwrap());
+	}
+
+	/* Sanitize input; clamp to image size */
+	for staff in &mut raw_staves {
+		staff.right = staff.right.min(image_width - 1);
+		staff.bottom = staff.bottom.min(image_height - 1);
 	}
 
 	/* Compute the integral once, and then use it to query arbitrary sub-rectangles */
@@ -170,7 +180,7 @@ fn post_process(
 	 */
 	for staff in &mut raw_staves {
 		let height = staff.height() / 2;
-		staff.top = (staff.top - height).max(0);
+		staff.top = staff.top.max(height) - height;
 		staff.bottom = (staff.bottom + height).min(image_height - 1);
 	}
 
@@ -493,5 +503,125 @@ mod test {
 				);
 			}
 		}
+	}
+
+	/// Post-processing tends to panic on bounds checks (:
+	#[test]
+	fn test_edges() {
+		let image: image::GrayImage = pipeline::pipe!(
+			std::fs::read(format!("test/recognition/edges.tif")).unwrap()
+			=> image_util::PageImage::from_image(_, "tif".into()).unwrap()
+			=> _.render_scaled(400)
+			=> _.save_to_bufferv("png", &[]).unwrap()
+			=> image::load_from_memory(&_).unwrap().into_luma8()
+		);
+
+		/* Those are actually slightly wrong, but that's all we need to reproduce the bug */
+		let raw_staves = vec![
+			AbsoluteStaff {
+				left: 31,
+				top: 41,
+				right: 369,
+				bottom: 155,
+			},
+			AbsoluteStaff {
+				left: 33,
+				top: 159,
+				right: 370,
+				bottom: 276,
+			},
+			AbsoluteStaff {
+				left: 31,
+				top: 276,
+				right: 371,
+				bottom: 393,
+			},
+			AbsoluteStaff {
+				left: 34,
+				top: 393,
+				right: 370,
+				bottom: 508,
+			},
+		];
+
+		post_process(raw_staves, &image, collection::PageIndex(1));
+
+		/* A different set of staves that crashes, just for fun */
+		let raw_staves = vec![
+			AbsoluteStaff {
+				bottom: 507,
+				left: 8,
+				top: 489,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 231,
+				left: 7,
+				top: 213,
+				right: 394,
+			},
+			AbsoluteStaff {
+				bottom: 92,
+				left: 7,
+				top: 74,
+				right: 397,
+			},
+			AbsoluteStaff {
+				bottom: 416,
+				left: 8,
+				top: 398,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 552,
+				left: 7,
+				top: 534,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 132,
+				left: 16,
+				top: 114,
+				right: 394,
+			},
+			AbsoluteStaff {
+				bottom: 371,
+				left: 9,
+				top: 353,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 276,
+				left: 9,
+				top: 258,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 181,
+				left: 9,
+				top: 165,
+				right: 387,
+			},
+			AbsoluteStaff {
+				bottom: 40,
+				left: 8,
+				top: 26,
+				right: 386,
+			},
+			AbsoluteStaff {
+				bottom: 324,
+				left: 9,
+				top: 308,
+				right: 400,
+			},
+			AbsoluteStaff {
+				bottom: 463,
+				left: 9,
+				top: 448,
+				right: 400,
+			},
+		];
+
+		post_process(raw_staves, &image, collection::PageIndex(1));
 	}
 }
