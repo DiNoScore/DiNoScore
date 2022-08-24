@@ -247,7 +247,9 @@ mod imp {
 				std::mem::drop(page_);
 				self.update_page_state();
 			} else {
+				page.selected_staff = None;
 				std::mem::drop(page_);
+				self.update_page_state();
 			}
 			self.on_motion(x, y);
 		}
@@ -808,13 +810,26 @@ impl PageState {
 			}
 
 			/* Then, check for edges */
-			for (dir, edge_x) in [("w", bar.left()), ("e", bar.right())] {
-				if (x - edge_x).abs() < edge_width {
-					return Some((i, StaffHandle::Edge(dir)));
-				}
-			}
-			for (dir, edge_y) in [("n", bar.top()), ("s", bar.bottom())] {
-				if (y - edge_y).abs() < edge_width {
+			let w = edge_width;
+			for (dir, l, r, t, b) in [
+				("w", bar.left() - w, bar.left() + w, bar.top(), bar.bottom()),
+				(
+					"e",
+					bar.right() - w,
+					bar.right() + w,
+					bar.top(),
+					bar.bottom(),
+				),
+				("n", bar.left(), bar.right(), bar.top() - w, bar.top() + w),
+				(
+					"s",
+					bar.left(),
+					bar.right(),
+					bar.bottom() - w,
+					bar.bottom() + w,
+				),
+			] {
+				if x >= l && x <= r && y >= t && y <= b {
 					return Some((i, StaffHandle::Edge(dir)));
 				}
 			}

@@ -64,14 +64,33 @@ impl EditorSongFile {
 		self.pages[0..*page].iter().map(|p| p.1.len()).sum()
 	}
 
-	fn shift_items(&mut self, threshold: usize, offset: isize) {
+	fn ensure_invariants(&mut self) {
+		if !self.piece_starts.contains_key(&StaffIndex(0)) {
+			self.piece_starts.insert(StaffIndex(0), "".into());
+			if !self.section_starts.contains_key(&StaffIndex(0)) {
+				self.section_starts
+					.insert(StaffIndex(0), SectionMeta::default());
+			}
+		}
+		let total_staves: usize = self.pages.iter().map(|p| p.1.len()).sum();
+		assert!(**self.piece_starts.keys().next_back().unwrap() < total_staves);
+		assert!(**self.section_starts.keys().next_back().unwrap() < total_staves);
+	}
+
+	/* Range is start inclusive, end exclusive */
+	fn shift_items(&mut self, start: usize, end: Option<usize>, offset: isize) {
+		if offset == 0 {
+			return;
+		}
+
 		/* I whish Rust had generic closures or partially applied functions */
 		fn mapper<T: Clone>(
-			threshold: usize,
+			start: usize,
+			end: Option<usize>,
 			offset: isize,
 		) -> impl Fn((&StaffIndex, &mut T)) -> (StaffIndex, T) {
 			move |(&index, value)| {
-				if *index > threshold {
+				if *index >= start && end.map(|end| *index < end).unwrap_or(true) {
 					(
 						StaffIndex((*index as isize + offset) as usize),
 						value.clone(),
@@ -81,16 +100,15 @@ impl EditorSongFile {
 				}
 			}
 		}
-		/* TODO replace with `drain_filter` once stabilized */
 		self.piece_starts = self
 			.piece_starts
 			.iter_mut()
-			.map(mapper(threshold, offset))
+			.map(mapper(start, end, offset))
 			.collect();
 		self.section_starts = self
 			.section_starts
 			.iter_mut()
-			.map(mapper(threshold, offset))
+			.map(mapper(start, end, offset))
 			.collect();
 	}
 
@@ -99,9 +117,20 @@ impl EditorSongFile {
 	}
 
 	pub fn remove_page(&mut self, page_index: PageIndex) {
+		let staves = self.get_staves();
+		if !staves.is_empty() {
+			self.piece_starts
+				.retain(|staff, _| staves[*staff].page() != page_index);
+			self.section_starts
+				.retain(|staff, _| staves[*staff].page() != page_index);
+			self.ensure_invariants();
+		}
+
 		let (_page, staves) = self.pages.remove(*page_index);
+
 		self.shift_items(
 			self.count_staves_before(page_index),
+			None,
 			-(staves.len() as isize),
 		);
 		self.pages[*page_index..]
@@ -113,11 +142,15 @@ impl EditorSongFile {
 	}
 
 	pub fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
-		self.shift_items(
-			self.count_staves_before(page_index) + staves.len(),
-			staves.len() as isize,
-		);
+		if self.pages.iter().map(|p| p.1.len()).sum::<usize>() > 0 {
+			self.shift_items(
+				self.count_staves_before(page_index) + self.pages[*page_index].1.len(),
+				None,
+				staves.len() as isize,
+			);
+		}
 		self.pages[*page_index].1.extend(staves);
+		self.ensure_invariants();
 	}
 
 	/// Insert single staff, maintain y ordering
@@ -130,39 +163,71 @@ impl EditorSongFile {
 			.find(|(_, staff2)| staff2.start.1 > staff.start.1)
 			.map(|(index, _)| index)
 			.unwrap_or_else(|| self.pages[*page_index].1.len());
-		self.shift_items(self.count_staves_before(page_index) + index, 1);
+		self.shift_items(self.count_staves_before(page_index) + index, None, 1);
 		self.pages[*page_index].1.insert(index, staff);
+		self.ensure_invariants();
 		index
 	}
 
 	/** The `staff` parameter is relative to the page index */
 	pub fn delete_staff(&mut self, page_index: PageIndex, staff: usize) {
-		self.shift_items(self.count_staves_before(page_index) + staff, -1);
+		self.shift_items(self.count_staves_before(page_index) + staff + 1, None, -1);
+
 		self.pages[*page_index].1.remove(staff);
+		if !self.piece_starts.contains_key(&StaffIndex(0)) {
+			self.piece_starts.insert(StaffIndex(0), "".into());
+		}
+		if !self.section_starts.contains_key(&StaffIndex(0)) {
+			self.section_starts
+				.insert(StaffIndex(0), SectionMeta::default());
+		}
 	}
 
 	/// Move a single staff, update the y ordering
 	pub fn move_staff(&mut self, page_index: PageIndex, staff: usize, dx: f64, dy: f64) -> usize {
-		self.shift_items(self.count_staves_before(page_index) + staff, -1);
-		let mut staff = self.pages[*page_index].1.remove(staff);
-		staff.start.0 += dx;
-		staff.start.1 += dy;
-		staff.end.0 += dx;
-		staff.end.1 += dy;
-		self.add_staff(page_index, staff)
+		self.modify_staff(page_index, staff, |staff| {
+			staff.start.0 += dx;
+			staff.start.1 += dy;
+			staff.end.0 += dx;
+			staff.end.1 += dy;
+		})
 	}
 
 	/// Modify a single staff, update the y ordering
+	/// The staff *must* remain on the same page
 	pub fn modify_staff(
 		&mut self,
 		page_index: PageIndex,
 		staff: usize,
 		modify: impl FnOnce(&mut Staff),
 	) -> usize {
-		self.shift_items(self.count_staves_before(page_index) + staff, -1);
-		let mut staff = self.pages[*page_index].1.remove(staff);
-		modify(&mut staff);
-		self.add_staff(page_index, staff)
+		let page: &mut Vec<Staff> = &mut self.pages[*page_index].1;
+
+		let old_index = staff;
+		let mut new_staff = page.remove(staff);
+		let old_staff = new_staff.clone();
+		modify(&mut new_staff);
+		assert_eq!(old_staff.page(), new_staff.page());
+
+		let new_index = page
+			.iter()
+			.enumerate()
+			.find(|(_, staff2)| staff2.start.1 > new_staff.start.1)
+			.map(|(index, _)| index)
+			.unwrap_or_else(|| page.len());
+
+		if new_index == old_index {
+			page.insert(new_index, new_staff);
+		} else {
+			page.insert(new_index, new_staff);
+			self.shift_items(
+				self.count_staves_before(page_index) + old_index + 1,
+				Some(self.count_staves_before(page_index) + new_index),
+				-1,
+			);
+		}
+		self.ensure_invariants();
+		new_index
 	}
 
 	pub fn save(&self, file: std::path::PathBuf) -> anyhow::Result<()> {

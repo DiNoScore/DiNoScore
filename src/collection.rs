@@ -440,6 +440,14 @@ impl<'de> Deserialize<'de> for SongMeta {
 				"Invalid data: Song must start with a section",
 			));
 		}
+		if **unchecked.piece_starts.keys().next_back().unwrap() >= unchecked.staves.len() {
+			return Err(de::Error::custom("Invalid data: Piece start out of bounds"));
+		}
+		if **unchecked.section_starts.keys().next_back().unwrap() >= unchecked.staves.len() {
+			return Err(de::Error::custom(
+				"Invalid data: Section start out of bounds",
+			));
+		}
 		Ok(unchecked)
 	}
 }
