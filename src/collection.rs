@@ -248,38 +248,53 @@ impl SongFile {
 	) -> anyhow::Result<()> {
 		let pages = pages.into_iter();
 
-		let file = std::fs::OpenOptions::new()
-			.write(true)
-			.create_new(!overwrite)
-			.create(overwrite)
-			.truncate(overwrite)
-			.open(&path)
-			.context(format!("Could not open file {:?}", path.as_ref().display()))?;
-		let mut writer = zip::ZipWriter::new(file);
+		let file = atomicwrites::AtomicFile::new(
+			&path,
+			if overwrite {
+				atomicwrites::AllowOverwrite
+			} else {
+				atomicwrites::DisallowOverwrite
+			},
+		);
 
-		writer.start_file("staves.json", zip::write::FileOptions::default())?;
-		serde_json::to_writer_pretty(&mut writer, &SongMetaVersioned::from(metadata))?;
+		file.write(|file| {
+			let mut writer = zip::ZipWriter::new(file);
 
-		log::info!("Saving sheets");
-		for (index, page) in pages.enumerate() {
-			writer.start_file(
-				format!("page_{}.{}", index, page.extension()),
-				zip::write::FileOptions::default(),
-			)?;
-			use std::io::Write;
-			writer.write_all(page.raw())?;
-		}
+			writer.start_file("staves.json", zip::write::FileOptions::default())?;
+			serde_json::to_writer_pretty(&mut writer, &SongMetaVersioned::from(metadata))?;
 
-		if let Some(thumbnail) = thumbnail {
-			log::info!("Saving thumbnail");
-			writer.start_file("thumbnail", zip::write::FileOptions::default())?;
+			log::info!("Saving sheets");
+			for (index, page) in pages.enumerate() {
+				writer.start_file(
+					format!("page_{}.{}", index, page.extension()),
+					zip::write::FileOptions::default(),
+				)?;
+				use std::io::Write;
+				writer.write_all(page.raw())?;
+			}
 
-			let buffer = thumbnail.save_to_bufferv("png", &[])?;
-			use std::io::Write;
-			writer.write_all(&buffer)?;
-		}
+			if let Some(thumbnail) = thumbnail {
+				log::info!("Saving thumbnail");
+				writer.start_file("thumbnail", zip::write::FileOptions::default())?;
 
-		writer.finish()?;
+				let buffer = thumbnail.save_to_bufferv("png", &[])?;
+				use std::io::Write;
+				writer.write_all(&buffer)?;
+			}
+
+			writer.finish()?;
+
+			anyhow::Ok(())
+		})
+		.map_err(|err| match err {
+			atomicwrites::Error::Internal(err) => anyhow::Error::new(err),
+			atomicwrites::Error::User(err) => err,
+		})
+		.context(format!(
+			"Failed to save file at {:?}",
+			path.as_ref().display()
+		))?;
+
 		Ok(())
 	}
 
