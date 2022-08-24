@@ -27,6 +27,18 @@ impl EditorPage {
 	pub fn update_page(&self) {
 		self.imp().update_page();
 	}
+
+	#[cfg(test)]
+	pub fn select_staff(&self, selected_staff: usize) {
+		self.imp()
+			.current_page
+			.borrow_mut()
+			.as_mut()
+			.unwrap()
+			.selected_staff = Some(selected_staff);
+		self.imp().editor.queue_draw();
+		self.imp().update_page_state();
+	}
 }
 
 mod imp {
@@ -36,7 +48,7 @@ mod imp {
 	#[template(resource = "/de/piegames/dinoscore/editor/page.ui")]
 	pub struct EditorPage {
 		#[template_child]
-		editor: TemplateChild<gtk::DrawingArea>,
+		pub editor: TemplateChild<gtk::DrawingArea>,
 		#[template_child]
 		piece_start: TemplateChild<gtk::CheckButton>,
 		#[template_child]
@@ -48,7 +60,7 @@ mod imp {
 		#[template_child]
 		section_end: TemplateChild<gtk::CheckButton>,
 
-		current_page: RefCell<Option<PageState>>,
+		pub(super) current_page: RefCell<Option<PageState>>,
 
 		pub file: OnceCell<Rc<RefCell<EditorSongFile>>>,
 
@@ -137,7 +149,7 @@ mod imp {
 		}
 
 		/// The page state has changed, update our widgets
-		fn update_page_state(&self) {
+		pub fn update_page_state(&self) {
 			let file = self.file.get().unwrap().borrow();
 
 			/* Absolute index of the currently selected staff, if presennt */

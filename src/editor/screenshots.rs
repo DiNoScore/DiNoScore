@@ -63,7 +63,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 	env::set_var("WAYLAND_DISPLAY", "wayland-1");
 
 	pipeline::pipe! {
-		gvdb_macros::include_gresource_from_xml!("res/viewer/resources.gresource.xml")
+		gvdb_macros::include_gresource_from_xml!("res/editor/resources.gresource.xml")
 		=> glib::Bytes::from_static
 		=> &gio::Resource::from_data(&_)?
 		=> gio::resources_register
@@ -72,59 +72,64 @@ fn create_screenshots() -> anyhow::Result<()> {
 	gio::resources_register_include!("icons.gresource").context("Failed to register resources.")?;
 
 	let application = gtk::Application::builder()
-		.application_id("de.piegames.dinoscore.viewer")
+		.application_id("de.piegames.dinoscore.editor")
 		.flags(gio::ApplicationFlags::NON_UNIQUE)
 		.resource_base_path("/de/piegames/dinoscore")
 		.build();
 
 	application.connect_startup(gtk_init);
 
-	let runner = |window: window::Window| async move {
+	let runner = |window: EditorWindow| async move {
 		/* Set things up */
 		let theme = adw::StyleManager::default();
 		theme.set_color_scheme(adw::ColorScheme::ForceLight);
 		window.present();
 		window.queue_draw();
 		window.fullscreen();
-		let library = window.library();
-		let song = window.song();
 
-		library.select_first_entry();
+		/* First of all, load our song */
+		let song = SongFile::new(
+			"./test/dinoscore/songs/Chopin, Frédéric – Waltzes, Op.64.zip",
+			&mut Default::default(),
+		)
+		.unwrap();
+		let load_sheets = song.load_sheets();
+		let sheets = blocking::unblock(move || load_sheets()).await.unwrap();
+		window.imp().load(sheets, song.index);
 		yield_now().await;
-		take_screenshot("gallery/01-overview.png")
+
+		/* Select the first staff */
+		window
+			.imp()
+			.pages_preview
+			.get()
+			.select_path(&gtk::TreePath::new_first());
+		window.imp().editor.get().select_staff(0);
+		yield_now().await;
+
+		take_screenshot("gallery/06-editor.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
-		library.activate_selected_entry();
+		/* Select staff #5 (is a repetition start) */
+		window.imp().editor.get().select_staff(4);
 		yield_now().await;
-		/* Wait for the full resolution to load in background */
-		std::thread::sleep(std::time::Duration::from_secs(10));
-		yield_now().await;
-		take_screenshot("gallery/02-song.png")
+
+		take_screenshot("gallery/07-editor-repetition.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
-		song.part_selection().popup();
-		yield_now().await;
-		take_screenshot("gallery/03-parts.png")
-			.context("Failed to take screenshot")
-			.unwrap();
-		song.part_selection().popdown();
-		yield_now().await;
-
-		song.set_zoom_mode("fit-staves");
-		yield_now().await;
-		song.zoom_button().activate();
-		yield_now().await;
-		take_screenshot("gallery/04-zoom.png")
-			.context("Failed to take screenshot")
-			.unwrap();
-		song.zoom_button().activate();
+		/* One more example */
+		window.imp().pages_preview.get().unselect_all();
+		window.imp().pages_preview.get().select_path(&{
+			let mut p = gtk::TreePath::new_first();
+			p.next();
+			p
+		});
+		window.imp().editor.get().select_staff(2);
 		yield_now().await;
 
-		theme.set_color_scheme(adw::ColorScheme::ForceDark);
-		yield_now().await;
-		take_screenshot("gallery/05-dark.png")
+		take_screenshot("gallery/08-editor-repetition.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
@@ -132,7 +137,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 	};
 
 	application.connect_activate(move |application| {
-		let window = window::Window::new(application);
+		let window = EditorWindow::new(application);
 		glib::MainContext::default().spawn_local_with_priority(glib::PRIORITY_LOW, runner(window));
 	});
 

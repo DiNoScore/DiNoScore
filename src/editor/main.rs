@@ -7,6 +7,8 @@ use dinoscore::{collection::*, prelude::*, *};
 
 pub(self) mod editor;
 pub(self) mod page;
+#[cfg(test)]
+mod screenshots;
 use editor::*;
 
 async fn yield_now() {
@@ -86,7 +88,7 @@ mod imp {
 		#[template_child(id = "store_pages")]
 		pages_preview_data: TemplateChild<gtk::ListStore>,
 		#[template_child]
-		editor: TemplateChild<page::EditorPage>,
+		pub editor: TemplateChild<page::EditorPage>,
 		#[template_child]
 		song_name: TemplateChild<gtk::Entry>,
 		#[template_child]
@@ -206,7 +208,7 @@ mod imp {
 			);
 		}
 
-		fn load(&self, pages: TiVec<PageIndex, PageImage>, song: SongMeta) {
+		pub fn load(&self, pages: TiVec<PageIndex, PageImage>, song: SongMeta) {
 			self.unload_and_clear();
 			for page in pages {
 				self.add_page(page);
@@ -477,7 +479,7 @@ mod imp {
 
 		/// Callback from the icon view
 		#[template_callback]
-		fn page_changed(&self) {
+		pub fn page_changed(&self) {
 			let selected_items = self.pages_preview.selected_items();
 			log::debug!("Selection changed: {} items", selected_items.len());
 			let selected_page = match selected_items.len() {
@@ -558,6 +560,13 @@ mod imp {
 	}
 }
 
+fn gtk_init(_application: &gtk::Application) {
+	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
+	let _ = gio::ThemedIcon::static_type();
+	let _ = page::EditorPage::static_type();
+	adw::init();
+}
+
 #[allow(clippy::all)]
 fn main() -> anyhow::Result<()> {
 	fern::Dispatch::new()
@@ -615,12 +624,7 @@ fn main() -> anyhow::Result<()> {
 		.resource_base_path("/de/piegames/dinoscore")
 		.build();
 
-	application.connect_startup(|_application| {
-		/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
-		let _ = gio::ThemedIcon::static_type();
-		let _ = page::EditorPage::static_type();
-		adw::init();
-	});
+	application.connect_startup(gtk_init);
 
 	application.connect_activate(move |application| {
 		let window = EditorWindow::new(application);
