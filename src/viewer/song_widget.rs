@@ -357,7 +357,10 @@ mod imp {
 						.unwrap()
 						.layout
 						.get_page_of_staff(start_at);
-					carousel.scroll_to(&carousel.nth_page(*page as u32), false);
+					/* Page count may have changed in the meantime due to race hazards */
+					if (*page as u32) < carousel.n_pages() {
+						carousel.scroll_to(&carousel.nth_page(*page as u32), false);
+					}
 				}),
 			);
 		}
