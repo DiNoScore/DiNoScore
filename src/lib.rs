@@ -78,6 +78,23 @@ pub fn create_progress_bar_dialog(
 	(progress, bar)
 }
 
+pub fn create_progress_spinner_dialog(text: &str, parent: &impl IsA<gtk::Window>) -> gtk::Dialog {
+	let progress = gtk::Dialog::builder()
+		.modal(true)
+		.destroy_with_parent(true)
+		.transient_for(parent)
+		.title("Loading…")
+		.deletable(false)
+		.build();
+
+	let spinner = gtk::Spinner::new();
+	progress.content_area().append(&spinner);
+	spinner.start();
+
+	progress.show();
+	progress
+}
+
 /// Commonly used imports
 pub mod prelude {
 	pub use adw::{prelude::*, subclass::prelude::*};

@@ -179,13 +179,27 @@ mod imp {
 				.build();
 			choose.show();
 
-			choose.connect_response(
-				clone!(@weak obj, @strong choose => @default-panic, move |_, response| {
+			run_async(
+				&choose,
+				clone!(@weak obj => @default-panic, move |choose, response| {
 					if response == gtk::ResponseType::Accept {
 						if let Some(file) = choose.file() {
 							let path = file.path().unwrap();
-							let song = SongFile::new(path, &mut Default::default()).unwrap();
-							obj.imp().load(song.load_sheets()().unwrap(), song.index);
+							let progress_dialog = dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
+							glib::MainContext::default().spawn_local_with_priority(
+								glib::source::PRIORITY_DEFAULT_IDLE,
+								clone!(@strong obj, @strong choose => async move {
+									yield_now().await;
+
+									let song = SongFile::new(path, &mut Default::default()).unwrap();
+									let load_sheets = song.load_sheets();
+									let sheets = blocking::unblock(move || load_sheets()).await.unwrap();
+									obj.imp().load(sheets, song.index);
+
+									yield_now().await;
+									progress_dialog.emit_close();
+								}),
+							);
 						}
 					}
 				}),
@@ -207,6 +221,7 @@ mod imp {
 			}
 			self.file.borrow_mut().piece_starts = song.piece_starts;
 			self.file.borrow_mut().section_starts = song.section_starts;
+			self.file.borrow_mut().song_uuid = song.song_uuid;
 			/* This will call the callbacks that also update self.file */
 			self.song_name.set_text(song.title.as_deref().unwrap_or(""));
 			self.song_composer
@@ -226,6 +241,14 @@ mod imp {
 				.select_multiple(false)
 				.filter(&filter)
 				.build();
+
+			let title = &self.file.borrow().song_name;
+			let composer = &self.file.borrow().song_composer;
+			match (title.is_empty(), composer.is_empty()) {
+				(false, false) => choose.set_current_name(&format!("{composer} – {title}.zip")),
+				(false, true) => choose.set_current_name(&format!("{title}.zip")),
+				_ => {},
+			}
 
 			run_async(
 				&choose,
@@ -464,7 +487,12 @@ mod imp {
 
 		#[template_callback]
 		pub fn autodetect(&self) {
-			let selected_items = self.pages_preview.selected_items();
+			let selected_items = self
+				.pages_preview
+				.selected_items()
+				.into_iter()
+				.map(|selected| selected.indices()[0] as usize)
+				.collect::<std::collections::BTreeSet<_>>();
 
 			let obj = self.instance();
 
@@ -477,11 +505,7 @@ mod imp {
 					let total_work = selected_items.len();
 					yield_now().await;
 
-					for (i, page) in selected_items
-						.into_iter()
-						.map(|selected| selected.indices()[0] as usize)
-						.enumerate()
-					{
+					for (i, page) in selected_items.into_iter().enumerate() {
 						let data: gdk_pixbuf::Pixbuf = obj.imp().pages_preview_data.get().get(
 							&obj.imp()
 								.pages_preview_data
@@ -539,6 +563,8 @@ fn main() -> anyhow::Result<()> {
 				.build(),
 		)
 		.level(log::LevelFilter::Trace)
+		.level_for("multipart", log::LevelFilter::Info)
+		.level_for("serde_xml_rs", log::LevelFilter::Info)
 		.chain(fern::logger::stdout())
 		.apply()
 		.context("Failed to initialize logger")?;

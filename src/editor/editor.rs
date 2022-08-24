@@ -15,7 +15,7 @@ pub struct EditorSongFile {
 	pub section_starts: BTreeMap<StaffIndex, SectionMeta>,
 
 	/// A unique identifier for this song that is stable across file modifications
-	song_uuid: Uuid,
+	pub song_uuid: Uuid,
 	/* /// Effectively a random string generated on each save. Useful for caching
 	 * version_uuid: Uuid, */
 	pub song_name: String,
