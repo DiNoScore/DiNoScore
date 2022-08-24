@@ -86,13 +86,13 @@ gvdb = { version = "0.2.1", features = [ "gresource" ] }
 gvdb-macros = "0.1.4"
 
 # Editor dependencies
-blocking = { version = "1.0.2", optional = true }
+blocking = { version = "1.0", optional = true }
 image = { version = "0.24.1", features = ["png"], default-features = false, optional = true }
 imageproc = { version = "0.23.0", optional = true }
 attohttpc = { version = "0.19.1", features = ["multipart-form", "json"], optional = true }
 
 # CLI dependencies
-clap = { version = "2.33.3", optional = true }
+clap = { version = "3.2", features = ["cargo", "derive", "wrap_help"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # Midi
@@ -116,5 +116,6 @@ editor = [
     "blocking",
 ]
 cli = [
-    "clap"
+    "clap",
+    "editor", # We still need to be able to do recognition
 ]

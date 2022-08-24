@@ -132,6 +132,26 @@ impl PageImage {
 			context.paint()
 		}
 	}
+
+	/// If this is a PDF embedding an image, try to extract it
+	///
+	/// Panics if `self` is not PDF based
+	pub fn extract_image(&self) -> anyhow::Result<Self> {
+		assert!(self.is_pdf());
+
+		let (extraction, pdf_n_pages) =
+			extract_pdf_images_raw(&self.raw).context("Failed to extract images from PDF")?;
+		assert_eq!(pdf_n_pages, 1); /* Double-check a previously-enforced invariant */
+
+		anyhow::ensure!(extraction.len() > 0, "Did not find any images to extract");
+		anyhow::ensure!(
+			extraction.len() == 1,
+			"Extraction produced more than one image per page"
+		);
+
+		let (extension, raw) = extraction.into_iter().next().unwrap();
+		Self::from_image(raw, extension)
+	}
 }
 
 /// Split a PDF file into its own pages
