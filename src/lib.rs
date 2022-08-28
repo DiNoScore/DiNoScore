@@ -110,7 +110,7 @@ pub mod prelude {
 	pub use gtk4 as gtk;
 	pub use libadwaita as adw;
 
-	pub use typed_index_collections::TiVec;
+	pub use typed_index_collections::{TiSlice, TiVec};
 
 	pub use glib::Object;
 	pub use gtk::Application;

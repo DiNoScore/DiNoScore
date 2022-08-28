@@ -1,18 +1,21 @@
 use dinoscore::{collection::*, prelude::*, *};
-use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// Business logic for the editor
+
+struct FullStaff {
+	staff: Staff,
+	piece_start: Option<String>,
+	section_start: Option<SectionMeta>,
+}
 
 /**
  * Representation of a [`collection::SongFile`] together with its
  * [`SongMeta`](collection::SongMeta) as required by the editor
  */
 pub struct EditorSongFile {
-	pub pages: Vec<(Arc<PageImage>, Vec<Staff>)>,
-
-	pub piece_starts: BTreeMap<StaffIndex, String>,
-	pub section_starts: BTreeMap<StaffIndex, SectionMeta>,
+	pages: TiVec<PageIndex, Arc<PageImage>>,
+	staves: TiVec<StaffIndex, FullStaff>,
 
 	/// A unique identifier for this song that is stable across file modifications
 	pub song_uuid: Uuid,
@@ -31,17 +34,8 @@ impl Default for EditorSongFile {
 impl EditorSongFile {
 	pub fn new() -> Self {
 		Self {
-			pages: Vec::new(),
-			piece_starts: {
-				let mut map = BTreeMap::new();
-				map.insert(0.into(), "".into());
-				map
-			},
-			section_starts: {
-				let mut map = BTreeMap::new();
-				map.insert(0.into(), SectionMeta::default());
-				map
-			},
+			pages: Default::default(),
+			staves: Default::default(),
 			song_uuid: Uuid::new_v4(),
 			song_name: "".into(),
 			song_composer: "".into(),
@@ -49,137 +43,159 @@ impl EditorSongFile {
 	}
 
 	pub fn get_staves(&self) -> TiVec<StaffIndex, Staff> {
-		self.pages
+		self.staves
 			.iter()
-			.flat_map(|page| page.1.iter())
-			.cloned()
+			.map(|staff| staff.staff.clone())
 			.collect()
 	}
 
-	pub fn get_pages(&self) -> Vec<Arc<PageImage>> {
-		self.pages.iter().map(|(page, _)| page).cloned().collect()
+	pub fn get_page(&self, page: PageIndex) -> (&Arc<PageImage>, Vec<Staff>) {
+		(
+			&self.pages[page],
+			self.staves
+				.iter()
+				.filter(|staff| staff.staff.page == page)
+				.map(|staff| staff.staff.clone())
+				.collect(),
+		)
+	}
+
+	pub fn get_pages(&self) -> &TiSlice<PageIndex, Arc<PageImage>> {
+		self.pages.as_slice()
+	}
+
+	pub fn piece_start(&self, staff: StaffIndex) -> Option<&String> {
+		self.staves[staff].piece_start.as_ref()
+	}
+
+	pub fn section_start(&self, staff: StaffIndex) -> Option<SectionMeta> {
+		self.staves[staff].section_start
+	}
+
+	pub fn piece_start_mut(&mut self, staff: StaffIndex) -> &mut Option<String> {
+		&mut self.staves[staff].piece_start
+	}
+
+	pub fn section_start_mut(&mut self, staff: StaffIndex) -> &mut Option<SectionMeta> {
+		&mut self.staves[staff].section_start
 	}
 
 	pub fn count_staves_before(&self, page: PageIndex) -> usize {
-		self.pages[0..*page].iter().map(|p| p.1.len()).sum()
+		self.staves
+			.iter()
+			.filter(|staff| staff.staff.page < page)
+			.count()
 	}
 
-	fn ensure_invariants(&mut self) {
-		if !self.piece_starts.contains_key(&StaffIndex(0)) {
-			self.piece_starts.insert(StaffIndex(0), "".into());
-			if !self.section_starts.contains_key(&StaffIndex(0)) {
-				self.section_starts
-					.insert(StaffIndex(0), SectionMeta::default());
-			}
-		}
-		let total_staves: usize = self.pages.iter().map(|p| p.1.len()).sum();
-		assert!(**self.piece_starts.keys().next_back().unwrap() < total_staves);
-		assert!(**self.section_starts.keys().next_back().unwrap() < total_staves);
+	pub fn count_sections_until(&self, staff: StaffIndex) -> usize {
+		self.staves[..=staff]
+			.iter()
+			.filter(|staff| staff.section_start.is_some())
+			.count()
 	}
 
-	/* Range is start inclusive, end exclusive */
-	fn shift_items(&mut self, start: usize, end: Option<usize>, offset: isize) {
-		if offset == 0 {
-			return;
-		}
-
-		/* I whish Rust had generic closures or partially applied functions */
-		fn mapper<T: Clone>(
-			start: usize,
-			end: Option<usize>,
-			offset: isize,
-		) -> impl Fn((&StaffIndex, &mut T)) -> (StaffIndex, T) {
-			move |(&index, value)| {
-				if *index >= start && end.map(|end| *index < end).unwrap_or(true) {
-					(
-						StaffIndex((*index as isize + offset) as usize),
-						value.clone(),
-					)
-				} else {
-					(index, value.clone())
-				}
-			}
-		}
-		self.piece_starts = self
-			.piece_starts
-			.iter_mut()
-			.map(mapper(start, end, offset))
-			.collect();
-		self.section_starts = self
-			.section_starts
-			.iter_mut()
-			.map(mapper(start, end, offset))
-			.collect();
-	}
-
+	/// Add a page to the end
 	pub fn add_page(&mut self, page: PageImage) {
-		self.pages.push((Arc::new(page), vec![]));
+		self.pages.push(Arc::new(page));
 	}
 
 	pub fn remove_page(&mut self, page_index: PageIndex) {
-		let staves = self.get_staves();
-		if !staves.is_empty() {
-			self.piece_starts
-				.retain(|staff, _| staves[*staff].page() != page_index);
-			self.section_starts
-				.retain(|staff, _| staves[*staff].page() != page_index);
-			self.ensure_invariants();
+		self.pages.remove(page_index);
+		self.staves.retain(|staff| staff.staff.page != page_index);
+		for staff in &mut self.staves {
+			if staff.staff.page > page_index {
+				staff.staff.page -= PageIndex(1);
+			}
 		}
 
-		let (_page, staves) = self.pages.remove(*page_index);
-
-		self.shift_items(
-			self.count_staves_before(page_index),
-			None,
-			-(staves.len() as isize),
-		);
-		self.pages[*page_index..]
-			.iter_mut()
-			.flat_map(|(_page, staves)| staves)
-			.for_each(|staff| {
-				staff.page -= PageIndex(1);
-			});
+		if let Some(staff) = self.staves.get_mut(StaffIndex(0)) {
+			staff.piece_start.get_or_insert("".into());
+			let _ = staff.section_start.insert(SectionMeta::default());
+		}
 	}
 
+	/// Add staves to the end of a page. Staves must already be y-ordered
 	pub fn add_staves(&mut self, page_index: PageIndex, staves: Vec<Staff>) {
-		if self.pages.iter().map(|p| p.1.len()).sum::<usize>() > 0 {
-			self.shift_items(
-				self.count_staves_before(page_index) + self.pages[*page_index].1.len(),
-				None,
-				staves.len() as isize,
-			);
+		let index = self
+			.staves
+			.iter_enumerated()
+			.find(|(_, staff)| staff.staff.page > page_index)
+			.map(|(i, _)| i)
+			.unwrap_or(StaffIndex(self.staves.len()));
+		self.staves.splice(
+			index..index,
+			staves
+				.into_iter()
+				.inspect(|staff| assert_eq!(staff.page, page_index))
+				.map(|staff| FullStaff {
+					staff,
+					piece_start: None,
+					section_start: None,
+				}),
+		);
+
+		if let Some(staff) = self.staves.get_mut(StaffIndex(0)) {
+			staff.piece_start.get_or_insert("".into());
+			let _ = staff.section_start.insert(SectionMeta::default());
 		}
-		self.pages[*page_index].1.extend(staves);
-		self.ensure_invariants();
 	}
 
 	/// Insert single staff, maintain y ordering
 	pub fn add_staff(&mut self, page_index: PageIndex, staff: Staff) -> usize {
+		assert_eq!(page_index, staff.page);
 		/* Find correct index to insert based on y coordinate */
-		let index = self.pages[*page_index]
-			.1
-			.iter()
+		let (index_rel_page, index) = self
+			.staves
+			.iter_enumerated()
+			.filter(|(_, staff)| staff.staff.page == page_index)
 			.enumerate()
-			.find(|(_, staff2)| staff2.start.1 > staff.start.1)
-			.map(|(index, _)| index)
-			.unwrap_or_else(|| self.pages[*page_index].1.len());
-		self.shift_items(self.count_staves_before(page_index) + index, None, 1);
-		self.pages[*page_index].1.insert(index, staff);
-		self.ensure_invariants();
-		index
+			.find(|(_, (_, staff2))| staff2.staff.start.1 > staff.start.1)
+			.map(|(index_rel_page, (index, _))| (index_rel_page, index))
+			.unwrap_or_else(|| {
+				(
+					self.staves
+						.iter()
+						.filter(|staff| staff.staff.page == page_index)
+						.count(),
+					StaffIndex(
+						self.staves
+							.iter()
+							.filter(|staff| staff.staff.page <= page_index)
+							.count(),
+					),
+				)
+			});
+		self.staves.insert(
+			index,
+			FullStaff {
+				staff,
+				piece_start: None,
+				section_start: None,
+			},
+		);
+
+		if let Some(staff) = self.staves.get_mut(StaffIndex(0)) {
+			staff.piece_start.get_or_insert("".into());
+			let _ = staff.section_start.insert(SectionMeta::default());
+		}
+
+		index_rel_page
 	}
 
 	/** The `staff` parameter is relative to the page index */
 	pub fn delete_staff(&mut self, page_index: PageIndex, staff: usize) {
-		self.shift_items(self.count_staves_before(page_index) + staff + 1, None, -1);
+		let index = self
+			.staves
+			.iter_enumerated()
+			.filter(|(_, staff)| staff.staff.page == page_index)
+			.nth(staff)
+			.map(|(index, _)| index)
+			.expect("Tried to delete non-existent staff");
+		self.staves.remove(index);
 
-		self.pages[*page_index].1.remove(staff);
-		if !self.piece_starts.contains_key(&StaffIndex(0)) {
-			self.piece_starts.insert(StaffIndex(0), "".into());
-		}
-		if !self.section_starts.contains_key(&StaffIndex(0)) {
-			self.section_starts
-				.insert(StaffIndex(0), SectionMeta::default());
+		if let Some(staff) = self.staves.get_mut(StaffIndex(0)) {
+			staff.piece_start.get_or_insert("".into());
+			let _ = staff.section_start.insert(SectionMeta::default());
 		}
 	}
 
@@ -201,41 +217,79 @@ impl EditorSongFile {
 		staff: usize,
 		modify: impl FnOnce(&mut Staff),
 	) -> usize {
-		let page: &mut Vec<Staff> = &mut self.pages[*page_index].1;
-
-		let old_index = staff;
-		let mut new_staff = page.remove(staff);
-		let old_staff = new_staff.clone();
-		modify(&mut new_staff);
-		assert_eq!(old_staff.page(), new_staff.page());
-
-		let new_index = page
-			.iter()
-			.enumerate()
-			.find(|(_, staff2)| staff2.start.1 > new_staff.start.1)
+		let index = self
+			.staves
+			.iter_enumerated()
+			.filter(|(_, staff)| staff.staff.page == page_index)
+			.nth(staff)
 			.map(|(index, _)| index)
-			.unwrap_or_else(|| page.len());
+			.expect("Tried to modify non-existent staff");
+		let mut staff = self.staves.remove(index);
+		modify(&mut staff.staff);
+		assert_eq!(page_index, staff.staff.page);
 
-		if new_index == old_index {
-			page.insert(new_index, new_staff);
-		} else {
-			page.insert(new_index, new_staff);
-			self.shift_items(
-				self.count_staves_before(page_index) + old_index + 1,
-				Some(self.count_staves_before(page_index) + new_index),
-				-1,
-			);
+		/* Find correct index to insert based on y coordinate */
+		let (index_rel_page, index) = self
+			.staves
+			.iter_enumerated()
+			.filter(|(_, staff)| staff.staff.page == page_index)
+			.enumerate()
+			.find(|(_, (_, staff2))| staff2.staff.start.1 > staff.staff.start.1)
+			.map(|(index_rel_page, (index, _))| (index_rel_page, index))
+			.unwrap_or_else(|| {
+				(
+					self.staves
+						.iter()
+						.filter(|staff| staff.staff.page == page_index)
+						.count(),
+					StaffIndex(
+						self.staves
+							.iter()
+							.filter(|staff| staff.staff.page <= page_index)
+							.count(),
+					),
+				)
+			});
+		self.staves.insert(index, staff);
+
+		if let Some(staff) = self.staves.get_mut(StaffIndex(0)) {
+			staff.piece_start.get_or_insert("".into());
+			let _ = staff.section_start.insert(SectionMeta::default());
 		}
-		self.ensure_invariants();
-		new_index
+
+		index_rel_page
+	}
+
+	pub fn load(&mut self, song: SongMeta) {
+		self.staves = song
+			.staves
+			.into_iter_enumerated()
+			.map(|(index, staff)| FullStaff {
+				staff,
+				piece_start: song.piece_starts.get(&index).cloned(),
+				section_start: song.section_starts.get(&index).cloned(),
+			})
+			.collect();
+		self.song_name = song.title.unwrap_or_default();
+		self.song_composer = song.composer.unwrap_or_default();
+		self.song_uuid = song.song_uuid;
 	}
 
 	pub fn save(&self, file: std::path::PathBuf) -> anyhow::Result<()> {
+		assert!(self.staves.len() > 0, "You need at least one staff to save");
 		let song = SongMeta {
 			n_pages: self.pages.len(),
 			staves: self.get_staves(),
-			piece_starts: self.piece_starts.clone(),
-			section_starts: self.section_starts.clone(),
+			piece_starts: self
+				.staves
+				.iter_enumerated()
+				.filter_map(|(i, staff)| staff.piece_start.clone().map(|p| (i, p)))
+				.collect(),
+			section_starts: self
+				.staves
+				.iter_enumerated()
+				.filter_map(|(i, staff)| staff.section_start.clone().map(|p| (i, p)))
+				.collect(),
 			song_uuid: self.song_uuid,
 			version_uuid: uuid::Uuid::new_v4(),
 			title: Some(&self.song_name)
@@ -246,13 +300,12 @@ impl EditorSongFile {
 				.cloned(),
 		};
 		use std::ops::Deref;
-		let thumbnail =
-			SongFile::generate_thumbnail(&song, self.pages.iter().map(|(page, _)| page.deref()))
-				.expect("Failed to generate thumbnail");
+		let thumbnail = SongFile::generate_thumbnail(&song, self.pages.iter().map(Deref::deref))
+			.expect("Failed to generate thumbnail");
 		SongFile::save(
 			file,
 			song,
-			self.pages.iter().map(|(page, _)| page.deref()),
+			self.pages.iter().map(Deref::deref),
 			thumbnail,
 			true, // TODO overwrite?!
 		)?;

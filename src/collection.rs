@@ -337,7 +337,7 @@ impl SongFile {
 	}
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
 pub struct SectionMeta {
 	pub is_repetition: bool,
 	pub section_end: bool,

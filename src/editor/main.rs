@@ -208,30 +208,38 @@ mod imp {
 
 		fn load(&self, pages: TiVec<PageIndex, PageImage>, song: SongMeta) {
 			self.unload_and_clear();
-			for (index, page) in pages.into_iter().enumerate() {
+			for page in pages {
 				self.add_page(page);
-				self.add_staves(
-					PageIndex(index),
-					song.staves
-						.iter()
-						.filter(|line| line.page == index.into())
-						.cloned()
-						.collect::<Vec<_>>(),
-				);
 			}
-			self.file.borrow_mut().piece_starts = song.piece_starts;
-			self.file.borrow_mut().section_starts = song.section_starts;
-			self.file.borrow_mut().song_uuid = song.song_uuid;
-			/* This will call the callbacks that also update self.file */
+
 			self.song_name.set_text(song.title.as_deref().unwrap_or(""));
 			self.song_composer
 				.set_text(song.composer.as_deref().unwrap_or(""));
+
+			self.file.borrow_mut().load(song);
+
+			self.editor.update_page();
 		}
 
 		fn save_with_ui(&self) {
 			log::info!("Saving staves");
 
 			let obj = self.instance();
+
+			if self.file.borrow().get_staves().len() == 0 {
+				let dialog = gtk::MessageDialog::new(
+					Some(&obj),
+					gtk::DialogFlags::MODAL,
+					gtk::MessageType::Error,
+					gtk::ButtonsType::Ok,
+					"You need to add least one staff annotation before saving",
+				);
+				dialog.set_default_response(gtk::ResponseType::Ok);
+				dialog.connect_response(|dialog, _response| dialog.close());
+				dialog.present();
+				return;
+			}
+
 			let filter = gtk::FileFilter::new();
 			filter.add_mime_type("application/zip");
 			let choose = gtk::FileChooserNative::builder()

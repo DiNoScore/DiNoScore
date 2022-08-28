@@ -90,7 +90,7 @@ mod imp {
 		pub fn update_page(&self) {
 			let file = self.file.get().unwrap().borrow();
 			if let Some(page) = self.current_page.borrow_mut().as_mut() {
-				let bars = file.pages[page.page.0].1.clone();
+				let bars = file.get_page(page.page).1;
 
 				page.bars = bars;
 				page.staves_before = file.count_staves_before(page.page);
@@ -104,8 +104,8 @@ mod imp {
 		pub fn load_page(&self, current_page: Option<PageIndex>) {
 			let file = self.file.get().unwrap().borrow();
 			*self.current_page.borrow_mut() = current_page.map(|page_index| {
-				let (image, bars) = file.pages[page_index.0].clone();
-				let (renderer, update_page) = spawn_song_renderer(page_index, image);
+				let (image, bars) = file.get_page(page_index);
+				let (renderer, update_page) = spawn_song_renderer(page_index, image.clone());
 
 				update_page.attach(
 					None,
@@ -149,16 +149,17 @@ mod imp {
 
 			/* Set the selection */
 			let piece_start_active = index
-				.and_then(|i| file.piece_starts.get(&StaffIndex(i)))
+				.and_then(|i| file.piece_start(StaffIndex(i)))
 				.is_some();
 
 			let piece_name: String = index
-				.and_then(|i: usize| file.piece_starts.get(&StaffIndex(i)))
+				.and_then(|i: usize| file.piece_start(StaffIndex(i)))
 				.cloned()
 				.unwrap_or_default();
-			let section_start: Option<&SectionMeta> =
-				index.and_then(|i| file.section_starts.get(&i.into()));
+			let section_start: Option<SectionMeta> =
+				index.and_then(|i| file.section_start(i.into()));
 			let section_has_repetition = section_start
+				.as_ref()
 				.map(|meta| meta.is_repetition)
 				.unwrap_or(false);
 			let has_section_start = section_start.is_some();
@@ -477,8 +478,8 @@ mod imp {
 			let mut file = self.file.get().unwrap().borrow_mut();
 			let index = StaffIndex(file.count_staves_before(page.page) + selected_staff);
 			let name = file
-				.piece_starts
-				.get_mut(&index)
+				.piece_start_mut(index)
+				.as_mut()
 				.expect("You shouldn't be able to set the name on non part starts");
 			*name = self.piece_name.text().to_string();
 		}
@@ -498,11 +499,10 @@ mod imp {
 			let mut file = self.file.get().unwrap().borrow_mut();
 			let index = StaffIndex(file.count_staves_before(page.page) + selected_staff);
 			if selected {
-				file.section_starts
-					.entry(index)
-					.or_insert_with(SectionMeta::default);
+				file.section_start_mut(index)
+					.get_or_insert_with(SectionMeta::default);
 			} else {
-				file.section_starts.remove(&index);
+				file.section_start_mut(index).take();
 			}
 
 			std::mem::drop((page_, file));
@@ -523,8 +523,8 @@ mod imp {
 			};
 			let mut file = self.file.get().unwrap().borrow_mut();
 			let index = StaffIndex(file.count_staves_before(page.page) + selected_staff);
-			file.section_starts
-				.get_mut(&index)
+			file.section_start_mut(index)
+				.as_mut()
 				.expect("You shouldn't be able to click this if there's no section start")
 				.is_repetition = selected;
 
@@ -546,8 +546,8 @@ mod imp {
 			};
 			let mut file = self.file.get().unwrap().borrow_mut();
 			let index = StaffIndex(file.count_staves_before(page.page) + selected_staff);
-			file.section_starts
-				.get_mut(&index)
+			file.section_start_mut(index)
+				.as_mut()
 				.expect("You shouldn't be able to click this if there's no section start")
 				.section_end = selected;
 
@@ -570,13 +570,13 @@ mod imp {
 			let mut file = self.file.get().unwrap().borrow_mut();
 			let index = StaffIndex(file.count_staves_before(page.page) + selected_staff);
 			if selected {
-				file.piece_starts.entry(index).or_insert_with(|| "".into());
+				file.piece_start_mut(index)
+					.get_or_insert_with(Default::default);
 				/* When a piece starts, a section must start as well */
-				file.section_starts
-					.entry(index)
-					.or_insert_with(SectionMeta::default);
+				file.section_start_mut(index)
+					.get_or_insert_with(SectionMeta::default);
 			} else {
-				file.piece_starts.remove(&index);
+				file.piece_start_mut(index).take();
 			}
 
 			std::mem::drop((page_, file));
@@ -628,10 +628,7 @@ mod imp {
 				}
 				for (i, staff) in page.bars.iter().enumerate() {
 					let absolute_index = page.staves_before + i;
-					let section_number = file
-						.section_starts
-						.range(..=StaffIndex(absolute_index))
-						.count();
+					let section_number = file.count_sections_until(StaffIndex(absolute_index));
 
 					context.save()?;
 					match section_number % 4 {
