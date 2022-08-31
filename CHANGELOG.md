@@ -1,26 +1,41 @@
 # Changelog
 
-## Unpublished changes
+## Version 0.4.0
 
 General:
 
 - Rewrote everything in Gtk 4 with shiny Libadwaita
     - Performance is a lot better now thanks to hardware acceleration
+- Windows support
+    - Download a huge zip file with everything from the releases page, extract and run
+- New file format version
+    - Please update your scores with the CLI to reduce the loading time
 
 Viewer:
 
 - Added crash a crash dialog and some proper logging (we still crash a lot lol)
 - Support for annotations (WIP)
-- Song statistics (WIP)
 - Night mode
+- New fancy song preview
+- Song statistics
 - Search for songs by name
+- Lazy loading of content with progress bar
+- Less visual artifacts when the original score has tightly packed staves which overlap vertically
 - Some more cool minor changes
 
 Editor:
 
 - Removed tensorflow for staff detection, saving 200 MiB
     - The replacement is now using a self hosted web service, so that users don't have to deal with all those dependencies and large models
-- Manually add and modify staff annotations (WIP)
+    - This might have improved the results, especially for non-standard systems (e.g. multiple instruments or guitar tabs)
+- Manually add and modify staff annotations
+- Optionally extract images from PDFs that just embed images, to increase performance
+- More lazy loading and progress bars instead of freezing the UI
+
+CLI:
+
+- New commands (`re-recognize` and `v4-extract-images`) that help with the v3→v4 format migration
+- New `regenerate-thumbnail` command
 
 ## Version 0.3.0
 
