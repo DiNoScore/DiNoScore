@@ -83,16 +83,16 @@ impl SongFile {
 				let mut song = song.borrow_mut();
 				Ok(
 					Self::load_pages_inner(&mut song, n_pages, |index, file, data| {
-						let image = if file == format!("page_{}.pdf", index) {
+						let extension = file
+							.split('.')
+							.last()
+							.ok_or_else(|| {
+								anyhow::format_err!("File name needs to have an extension")
+							})?
+							.to_owned();
+						let image = if extension == "pdf" {
 							PageImage::from_pdf(data)?
 						} else {
-							let extension = file
-								.split('.')
-								.last()
-								.ok_or_else(|| {
-									anyhow::format_err!("File name for needs to have an extension")
-								})?
-								.to_owned();
 							PageImage::from_image(data, extension)?
 						};
 						anyhow::Ok((image.reference_width(), image.reference_height()) as (f64, f64))
@@ -157,7 +157,7 @@ impl SongFile {
 				.enumerate()
 				.map(|(index, result)| {
 					let (bytes, page) = result?;
-					loader(index, "pdf", bytes)
+					loader(index, "sheet.pdf", bytes)
 				})
 				.collect::<anyhow::Result<Vec<_>>>()?
 				.into());
@@ -210,14 +210,14 @@ impl SongFile {
 	/* Returns a deferred that should be spawned on a background thread */
 	pub fn load_sheets(&self) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, PageImage>>) {
 		let load_pages = self.load_pages(|index, file, data| {
-			if file == format!("page_{}.pdf", index) {
+			let extension = file
+				.split('.')
+				.last()
+				.ok_or_else(|| anyhow::format_err!("File name for needs to have an extension"))?
+				.to_owned();
+			if extension == "pdf" {
 				PageImage::from_pdf(data)
 			} else {
-				let extension = file
-					.split('.')
-					.last()
-					.ok_or_else(|| anyhow::format_err!("File name for needs to have an extension"))?
-					.to_owned();
 				PageImage::from_image(data, extension)
 			}
 		});
@@ -804,5 +804,28 @@ impl StaffV1 {
 
 	pub fn get_height(&self) -> f64 {
 		self.end.1 - self.start.1
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_format_v2() {
+		let song = SongFile::new(&"./test/format_v2.zip", &mut Default::default()).unwrap();
+		song.load_sheets()().unwrap();
+	}
+
+	#[test]
+	fn test_format_v3() {
+		let song = SongFile::new(&"./test/format_v3.zip", &mut Default::default()).unwrap();
+		song.load_sheets()().unwrap();
+	}
+
+	#[test]
+	fn test_format_v4() {
+		let song = SongFile::new(&"./test/format_v4.zip", &mut Default::default()).unwrap();
+		song.load_sheets()().unwrap();
 	}
 }

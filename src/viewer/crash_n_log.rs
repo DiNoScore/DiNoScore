@@ -136,7 +136,7 @@ fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
 			crash
 		},
 		Err(err) => {
-			log::warn!("Failed to write crash information, {}", err);
+			log::warn!("Failed to write crash information: {}", err);
 			log::logger().flush();
 			std::process::exit(110);
 		},
@@ -174,6 +174,7 @@ fn write_crash_message(info: &std::panic::PanicInfo) -> anyhow::Result<std::path
 		"crash {}.md",
 		chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
 	))?;
+	log::debug!("Writing crash information to '{}'", report.display());
 	let mut out = std::fs::File::create(&report)?;
 
 	writeln!(&mut out, "## Crash information\n")?;
