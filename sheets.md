@@ -2,7 +2,7 @@
 
 ## Already imported sheets
 
-Some day, there will be a public repository with a few songs in it. TODO
+Browse the public collection [here](https://github.com/DiNoScore/Scores).
 
 ## Get them on the internet
 
@@ -14,7 +14,11 @@ You have got two options: either scan them or take a photo. Scanning is slow and
 
 When taking photographs of the sheet, try to keep the sheet flat and the lighting consistent. Take the photo with maximum resolution, there will be some losses. If possible, take the photo from far away with optical zoom; this reduces perspective distortions. Take one picture per page.
 
-To keep the book flat (some are really sturdy), you can press it against some window and then photograph it from the other side.
+To keep the book flat (some are really sturdy), you can press it against some window or glass pane and then photograph it from the other side.
+
+### Post-processing with Smude
+
+[Smude](https://github.com/sonovice/smude) is a tool that does dewarping and binarization automatically for you. You can already use it right now, but in the future it will hopefully be integrated into the editor.
 
 ### Post-processing in GIMP
 
@@ -33,20 +37,3 @@ Open the image in GIMP. Do less work and skip steps if the image looks good enou
 6. **Color correction 3:** The previous steps might have given you some transparent pixels. Make them white using "Layer → Transparency → Remove Alpha Channel".
 7. **Binarize:** You may already have an *almost*-monochrome image. Applying a Threshold filter will result in a much smaller file, at the cost of quality. It's up to you.
 8. **Scale down and save:** You probably don't need your sheets to be in 4k. Save the image as PNG, with an indexed palette. Aim for a few 100kiB per page. Don't include EXIF data and the thumbnail with the image, they won't be needed.
-
-## Import the scans using the editor
-
-The editor works with all kinds of images, as well as PDF.
-
-1. If your image already is black and white, add it using TODO.
-2. If your image is in colour, you can use TODO. This will perform a simpler binarization for you. It works well in mild cases, but if it doesn't you'll have to use GIMP.
-3. Select all pages that contain staves, and click "Autodetect". This will take a while, and eat your RAM. If you're unsure, start with trying out only the first page.
-4. If the automatic detection did something wrong, you're out of luck. :D There are no manual editing features as of now.
-5. Select the staves and annotate them appropriately:
-    - For each "song" in the sheets, click "part start" and give it a name.
-    - Use "start section" to divide the song further. Create at least one section for each repetition.
-    - Click "is repetition" on the first section of every repetition
-    - If the repetition does not end at the end of a staff:
-        - Mark that staff as the start of a new sections
-        - Click "previous section ends here"
-6. Save

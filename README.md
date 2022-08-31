@@ -2,35 +2,44 @@
 
 A digital music stand written in Rust with Gtk 4 and Libadwaita. It is comparable to *forScore*, but completely free\*\*. Touch screen is optional but recommended.
 
-\* **Di**gital **No**te **Score**. Never let anything stop your from a good acronym :D
+\* **Di**gital **No**te **Score**. Never let anything stop you from a good acronym :D
 
 \*\* Not only is it free, it also works on relatively low budget hardware.
 
 ## Features
 
 - Probably the only open source digital music stand software out there
-- Adaptive layout that shows a configurable amount of staves per page
-  - It can also show multiple columns at once if you wish
-  - Supports different staff sizes for different environments
-- Annotations support through Xournal++
-- Editor to import your sheets
+- Adaptive layout that shows a configurable amount of staves per page (see screenshots below)
+  - Change the "font size" according to your needs
+  - It can also show multiple columns if you wish
+- Easily add annotations in [Xournal++](https://xournalpp.github.io/)
+- A companion application, the Editor, to import PDFs and images into the custom DiNoScore format
 - Night mode
 
 ### Planned features (help appreciated)
 
-- Setlists
+- Graceful error handling — sorry, at the moment the application just crashes if something ever goes wrong :D
+- [Setlists](https://en.wikipedia.org/wiki/Set_list)
 - Synchronized or remote page turning
 	- Automatic page turning via score following?
 - Four hands mode/duet on single device?
 - Song detection (just start playing and it will load the song for you)
+- Video recording mode: All those YouTube videos which display the score alongside the music could be recorded with DiNoScore
 
 ## Gallery
 
+Song library:
 ![Screenshot of the song collection view of the application.](gallery/01-overview.png "Song library")
+A loaded song:
 ![A waltz from Chopin is loaded for playing, there are two columns with four staves each on display](gallery/02-song.png "A loaded song")
+Jump between movements/sections/songs:
 ![The drop down for selecting a section is opened, showing that there are two more waltzes in that document](gallery/03-parts.png "Quickly jump between sections")
+Layout with larger zoom factor for smaller devices:
 ![The zoom menu is opened. As per the setting, only the first three staves of the song are shown, which corresponds to a zoom factor of 134%](gallery/04-zoom.png "Powerful zoom settings")
+Dark mode:
 ![The previous screenshot but in dark mode with inverted colors](gallery/05-dark.png "Dark mode")
+Import your scores using the editor:
+![Screenshot of the editor, showing the first with staff annotations](gallery/06-editor.png "Editor")
 
 
 ## How it works
@@ -51,7 +60,7 @@ Windows users need to download a zip bundle from the CI or the releases. (For th
 
 ## Usage
 
-Songs are packed as zip files. The program lists everything in `$XDG_DATA_DIRS/dinoscore/songs`, so simply put your songs into `$XDG_DATA_HOME/dinoscore/songs`. If you don't know what `XDG_DATA_HOME` is, use `~/.local/share/dinoscore/songs` instead. You can create song files [using the editor](./sheets.md) or download some from our [public collection](https://github.com/DiNoScore/Scores).
+Songs are packed in a custom file format stored as zip files. The program lists everything in `$XDG_DATA_DIRS/dinoscore/songs`, so simply put your songs into `$XDG_DATA_HOME/dinoscore/songs`. If you don't know what `XDG_DATA_HOME` is, use `~/.local/share/dinoscore/songs` instead. You can create song files [using the editor](./editor.md) or download some from our [public collection](https://github.com/DiNoScore/Scores).
 
 When using a foot switch to turn the page, bind the page turning actions to `Alt+n` (next) and `Alt+p` (previous). The arrow keys will work too.
 
