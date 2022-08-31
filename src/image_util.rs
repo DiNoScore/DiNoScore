@@ -223,6 +223,18 @@ images = []
 
 for page in pdf.pages:
 	for image in list(page.images.values()):
+		# Horrible hack: https://github.com/pikepdf/pikepdf/issues/269
+		# (This is likely not a bug in PikePDF, but just the situation generally
+		# being massively fucked up)
+		if hasattr(image, "DecodeParms"):
+			if isinstance(image.DecodeParms, pikepdf.objects.Array):
+				for param in image.DecodeParms:
+					if hasattr(param, "BlackIs1"):
+						param.BlackIs1 = False
+			else:
+				if hasattr(image.DecodeParms, "BlackIs1"):
+					image.DecodeParms.BlackIs1 = False
+
 		buf = BytesIO(bytearray())
 		format = PdfImage(image).extract_to(stream=buf)
 		images += [(format[1:], buf.getvalue())]
@@ -231,6 +243,7 @@ for page in pdf.pages:
 # https://github.com/pikepdf/pikepdf/issues/366
 if len(images) < n_pages:
 	images = []
+	print("[DEBUG] Using custom extractor")
 	for object in pdf.objects:
 		if isinstance(object, pikepdf.objects.Array):
 			continue
@@ -244,7 +257,12 @@ images = (images, n_pages)
 "#,
 		None,
 		Some(locals),
-	)?;
+	)
+	// TODO replace with inspect_err once stable
+	.map_err(|err| {
+		err.print(py);
+		err
+	})?;
 
 	Ok(locals.get_item("images").unwrap().extract().unwrap())
 }
