@@ -417,6 +417,7 @@ impl SongMeta {
 	/// Page indices are relative to the current piece's start. Indices start at 0.
 	pub fn page_of_piece(&self, index: StaffIndex) -> (PageIndex, StaffIndex) {
 		let piece_start = *self.piece_starts.range(..=&index).next_back().unwrap().0;
+		assert!(self.staves[index].page >= self.staves[piece_start].page);
 		let page = self.staves[index].page - self.staves[piece_start].page;
 		let page_staff = self.staves[piece_start..=index]
 			.iter()
@@ -448,6 +449,17 @@ impl<'de> Deserialize<'de> for SongMeta {
 				)));
 			}
 		}
+		unchecked.staves.windows(2)
+			.map(|staves| (staves.raw[0].page, staves.raw[1].page))
+			.map(|(a, b)| if a > b {
+				Err(de::Error::custom(format!(
+					"Invalid data: Pages must be monotonically increasing, but a staff with page {b} came after one with page {a}"
+				)))
+			} else {
+				Ok(())
+			})
+			.collect::<Result<(), _>>()?;
+
 		if !unchecked.piece_starts.contains_key(&0.into()) {
 			return Err(de::Error::custom(
 				"Invalid data: Song must start with a piece",
