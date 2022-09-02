@@ -935,12 +935,26 @@ impl SongState {
 		};
 		self.current_staves = self.layout.get_staves_of_page(self.page).collect();
 
+		/* Calculate the maximum effective page width for this layout */
+		use noisy_float::prelude::*;
+		let render_width: f64 = self
+			.layout
+			.pages
+			.iter()
+			.flatten()
+			.map(|layout_staff| {
+				r64(layout_staff.width / self.song.staves[layout_staff.index].width())
+			})
+			.max()
+			.unwrap_or_default()
+			.into();
+
 		/* Notify background renderer about potential changes */
 		self.renderer
 			.send((
 				/* Convert current layout page to PDF page */
 				self.song.staves[self.layout.get_staves_of_page(self.page).next().unwrap()].page,
-				Some(width as i32),
+				Some(render_width as i32),
 			))
 			.unwrap();
 	}
