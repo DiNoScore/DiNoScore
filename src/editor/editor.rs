@@ -72,6 +72,15 @@ impl EditorSongFile {
 		self.staves[staff].section_start
 	}
 
+	/// Go back from that section and find it's start
+	pub fn section_start_of(&self, staff: StaffIndex) -> (StaffIndex, SectionMeta) {
+		self.staves[..=staff]
+			.iter_enumerated()
+			.rev()
+			.find_map(|(i, start)| start.section_start.map(|start| (i, start)))
+			.unwrap()
+	}
+
 	pub fn piece_start_mut(&mut self, staff: StaffIndex) -> &mut Option<String> {
 		&mut self.staves[staff].piece_start
 	}

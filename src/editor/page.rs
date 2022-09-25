@@ -642,6 +642,41 @@ mod imp {
 					let absolute_index = page.staves_before + i;
 					let section_number = file.count_sections_until(StaffIndex(absolute_index));
 
+					/* Extract some useful information for painting later on */
+					let n_staves = file.get_staves().len();
+					let current = StaffIndex(absolute_index);
+					let next = StaffIndex(absolute_index + 1);
+					let previous = absolute_index.checked_sub(1).map(StaffIndex);
+					// let is_current_piece_start = file.piece_start(current);
+					let is_next_piece_start = *next == n_staves || file.piece_start(next).is_some();
+					let is_current_section_start = file.section_start(current);
+					let is_next_section_start = (*next < n_staves)
+						.then(|| file.section_start(next))
+						.flatten();
+					let section_start_of_current = file.section_start_of(current);
+					let section_start_of_previous =
+						previous.map(|previous| file.section_start_of(previous));
+
+					// let show_start_bars = is_current_piece_start.is_some();
+					let show_end_bars = i == file.get_staves().len() - 1 || is_next_piece_start;
+					let show_repetition_start = is_current_section_start
+						.map(|s| s.is_repetition && !s.section_end)
+						.unwrap_or(false);
+					let show_repetition_start_mid = is_current_section_start
+						.map(|s| s.is_repetition && s.section_end)
+						.unwrap_or(false);
+					let show_repetition_end = section_start_of_current.1.is_repetition
+						&& (is_current_section_start.is_none()
+							|| section_start_of_current.0 == current)
+						&& (is_next_section_start
+							.map(|s| !s.section_end)
+							.unwrap_or(false) || absolute_index == n_staves - 1);
+					let show_repetition_end_mid = section_start_of_previous
+						.map(|(_, start)| start.is_repetition)
+						.unwrap_or(false) && is_current_section_start
+						.map(|s| s.section_end)
+						.unwrap_or(false);
+
 					context.save()?;
 					match section_number % 4 {
 						0 => context.set_source_rgba(0.2, 0.1, 0.4, 0.3),
@@ -737,12 +772,135 @@ mod imp {
 						context.fill_preserve()?;
 						context.stroke()?;
 					}
+
+					/* Repetitions & annotations */
+					context.save()?;
+					context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
+					if show_repetition_start {
+						context.rectangle(
+							staff_left + 5.0,
+							staff_top + 10.0,
+							8.0,
+							staff_height - 20.0,
+						);
+						context.fill()?;
+						context.rectangle(
+							staff_left + 17.0,
+							staff_top + 10.0,
+							3.0,
+							staff_height - 20.0,
+						);
+						context.fill()?;
+						/* Repetition dots */
+						context.arc(
+							staff_left + 27.0,
+							(staff_top + staff_bottom) / 2.0 - 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+						context.arc(
+							staff_left + 27.0,
+							(staff_top + staff_bottom) / 2.0 + 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+					}
+					if show_end_bars || show_repetition_end {
+						context.rectangle(
+							staff_right - 20.0,
+							staff_top + 10.0,
+							3.0,
+							staff_height - 20.0,
+						);
+						context.fill()?;
+						context.rectangle(
+							staff_right - 13.0,
+							staff_top + 10.0,
+							8.0,
+							staff_height - 20.0,
+						);
+						context.fill()?;
+					}
+					if show_repetition_end {
+						/* Repetition dots */
+						context.arc(
+							staff_right - 27.0,
+							(staff_top + staff_bottom) / 2.0 - 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+						context.arc(
+							staff_right - 27.0,
+							(staff_top + staff_bottom) / 2.0 + 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+					}
+					if show_repetition_start_mid {
+						let x = (staff_left + staff_right) / 2.0;
+						context.rectangle(x + 5.0, staff_top + 10.0, 8.0, staff_height - 20.0);
+						context.fill()?;
+						context.rectangle(x + 17.0, staff_top + 10.0, 3.0, staff_height - 20.0);
+						context.fill()?;
+						/* Repetition dots */
+						context.arc(
+							x + 27.0,
+							(staff_top + staff_bottom) / 2.0 - 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+						context.arc(
+							x + 27.0,
+							(staff_top + staff_bottom) / 2.0 + 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+					}
+					if show_repetition_end_mid {
+						let x = (staff_left + staff_right) / 2.0;
+						context.rectangle(x - 20.0, staff_top + 10.0, 3.0, staff_height - 20.0);
+						context.fill()?;
+						context.rectangle(x - 13.0, staff_top + 10.0, 8.0, staff_height - 20.0);
+						context.fill()?;
+						context.arc(
+							x - 27.0,
+							(staff_top + staff_bottom) / 2.0 - 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+						context.arc(
+							x - 27.0,
+							(staff_top + staff_bottom) / 2.0 + 20.0,
+							5.0,
+							0.0,
+							2.0 * std::f64::consts::PI,
+						);
+						context.fill()?;
+					}
+					context.restore()?;
+
+					/* Staff number */
 					context.save()?;
 					context.set_font_size(25.0);
 					context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
 					context.move_to(staff_left + 5.0, staff_bottom - 5.0);
 					context.show_text(&absolute_index.to_string())?;
 					context.restore()?;
+
 					context.restore()?;
 				}
 				context.restore()?;

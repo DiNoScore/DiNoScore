@@ -88,6 +88,8 @@ mod imp {
 		#[template_child(id = "store_pages")]
 		pages_preview_data: TemplateChild<gtk::ListStore>,
 		#[template_child]
+		autodetect: TemplateChild<gtk::Button>,
+		#[template_child]
 		pub editor: TemplateChild<page::EditorPage>,
 		#[template_child]
 		song_name: TemplateChild<gtk::Entry>,
@@ -165,6 +167,12 @@ mod imp {
 			*self.file.borrow_mut() = EditorSongFile::new();
 			self.song_name.set_text("");
 			self.song_composer.set_text("");
+			self.add_button
+				.style_context()
+				.add_class("suggested-action");
+			self.autodetect
+				.style_context()
+				.remove_class("suggested-action");
 		}
 
 		fn load_with_dialog(&self) {
@@ -471,6 +479,15 @@ mod imp {
 
 		/// Append a single loaded image to the end
 		fn add_page_manual(&self, page: PageImage, thumbnail: gdk_pixbuf::Pixbuf) {
+			self.add_button
+				.style_context()
+				.remove_class("suggested-action");
+			if self.file.borrow().get_pages().is_empty() {
+				self.autodetect
+					.style_context()
+					.add_class("suggested-action");
+			}
+
 			self.file.borrow_mut().add_page(page);
 
 			self.pages_preview_data
@@ -487,6 +504,7 @@ mod imp {
 				1 => Some(PageIndex(selected_items[0].indices()[0] as usize)),
 				_ => None,
 			};
+			self.autodetect.set_sensitive(!selected_items.is_empty());
 			self.editor.load_page(selected_page);
 		}
 
@@ -497,6 +515,10 @@ mod imp {
 
 		#[template_callback]
 		pub fn autodetect(&self) {
+			self.autodetect
+				.style_context()
+				.remove_class("suggested-action");
+
 			let selected_items = self
 				.pages_preview
 				.selected_items()

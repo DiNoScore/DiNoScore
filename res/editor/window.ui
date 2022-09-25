@@ -52,7 +52,7 @@
             <property name="spacing">6</property>
             <child type="end">
               <object class="AdwSplitButton" id="add_button">
-                <property name="label" translatable="yes">Add pages</property>
+                <property name="label" translatable="yes">Import score</property>
                 <property name="popover">add_menu</property>
                 <property name="tooltip-text">Depending on the quality of your source material, there are different options. By default, images must be already processed (= dewarped, black-white). You may add PDFs, but they must embed exactly one image per page.</property>
                 <signal name="clicked" handler="add_pages2" swapped="true"/>
@@ -62,6 +62,8 @@
               <object class="GtkButton" id="autodetect">
                 <signal name="clicked" handler="autodetect" swapped="true"/>
                 <property name="label">Autodetect</property>
+                <property name="sensitive">False</property>
+                <property name="tooltip-text">Run automatic detection of all staff boundaries on the selected pages. You can select all pages with Ctrl+A.</property>
               </object>
             </child>
           </object>
