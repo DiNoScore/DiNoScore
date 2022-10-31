@@ -180,6 +180,7 @@ mod imp {
 							);
 							context.clip();
 
+							context.scale(1.0 / page.size().0, 1.0 / page.size().0);
 							page.render(&context);
 						}
 

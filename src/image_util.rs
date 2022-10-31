@@ -317,12 +317,26 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 
 /// Create a PDF Document with a single page that wraps a raster image
 pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
-	let pdf_binary: Vec<u8> = Vec::new();
-	let surface =
-		cairo::PdfSurface::for_stream(image.width() as f64, image.height() as f64, pdf_binary)
-			.unwrap();
+	/* We want our PDF page to have a rather sane page size, and using the pixel size of the image
+	 * may not be sane depending on its resolution. So instead, we norm it to the area of a DIN A4
+	 * page (≈1/16 m²), while keeping the aspect ratio.
+	 *
+	 * Of course this is just a heuristic that works best for when the original image is roughly the
+	 * same size, but it should still work reasonably well for deviations ×/÷ 2.
+	 */
+	let image_area = image.width() as f64 * image.height() as f64;
+	let target_area = 595.2756 * 841.8898;
+	let scale = (target_area / image_area).sqrt();
+
+	let surface = cairo::PdfSurface::for_stream(
+		image.width() as f64 * scale,
+		image.height() as f64 * scale,
+		Vec::new(),
+	)
+	.unwrap();
 
 	let context = cairo::Context::new(&surface)?;
+	context.scale(scale, scale);
 	context.set_source_pixbuf(image, 0.0, 0.0);
 	context.paint()?;
 
