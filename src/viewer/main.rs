@@ -29,11 +29,11 @@ mod window;
 mod xournal;
 
 fn gtk_init(_application: &gtk::Application) {
-	let _ = gio::ThemedIcon::static_type();
+	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 	let _ = library_widget::LibraryWidget::static_type();
 	let _ = song_widget::SongWidget::static_type();
 	let _ = song_page::SongPage::static_type();
-	adw::init();
+	adw::init().expect("Failed to initialize libadwaita");
 }
 
 fn main() -> anyhow::Result<()> {

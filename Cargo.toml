@@ -33,11 +33,11 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-libadwaita = "0.1.1"
-gtk4 = "0.4.7"
+libadwaita = "0.2.1"
+gtk4 = "0.5.3"
 glib = { version = "*", features = ["log"] }
 cairo-rs = { version = "*", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.19.0", features = ["v20_9"] }
+poppler-rs = { version = "0.20.0", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.3.0"

@@ -117,8 +117,9 @@ mod imp {
 	}
 
 	impl ObjectImpl for LibraryWidget {
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = self.obj();
 
 			let store_songs = &self.store_songs;
 			/* Sort by usage score */

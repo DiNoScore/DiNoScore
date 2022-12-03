@@ -178,7 +178,7 @@ mod imp {
 			]))
 		}
 
-		fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+		fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
 			match pspec.name() {
 				"song-name" => self
 					.song
@@ -196,8 +196,9 @@ mod imp {
 			}
 		}
 
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = self.obj();
 
 			obj.insert_action_group("song", Some(&self.actions));
 
@@ -712,7 +713,7 @@ mod imp {
 
 		fn restart_cursor_timer(&self) {
 			self.stop_cursor_timer();
-			let obj = self.instance();
+			let obj = self.instance().clone();
 			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
 				std::time::Duration::from_secs(4),
 				move || {

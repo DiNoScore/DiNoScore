@@ -1,8 +1,6 @@
 #![windows_subsystem = "windows"]
 
 use anyhow::Context;
-use dinoscore::{prelude::*, *};
-
 use dinoscore::{collection::*, prelude::*, *};
 
 pub(self) mod editor;
@@ -65,7 +63,7 @@ glib::wrapper! {
 
 impl EditorWindow {
 	pub fn new(app: &Application) -> Self {
-		let obj: Self = Object::new(&[("application", app)]).expect("Failed to create Window");
+		let obj: Self = Object::new(&[("application", app)]);
 		obj.imp().init(&obj);
 		obj
 	}
@@ -116,8 +114,8 @@ mod imp {
 	}
 
 	impl ObjectImpl for EditorWindow {
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
 			self.editor.init(self.file.clone());
 		}
 	}
@@ -176,7 +174,7 @@ mod imp {
 		}
 
 		fn load_with_dialog(&self) {
-			let obj = self.instance();
+			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
 			filter.add_mime_type("application/zip");
 			let choose = gtk::FileChooserNative::builder()
@@ -184,7 +182,7 @@ mod imp {
 				.action(gtk::FileChooserAction::Open)
 				.modal(true)
 				.select_multiple(false)
-				.transient_for(&obj)
+				.transient_for(obj)
 				.filter(&filter)
 				.build();
 			choose.show();
@@ -238,7 +236,7 @@ mod imp {
 
 			if self.file.borrow().get_staves().len() == 0 {
 				let dialog = gtk::MessageDialog::new(
-					Some(&obj),
+					Some(&*obj),
 					gtk::DialogFlags::MODAL,
 					gtk::MessageType::Error,
 					gtk::ButtonsType::Ok,
@@ -255,7 +253,7 @@ mod imp {
 			let choose = gtk::FileChooserNative::builder()
 				.title("Save song")
 				.action(gtk::FileChooserAction::Save)
-				.transient_for(&obj)
+				.transient_for(&*obj)
 				.select_multiple(false)
 				.filter(&filter)
 				.build();
@@ -308,13 +306,13 @@ mod imp {
 		#[template_callback]
 		pub fn add_pages(&self) {
 			self.add_button.popdown();
-			let obj = self.instance();
+			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
 			filter.add_mime_type("application/pdf");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select PDFs to load")
 				.action(gtk::FileChooserAction::Open)
-				.transient_for(&obj)
+				.transient_for(obj)
 				.select_multiple(true)
 				.filter(&filter)
 				.build();
@@ -342,14 +340,14 @@ mod imp {
 		#[template_callback]
 		pub fn add_pages2(&self) {
 			self.add_button.popdown();
-			let obj = self.instance();
+			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
 			filter.add_pixbuf_formats();
 			filter.add_mime_type("application/pdf");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select images or PDFs to load")
 				.action(gtk::FileChooserAction::Open)
-				.transient_for(&obj)
+				.transient_for(obj)
 				.select_multiple(true)
 				.filter(&filter)
 				.build();
@@ -526,7 +524,7 @@ mod imp {
 				.map(|selected| selected.indices()[0] as usize)
 				.collect::<std::collections::BTreeSet<_>>();
 
-			let obj = self.instance();
+			let obj = self.instance().clone();
 
 			let (progress_dialog, progress) =
 				dinoscore::create_progress_bar_dialog("Detecting staves …", &obj);
@@ -584,9 +582,8 @@ mod imp {
 
 fn gtk_init(_application: &gtk::Application) {
 	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
-	let _ = gio::ThemedIcon::static_type();
 	let _ = page::EditorPage::static_type();
-	adw::init();
+	adw::init().expect("Failed to initialize Libadwaita");
 }
 
 #[allow(clippy::all)]

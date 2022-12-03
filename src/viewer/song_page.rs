@@ -27,7 +27,7 @@ impl SongPage {
 			TiVec<collection::PageIndex, RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>>,
 		>,
 	) -> Self {
-		let obj: Self = Object::new(&[]).unwrap();
+		let obj: Self = Object::new(&[]);
 		obj.imp().song.set(song).unwrap();
 		obj.imp().pages.set(pages).unwrap();
 		obj.update_layout(layout);
@@ -73,16 +73,18 @@ mod imp {
 			Box::leak(Box::new([]))
 		}
 
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = self.obj();
 			obj.set_hexpand(true);
 			obj.set_vexpand(true);
 		}
 	}
 
 	impl WidgetImpl for SongPage {
-		fn snapshot(&self, obj: &Self::Type, snapshot: &gtk::Snapshot) {
-			self.parent_snapshot(obj, snapshot);
+		fn snapshot(&self, snapshot: &gtk::Snapshot) {
+			self.parent_snapshot(snapshot);
+			let obj = self.obj();
 
 			/* Zero sizes cause problems */
 			if obj.width() < 1 || obj.height() < 1 {

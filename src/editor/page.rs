@@ -86,8 +86,9 @@ mod imp {
 	}
 
 	impl ObjectImpl for EditorPage {
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = self.obj();
 			self.editor.set_draw_func(clone!(@weak obj => @default-panic, move |editor, ctx, w, h| obj.imp().editor_draw(editor, ctx, w, h)));
 		}
 	}

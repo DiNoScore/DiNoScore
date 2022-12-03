@@ -70,8 +70,9 @@ mod imp {
 	}
 
 	impl ObjectImpl for SongPreview {
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = self.obj();
 
 			glib::source::timeout_add_seconds_local(
 				10,
@@ -230,7 +231,7 @@ mod imp {
 		fn load_preview_background(&self, song: &collection::SongFile) {
 			let load_sheets = song.load_sheets();
 			let meta = song.index.clone();
-			let obj = Arc::new(fragile::Fragile::new(self.instance()));
+			let obj = Arc::new(fragile::Fragile::new(self.instance().clone()));
 			let uuid = self.song_uuid.get();
 
 			std::thread::spawn(move || {

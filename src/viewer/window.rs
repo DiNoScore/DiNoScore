@@ -14,7 +14,7 @@ glib::wrapper! {
 
 impl Window {
 	pub fn new(app: &Application) -> Self {
-		Object::new(&[("application", app)]).expect("Failed to create Window")
+		Object::new(&[("application", app)])
 	}
 
 	pub fn show_no_gl_toast(&self) {
@@ -67,8 +67,9 @@ mod imp {
 	}
 
 	impl ObjectImpl for Window {
-		fn constructed(&self, obj: &Self::Type) {
-			self.parent_constructed(obj);
+		fn constructed(&self) {
+			self.parent_constructed();
+			let obj = &self.obj();
 
 			log::debug!("Loading songs");
 			let (library, outdated_format) = library::Library::load().unwrap();
@@ -140,7 +141,7 @@ mod imp {
 			let application = self.instance().application().unwrap();
 			if uuid.is_some() {
 				self.inhibit_cookie.set(Some(application.inhibit(
-					Some(&self.instance()),
+					Some(&*self.instance()),
 					gtk::ApplicationInhibitFlags::IDLE,
 					Some("You wouldn't want your screen to go blank while playing an instrument"),
 				)));
