@@ -93,7 +93,7 @@ jobs:
   windows:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/mglolenstine/gtk4-cross:gtk-4.6
+      image: ghcr.io/mglolenstine/gtk4-cross:gtk-4.8
     steps:
       - uses: actions/checkout@v1
       - name: Install additional dependencies
