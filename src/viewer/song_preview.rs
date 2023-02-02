@@ -1,4 +1,5 @@
 use dinoscore::{prelude::*, *};
+use std::sync::mpsc::*;
 
 glib::wrapper! {
 	pub struct SongPreview(ObjectSubclass<imp::SongPreview>)
@@ -15,6 +16,10 @@ impl SongPreview {
 	) {
 		self.imp().library.set(library).unwrap();
 		self.imp().library_widget.set(library_widget).unwrap();
+		self.imp()
+			.background_renderer
+			.set(self.imp().spawn_background_renderer())
+			.unwrap();
 	}
 
 	pub fn on_item_selected(&self, song: uuid::Uuid) {
@@ -51,6 +56,13 @@ mod imp {
 		pub library_widget: OnceCell<crate::library_widget::LibraryWidget>,
 		song_uuid: Cell<uuid::Uuid>,
 		inhibit_autoscroll: Cell<bool>,
+		pub background_renderer: OnceCell<
+			Sender<(
+				uuid::Uuid,
+				collection::SongMeta,
+				Box<dyn FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>> + Send>,
+			)>,
+		>,
 	}
 
 	#[glib::object_subclass]
@@ -231,60 +243,103 @@ mod imp {
 		fn load_preview_background(&self, song: &collection::SongFile) {
 			let load_sheets = song.load_sheets();
 			let meta = song.index.clone();
-			let obj = Arc::new(fragile::Fragile::new(self.instance().clone()));
 			let uuid = self.song_uuid.get();
 
-			std::thread::spawn(move || {
-				let sheets = load_sheets().unwrap();
+			self.background_renderer
+				.get()
+				.unwrap()
+				.send((uuid, meta, Box::new(load_sheets)))
+				.unwrap();
+		}
 
-				for (index, &staff) in meta.piece_starts.keys().enumerate() {
-					/* Render scaled preview images */
-					let staff: &collection::Staff = &meta.staves[staff];
-					let page: &PageImage = &sheets[staff.page];
+		pub fn spawn_background_renderer<
+			T: FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>> + Send + 'static,
+		>(
+			&self,
+		) -> Sender<(uuid::Uuid, collection::SongMeta, T)> {
+			let (in_tx, in_rx) = channel();
+			let obj = Arc::new(fragile::Fragile::new(self.instance().clone()));
 
-					/* Prepare surface and fill background */
-					let surface = cairo::ImageSurface::create(
-						cairo::Format::Rgb24,
-						400,
-						(400.0 * staff.aspect_ratio()) as i32,
-					)
-					.unwrap();
-					let context = cairo::Context::new(&surface).unwrap();
-					context.set_antialias(cairo::Antialias::Best);
-					context.set_source_rgb(1.0, 1.0, 1.0);
-					context.paint().unwrap();
-
-					let scale = 400.0 / staff.width();
-					context.scale(scale, scale);
-					context.translate(-staff.left(), -staff.top());
-					context.scale(1.0 / page.reference_width(), 1.0 / page.reference_width());
-					page.render_cairo(&context).unwrap();
-					surface.flush();
-
-					let pixbuf = gdk::pixbuf_get_from_surface(
-						&surface,
-						0,
-						0,
-						surface.width(),
-						surface.height(),
-					)
-					.unwrap();
-					let pixbuf = gdk::Texture::for_pixbuf(&pixbuf);
-
-					/* Put them back into the carousel */
-					let obj = obj.clone();
-					glib::MainContext::default().spawn(async move {
-						obj.get()
-							.imp()
-							.update_preview_image(uuid, index as u32, pixbuf);
-					});
+			/* We always only want the latest value */
+			type Update<T> = (uuid::Uuid, collection::SongMeta, T);
+			fn fetch_latest<T>(rx: &Receiver<Update<T>>) -> Option<Update<T>> {
+				let mut last = None::<Update<T>>;
+				loop {
+					match rx.try_recv() {
+						Ok(val) => {
+							last = Some(val);
+						},
+						Err(TryRecvError::Empty) => {
+							if let Some(last) = last {
+								return Some(last);
+							} else {
+								/* Don't return empty handed */
+								return rx.recv().ok();
+							}
+						},
+						Err(TryRecvError::Disconnected) => return None,
+					}
 				}
+			}
 
+			std::thread::spawn(move || {
+				loop {
+					let Some((uuid, meta, load_sheets)) = fetch_latest::<T>(&in_rx) else {
+						break;
+					};
+
+					let sheets = load_sheets().unwrap();
+
+					for (index, &staff) in meta.piece_starts.keys().enumerate() {
+						/* Render scaled preview images */
+						let staff: &collection::Staff = &meta.staves[staff];
+						let page: &PageImage = &sheets[staff.page];
+
+						/* Prepare surface and fill background */
+						let surface = cairo::ImageSurface::create(
+							cairo::Format::Rgb24,
+							400,
+							(400.0 * staff.aspect_ratio()) as i32,
+						)
+						.unwrap();
+						let context = cairo::Context::new(&surface).unwrap();
+						context.set_antialias(cairo::Antialias::Best);
+						context.set_source_rgb(1.0, 1.0, 1.0);
+						context.paint().unwrap();
+
+						let scale = 400.0 / staff.width();
+						context.scale(scale, scale);
+						context.translate(-staff.left(), -staff.top());
+						context.scale(1.0 / page.reference_width(), 1.0 / page.reference_width());
+						page.render_cairo(&context).unwrap();
+						surface.flush();
+
+						let pixbuf = gdk::pixbuf_get_from_surface(
+							&surface,
+							0,
+							0,
+							surface.width(),
+							surface.height(),
+						)
+						.unwrap();
+						let pixbuf = gdk::Texture::for_pixbuf(&pixbuf);
+
+						/* Put them back into the carousel */
+						let obj = obj.clone();
+						glib::MainContext::default().spawn(async move {
+							obj.get()
+								.imp()
+								.update_preview_image(uuid, index as u32, pixbuf);
+						});
+					}
+				}
 				/* Make sure our fragile object gets dropped on the main thread */
 				glib::MainContext::default().spawn(async move {
 					std::mem::drop(obj);
 				});
 			});
+
+			in_tx
 		}
 
 		fn update_preview_image(&self, song: uuid::Uuid, index: u32, image: gdk::Texture) {
