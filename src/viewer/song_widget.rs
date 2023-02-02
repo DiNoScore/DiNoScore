@@ -474,8 +474,8 @@ mod imp {
 			}
 
 			carousel.queue_draw();
-			/* Drop song before calling this because nested callbacks */
 			let page = *song.page as u32;
+			/* Drop song before calling this because nested callbacks */
 			std::mem::drop(song_);
 			carousel.scroll_to(&carousel.nth_page(page), false);
 		}
@@ -619,11 +619,14 @@ mod imp {
 		fn select_part(&self) {
 			let carousel = &self.carousel;
 			if let Some(song) = self.song.borrow().as_ref() {
-				let section = self.part_selection.active_id().unwrap();
-				let page = *song
-					.layout
-					.get_page_of_staff(section.parse::<collection::StaffIndex>().unwrap());
-				carousel.scroll_to(&carousel.nth_page(page as u32), true);
+				let Some(section) = self.part_selection.active_id() else {
+					return;
+				};
+				let index = section.parse::<collection::StaffIndex>().unwrap();
+				let page = *song.layout.get_page_of_staff(index);
+				if (page as u32) < carousel.n_pages() {
+					carousel.scroll_to(&carousel.nth_page(page as u32), true);
+				}
 			}
 		}
 
@@ -934,6 +937,7 @@ impl SongState {
 				.map(|(page, _count)| *page)
 				.unwrap()
 		};
+
 		self.current_staves = self.layout.get_staves_of_page(self.page).collect();
 
 		/* Calculate the maximum effective page width for this layout */
