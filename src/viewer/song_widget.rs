@@ -595,6 +595,7 @@ mod imp {
 
 				carousel.scroll_to(&carousel.nth_page(page as u32), true);
 			}
+			self.carousel.grab_focus();
 		}
 
 		/// Go to the beginning of the next piece
@@ -612,6 +613,7 @@ mod imp {
 
 				carousel.scroll_to(&carousel.nth_page(page as u32), true);
 			}
+			self.carousel.grab_focus();
 		}
 
 		/// Part got selected from the dropdown, jump to it
@@ -628,6 +630,7 @@ mod imp {
 					carousel.scroll_to(&carousel.nth_page(page as u32), true);
 				}
 			}
+			self.carousel.grab_focus();
 		}
 
 		/* Events from the zoom gesture */
@@ -690,6 +693,7 @@ mod imp {
 			self.sizing_mode_action.set_state(&"manual".to_variant());
 			self.update_content();
 			self.on_activity();
+			self.carousel.grab_focus();
 		}
 
 		pub(super) fn scale_mode_changed(&self, mode: &glib::Variant) {
@@ -705,6 +709,7 @@ mod imp {
 			}
 			self.update_content();
 			self.on_activity();
+			self.carousel.grab_focus();
 		}
 
 		fn stop_cursor_timer(&self) {
@@ -854,6 +859,7 @@ mod imp {
 					.unwrap();
 			}
 			self.load_annotations();
+			self.carousel.grab_focus();
 		}
 	}
 }
