@@ -283,6 +283,12 @@ mod imp {
 			start_at: collection::StaffIndex,
 		) {
 			log::debug!("Loading song");
+			log::debug!(
+				"UUID: {}, starting at: {}, scale mode: {:?}",
+				song.song_uuid,
+				start_at,
+				scale_mode
+			);
 			let song = Arc::new(song);
 			let (renderer, update_page) = spawn_song_renderer(
 				pages.clone(),
@@ -351,6 +357,11 @@ mod imp {
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj, @strong carousel => @default-panic, async move {
 					glib::timeout_future(std::time::Duration::from_millis(50)).await;
+					/* Fix racy zoom :( */
+					if let ScaleMode::Zoom(zoom) = scale_mode {
+						obj.imp().update_manual_zoom(|_| zoom as f64);
+					}
+					glib::timeout_future(std::time::Duration::from_millis(50)).await;
 					let page = obj.imp()
 						.song
 						.borrow()
@@ -360,7 +371,13 @@ mod imp {
 						.get_page_of_staff(start_at);
 					/* Page count may have changed in the meantime due to race hazards */
 					if (*page as u32) < carousel.n_pages() {
+						log::debug!("Scrolling to {page} after load");
 						carousel.scroll_to(&carousel.nth_page(*page as u32), false);
+					} else {
+						log::debug!(
+							"Not scrolling to requested page ({page}) on load. Carousel only has {} pages",
+							carousel.n_pages(),
+						);
 					}
 				}),
 			);
@@ -408,6 +425,7 @@ mod imp {
 
 			/* Failsafe against glitches */
 			if width <= 1 || height <= 1 {
+				log::debug!("  canvas size is zero, abort");
 				return;
 			}
 
@@ -477,6 +495,7 @@ mod imp {
 			let page = *song.page as u32;
 			/* Drop song before calling this because nested callbacks */
 			std::mem::drop(song_);
+			log::debug!("Scrolling to {page} after content update");
 			carousel.scroll_to(&carousel.nth_page(page), false);
 		}
 
@@ -514,6 +533,8 @@ mod imp {
 		/// When the current carousel page has changed
 		#[template_callback]
 		fn page_changed(&self, page: u32) {
+			log::debug!("On page changed: {page}");
+
 			/* Do nothing if no song loaded */
 			let mut song_ = self.song.borrow_mut();
 			let song = match song_.as_mut() {
@@ -627,6 +648,7 @@ mod imp {
 				let index = section.parse::<collection::StaffIndex>().unwrap();
 				let page = *song.layout.get_page_of_staff(index);
 				if (page as u32) < carousel.n_pages() {
+					log::debug!("Scrolling to {page} after part selection ({section})");
 					carousel.scroll_to(&carousel.nth_page(page as u32), true);
 				}
 			}
