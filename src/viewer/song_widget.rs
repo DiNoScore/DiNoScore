@@ -780,12 +780,13 @@ mod imp {
 			if let Some(song_load_time) = self.song_load_time.get() {
 				/* Only register the song as played after 90 seconds */
 				if last_interaction.duration_since(song_load_time).as_secs() > 90 {
+					log::debug!("Song now counts as \"played\"");
+					self.song_load_time.take();
 					library
 						.stats
 						.get_mut(&song.song.song_uuid)
 						.unwrap()
 						.on_load();
-					self.song_load_time.take();
 				}
 			}
 			library.save_in_background();

@@ -102,38 +102,38 @@ mod imp {
 
 	#[gtk::template_callbacks]
 	impl SongPreview {
-		pub fn on_item_selected(&self, song: uuid::Uuid) {
-			if song == self.song_uuid.get() {
-				return;
-			}
-			self.song_uuid.set(song);
-
+		pub fn on_item_selected(&self, song_uuid: uuid::Uuid) {
 			let library = self.library.get().unwrap().borrow();
-			let stats = library.stats.get(&song).unwrap();
-			let song = library.songs.get(&song).unwrap();
+			let stats = library.stats.get(&song_uuid).unwrap();
+			let song = library.songs.get(&song_uuid).unwrap();
 
 			self.song_title
 				.set_text(song.index.title.as_deref().unwrap_or("(no title)"));
 			self.song_composer
 				.set_text(song.index.composer.as_deref().unwrap_or("(no composer)"));
 
-			/* Update preview carousel */
-			let carousel = &self.part_preview.get();
-			for page in (0..carousel.n_pages()).rev() {
-				carousel.remove(&carousel.nth_page(page as u32));
-			}
+			/* Don't reload that bit if the song is the same */
+			if song_uuid != self.song_uuid.get() {
+				self.song_uuid.set(song_uuid);
 
-			for name in song.index.piece_starts.values() {
-				let picture = gtk::Picture::builder()
-					.paintable(&gdk::Paintable::new_empty(400, 100))
-					.alternative_text(&name)
-					.keep_aspect_ratio(true)
-					.can_shrink(false)
-					.build();
-				carousel.append(&picture);
-			}
+				/* Update preview carousel */
+				let carousel = &self.part_preview.get();
+				for page in (0..carousel.n_pages()).rev() {
+					carousel.remove(&carousel.nth_page(page as u32));
+				}
 
-			self.load_preview_background(song);
+				for name in song.index.piece_starts.values() {
+					let picture = gtk::Picture::builder()
+						.paintable(&gdk::Paintable::new_empty(400, 100))
+						.alternative_text(&name)
+						.keep_aspect_ratio(true)
+						.can_shrink(false)
+						.build();
+					carousel.append(&picture);
+				}
+
+				self.load_preview_background(song);
+			}
 
 			/* Update stats */
 			self.stats_times_played
