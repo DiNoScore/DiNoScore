@@ -33,7 +33,7 @@ pub struct LibrarySong {
 	pub scale_options: Option<ScaleMode>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ScaleMode {
 	FitStaves(u32),
 	FitPages(u32),

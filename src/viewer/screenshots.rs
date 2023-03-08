@@ -2,6 +2,7 @@
 
 use super::*;
 use std::env;
+use test::*;
 
 fn take_screenshot(path: impl AsRef<std::path::Path>) -> anyhow::Result<()> {
 	let screenshot = std::process::Command::new("grim")
@@ -54,12 +55,16 @@ fn create_screenshots() -> anyhow::Result<()> {
 		),
 	);
 
+	/* Start headless sway */
 	env::set_var("WLR_BACKENDS", "headless");
 	let mut sway = std::process::Command::new("sway")
 		.args(["-c", "/dev/null", "--verbose"])
 		.spawn()
 		.context("Failed to start sway")?;
 	std::thread::sleep(std::time::Duration::from_secs(1));
+
+	/* Force the correct wayland display */
+	env::set_var("GDK_BACKEND", "wayland");
 	env::set_var("WAYLAND_DISPLAY", "wayland-1");
 
 	pipeline::pipe! {
@@ -86,6 +91,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		window.present();
 		window.queue_draw();
 		window.fullscreen();
+		glib::timeout_future(std::time::Duration::from_secs(10)).await;
 		let library = window.library();
 		let song = window.song();
 
@@ -95,10 +101,10 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.context("Failed to take screenshot")
 			.unwrap();
 
-		library.activate_selected_entry();
+		library.activate_selected_entry(0);
 		yield_now().await;
 		/* Wait for the full resolution to load in background */
-		std::thread::sleep(std::time::Duration::from_secs(10));
+		glib::timeout_future(std::time::Duration::from_secs(10)).await;
 		yield_now().await;
 		take_screenshot("gallery/02-song.png")
 			.context("Failed to take screenshot")
@@ -142,35 +148,4 @@ fn create_screenshots() -> anyhow::Result<()> {
 	sway.wait()?;
 
 	Ok(())
-}
-
-/* Copied over from https://docs.rs/async-std/latest/src/async_std/task/yield_now.rs.html */
-
-pub async fn yield_now() {
-	for _ in 0..50 {
-		std::thread::sleep(std::time::Duration::from_millis(20));
-		YieldNow(false).await;
-	}
-}
-
-struct YieldNow(bool);
-
-impl futures::Future for YieldNow {
-	type Output = ();
-
-	// The futures executor is implemented as a FIFO queue, so all this future
-	// does is re-schedule the future back to the end of the queue, giving room
-	// for other futures to progress.
-	fn poll(
-		mut self: std::pin::Pin<&mut Self>,
-		cx: &mut std::task::Context<'_>,
-	) -> std::task::Poll<Self::Output> {
-		if !self.0 {
-			self.0 = true;
-			cx.waker().wake_by_ref();
-			std::task::Poll::Pending
-		} else {
-			std::task::Poll::Ready(())
-		}
-	}
 }

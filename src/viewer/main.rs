@@ -25,6 +25,8 @@ mod screenshots;
 mod song_page;
 mod song_preview;
 mod song_widget;
+#[cfg(test)]
+mod test;
 mod window;
 mod xournal;
 

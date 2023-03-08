@@ -25,6 +25,15 @@ impl SongWidget {
 			.load_song(song, Arc::new(pages), scale_mode, start_at);
 	}
 
+	pub fn unload_song(&self) {
+		self.imp().unload_song();
+	}
+
+	#[cfg(test)]
+	pub fn carousel(&self) -> adw::Carousel {
+		self.imp().carousel.get()
+	}
+
 	#[cfg(test)]
 	pub fn part_selection(&self) -> gtk::ComboBoxText {
 		self.imp().part_selection.get()
@@ -39,6 +48,11 @@ impl SongWidget {
 	pub fn set_zoom_mode(&self, mode: &str) {
 		self.imp().scale_mode_changed(&mode.to_variant());
 	}
+
+	#[cfg(test)]
+	pub fn zoom_mode(&self) -> ScaleMode {
+		self.imp().song.borrow().as_ref().unwrap().scale_mode
+	}
 }
 
 mod imp {
@@ -50,7 +64,7 @@ mod imp {
 		#[template_child]
 		header: TemplateChild<adw::HeaderBar>,
 		#[template_child]
-		carousel: TemplateChild<adw::Carousel>,
+		pub carousel: TemplateChild<adw::Carousel>,
 		/* Hack to get resize notifications for the carousel (it is transparent and overlaid) */
 		#[template_child]
 		size_catcher: TemplateChild<gtk::DrawingArea>,
@@ -64,7 +78,7 @@ mod imp {
 		pub zoom_button: TemplateChild<gtk::MenuButton>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
-		song: RefCell<Option<SongState>>,
+		pub(super) song: RefCell<Option<SongState>>,
 
 		actions: gio::SimpleActionGroup,
 		/* Navigation */
@@ -356,12 +370,12 @@ mod imp {
 			let carousel = &self.carousel.get();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj, @strong carousel => @default-panic, async move {
-					glib::timeout_future(std::time::Duration::from_millis(50)).await;
+					glib::timeout_future(std::time::Duration::from_millis(150)).await;
 					/* Fix racy zoom :( */
 					if let ScaleMode::Zoom(zoom) = scale_mode {
 						obj.imp().update_manual_zoom(|_| zoom as f64);
 					}
-					glib::timeout_future(std::time::Duration::from_millis(50)).await;
+					glib::timeout_future(std::time::Duration::from_millis(150)).await;
 					let page = obj.imp()
 						.song
 						.borrow()
@@ -385,7 +399,7 @@ mod imp {
 
 		/// Unload the song
 		#[template_callback]
-		fn unload_song(&self) {
+		pub fn unload_song(&self) {
 			let song = self.song.take().unwrap();
 			std::mem::drop(song);
 			let carousel = &self.carousel;
@@ -887,7 +901,7 @@ mod imp {
 	}
 }
 
-struct SongState {
+pub(self) struct SongState {
 	song: Arc<collection::SongMeta>,
 	page: layout::PageIndex,
 	layout: Arc<layout::PageLayout>,

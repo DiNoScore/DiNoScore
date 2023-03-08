@@ -37,7 +37,7 @@ impl LibraryWidget {
 	}
 
 	#[cfg(test)]
-	pub fn activate_selected_entry(&self) {
+	pub fn activate_selected_entry(&self, part_no: usize) {
 		let uuid = {
 			/* There is exactly one item */
 			let song = self
@@ -54,7 +54,15 @@ impl LibraryWidget {
 				.get::<glib::GString>(&self.imp().store_songs.iter(&song).unwrap(), 2);
 			uuid::Uuid::parse_str(uuid.as_str()).unwrap()
 		};
-		self.load_song(uuid, 0.into());
+
+		let start_at = {
+			let library = self.imp().library.get().unwrap().borrow();
+			let song = library.songs.get(&uuid).unwrap();
+
+			*song.index.piece_starts.keys().nth(part_no).unwrap()
+		};
+
+		self.load_song(uuid, start_at.into());
 	}
 }
 
