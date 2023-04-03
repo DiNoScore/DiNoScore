@@ -176,15 +176,21 @@ mod imp {
 		fn load_with_dialog(&self) {
 			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("DiNoScore zip files"));
 			filter.add_mime_type("application/zip");
+			filter.add_suffix("zip");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("File to load")
 				.action(gtk::FileChooserAction::Open)
 				.modal(true)
 				.select_multiple(false)
 				.transient_for(obj)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 			choose.show();
 
 			run_async(
@@ -308,14 +314,20 @@ mod imp {
 			self.add_button.popdown();
 			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("PDF files"));
 			filter.add_mime_type("application/pdf");
+			filter.add_suffix("pdf");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select PDFs to load")
 				.action(gtk::FileChooserAction::Open)
 				.transient_for(obj)
 				.select_multiple(true)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 
 			run_async(
 				&choose,
@@ -342,15 +354,21 @@ mod imp {
 			self.add_button.popdown();
 			let obj = &*self.instance();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("Images or PDF files"));
 			filter.add_pixbuf_formats();
 			filter.add_mime_type("application/pdf");
+			filter.add_suffix("pdf");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select images or PDFs to load")
 				.action(gtk::FileChooserAction::Open)
 				.transient_for(obj)
 				.select_multiple(true)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 
 			run_async(
 				&choose,
