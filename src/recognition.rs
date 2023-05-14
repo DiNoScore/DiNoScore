@@ -42,17 +42,16 @@ fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaf
 		image::ColorType::L8,
 		image::ImageOutputFormat::Png,
 	)?;
-	let response: serde_json::Value =
-		attohttpc::post("https://inference.piegames.de/dinoscore/upload")
-			// post("http://localhost:8000/upload")
-			.body(
-				attohttpc::MultipartBuilder::new()
-					.with_file(attohttpc::MultipartFile::new("file", &png).with_filename("file"))
-					.build()?,
-			)
-			.send()?
-			.error_for_status()?
-			.json()?;
+	let response: serde_json::Value = attohttpc:://post("https://inference.piegames.de/dinoscore/upload")
+			post("http://localhost:8000/upload")
+	.body(
+		attohttpc::MultipartBuilder::new()
+			.with_file(attohttpc::MultipartFile::new("file", &png).with_filename("file"))
+			.build()?,
+	)
+	.send()?
+	.error_for_status()?
+	.json()?;
 	let response: Vec<Response> = serde_json::from_value(response).unwrap();
 	let response = &response[0];
 	Ok(response.staves.clone())
@@ -155,10 +154,25 @@ fn post_process(
 		}
 	}
 
+	/* 90% horizontal overlap */
+	fn overlaps(a_left: u32, a_right: u32, b_left: u32, b_right: u32) -> bool {
+		/* No overlap at all */
+		if a_right < b_left || a_left > b_right {
+			return false;
+		}
+		let small = u32::saturating_sub(a_right.min(b_right), a_left.max(b_left));
+		let big = u32::saturating_sub(a_right.max(b_right), a_left.min(b_left));
+		if small == 0 || big == 0 {
+			return false;
+		}
+		100 * small / big > 90
+	}
+
 	/* Sort them from top to bottom. Also remove overlap */
 	// TODO we don't really care about overlap here, and there should not be any regardless.
 	raw_staves.sort_by_key(|staff| staff.top);
-	(0..raw_staves.len()).collect::<Vec<_>>()
+	(0..raw_staves.len())
+		.collect::<Vec<_>>()
 		.windows(2)
 		.for_each(|idx| {
 			macro_rules! staff_a (() => {raw_staves[idx[0]]});
@@ -166,7 +180,7 @@ fn post_process(
 
 			if staff_a!().bottom > staff_b!().top
 				&& /* 90% horizontal overlap */
-				100 * (staff_a!().right.min(staff_b!().right) - staff_a!().left.max(staff_b!().left)) / (staff_a!().right.max(staff_b!().right) - staff_a!().left.min(staff_b!().left)) > 90
+				overlaps(staff_a!().left, staff_a!().right, staff_b!().left, staff_b!().right)
 			{
 				let center = (staff_a!().bottom + staff_b!().top) / 2;
 				staff_a!().bottom = center;
@@ -196,10 +210,7 @@ fn post_process(
 				let staff_b = &raw_staves[*staff_b];
 
 				/* Need 90% horizontal overlap */
-				if 100 * (staff_a.right.min(staff_b.right) - staff_a.left.max(staff_b.left))
-					/ (staff_a.right.max(staff_b.right) - staff_a.left.min(staff_b.left))
-					<= 90
-				{
+				if !overlaps(staff_a.left, staff_a.right, staff_b.left, staff_b.right) {
 					return false;
 				}
 
