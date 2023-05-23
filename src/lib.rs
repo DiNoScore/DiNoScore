@@ -23,14 +23,14 @@ use uuid::Uuid;
 #[macro_export]
 macro_rules! clone_ {
 	($this:expr, move |$obj:tt, $($arg:tt),*| $body:block ) => ({
-		let obj = $this.instance().downgrade();
+		let obj = $this.obj().downgrade();
 		move |$($arg),*| {
 			let $obj = obj.upgrade().expect("Failed to upgrade `self`");
 			$body
 		}
 	});
 	($this:expr, move |$obj:tt| $body:block ) => ({
-		let obj = $this.instance().downgrade();
+		let obj = $this.obj().downgrade();
 		move || {
 			let $obj = obj.upgrade().expect("Failed to upgrade `self`");
 			$body

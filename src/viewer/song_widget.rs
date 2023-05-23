@@ -25,6 +25,15 @@ impl SongWidget {
 			.load_song(song, Arc::new(pages), scale_mode, start_at);
 	}
 
+	pub fn unload_song(&self) {
+		self.imp().unload_song();
+	}
+
+	#[cfg(test)]
+	pub fn carousel(&self) -> adw::Carousel {
+		self.imp().carousel.get()
+	}
+
 	#[cfg(test)]
 	pub fn part_selection(&self) -> gtk::ComboBoxText {
 		self.imp().part_selection.get()
@@ -37,7 +46,12 @@ impl SongWidget {
 
 	#[cfg(test)]
 	pub fn set_zoom_mode(&self, mode: &str) {
-		self.imp().scale_mode_changed(&mode.to_variant());
+		self.imp().scale_mode_changed(mode.to_variant());
+	}
+
+	#[cfg(test)]
+	pub fn zoom_mode(&self) -> ScaleMode {
+		self.imp().song.borrow().as_ref().unwrap().scale_mode
 	}
 }
 
@@ -50,7 +64,7 @@ mod imp {
 		#[template_child]
 		header: TemplateChild<adw::HeaderBar>,
 		#[template_child]
-		carousel: TemplateChild<adw::Carousel>,
+		pub carousel: TemplateChild<adw::Carousel>,
 		/* Hack to get resize notifications for the carousel (it is transparent and overlaid) */
 		#[template_child]
 		size_catcher: TemplateChild<gtk::DrawingArea>,
@@ -64,7 +78,7 @@ mod imp {
 		pub zoom_button: TemplateChild<gtk::MenuButton>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
-		song: RefCell<Option<SongState>>,
+		pub(super) song: RefCell<Option<SongState>>,
 
 		actions: gio::SimpleActionGroup,
 		/* Navigation */
@@ -107,7 +121,7 @@ mod imp {
 			let sizing_mode_action = gio::SimpleAction::new_stateful(
 				"sizing-mode",
 				Some(&String::static_variant_type()),
-				&"manual".to_variant(),
+				"manual".to_variant(),
 			);
 			actions.add_action(&sizing_mode_action);
 
@@ -161,20 +175,18 @@ mod imp {
 	impl ObjectImpl for SongWidget {
 		fn properties() -> &'static [glib::ParamSpec] {
 			Box::leak(Box::new([
-				glib::ParamSpecString::new(
-					"song-name",                /* name */
-					"song-name",                /* nickname */
-					"name",                     /* "blurb" (?) */
-					None,                       /* default */
-					glib::ParamFlags::READABLE, /* read-only */
-				),
-				glib::ParamSpecString::new(
-					"song-id",                  /* name */
-					"song-id",                  /* nickname */
-					"uuid",                     /* "blurb" (?) */
-					None,                       /* default */
-					glib::ParamFlags::READABLE, /* read-only */
-				),
+				glib::ParamSpecString::builder("song-name")
+					.nick("song-name")
+					.blurb("name")
+					.default_value(None)
+					.flags(glib::ParamFlags::READABLE)
+					.build(),
+				glib::ParamSpecString::builder("song-id")
+					.nick("song-id")
+					.blurb("uuid")
+					.default_value(None)
+					.flags(glib::ParamFlags::READABLE)
+					.build(),
 			]))
 		}
 
@@ -229,7 +241,7 @@ mod imp {
 				}));
 			self.sizing_mode_action
 				.connect_activate(clone_!(self, move |obj, _a, p| {
-					obj.imp().scale_mode_changed(p.unwrap());
+					obj.imp().scale_mode_changed(p.unwrap().clone());
 				}));
 
 			let hide_mouse_controller = gtk4::EventControllerMotion::new();
@@ -242,7 +254,7 @@ mod imp {
 			hide_mouse_controller.connect_motion(clone_!(self, move |obj, _, _x, _y| {
 				obj.imp().restart_cursor_timer();
 			}));
-			self.carousel.add_controller(&hide_mouse_controller);
+			self.carousel.add_controller(hide_mouse_controller);
 
 			/* MIDI handling */
 			#[cfg(unix)]
@@ -283,6 +295,12 @@ mod imp {
 			start_at: collection::StaffIndex,
 		) {
 			log::debug!("Loading song");
+			log::debug!(
+				"UUID: {}, starting at: {}, scale mode: {:?}",
+				song.song_uuid,
+				start_at,
+				scale_mode
+			);
 			let song = Arc::new(song);
 			let (renderer, update_page) = spawn_song_renderer(
 				pages.clone(),
@@ -330,11 +348,11 @@ mod imp {
 			self.part_selection.set_visible(relevant);
 
 			self.sizing_mode_action
-				.set_state(&scale_mode.action_string().to_variant());
+				.set_state(scale_mode.action_string().to_variant());
 
 			*self.song.borrow_mut() = Some(song);
-			self.instance().notify("song-name");
-			self.instance().notify("song-id");
+			self.obj().notify("song-name");
+			self.obj().notify("song-id");
 
 			self.load_annotations();
 			self.update_content();
@@ -346,11 +364,16 @@ mod imp {
 
 			/* Scroll to the requested page */
 			/* Hack: defer this because of reasons. Also this may be racy */
-			let obj = self.instance();
+			let obj = self.obj();
 			let carousel = &self.carousel.get();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj, @strong carousel => @default-panic, async move {
-					glib::timeout_future(std::time::Duration::from_millis(50)).await;
+					glib::timeout_future(std::time::Duration::from_millis(150)).await;
+					/* Fix racy zoom :( */
+					if let ScaleMode::Zoom(zoom) = scale_mode {
+						obj.imp().update_manual_zoom(|_| zoom as f64);
+					}
+					glib::timeout_future(std::time::Duration::from_millis(150)).await;
 					let page = obj.imp()
 						.song
 						.borrow()
@@ -360,7 +383,13 @@ mod imp {
 						.get_page_of_staff(start_at);
 					/* Page count may have changed in the meantime due to race hazards */
 					if (*page as u32) < carousel.n_pages() {
+						log::debug!("Scrolling to {page} after load");
 						carousel.scroll_to(&carousel.nth_page(*page as u32), false);
+					} else {
+						log::debug!(
+							"Not scrolling to requested page ({page}) on load. Carousel only has {} pages",
+							carousel.n_pages(),
+						);
 					}
 				}),
 			);
@@ -368,7 +397,7 @@ mod imp {
 
 		/// Unload the song
 		#[template_callback]
-		fn unload_song(&self) {
+		pub fn unload_song(&self) {
 			let song = self.song.take().unwrap();
 			std::mem::drop(song);
 			let carousel = &self.carousel;
@@ -379,8 +408,8 @@ mod imp {
 			self.part_selection.set_active(None);
 			self.part_selection.set_sensitive(false);
 			self.part_selection.remove_all();
-			self.instance().notify("song-name");
-			self.instance().notify("song-id");
+			self.obj().notify("song-name");
+			self.obj().notify("song-id");
 			self.on_activity();
 			self.song_load_time.take();
 		}
@@ -390,7 +419,7 @@ mod imp {
 		fn on_resize(&self) {
 			self.update_content();
 			/* Hack: For some reason resizing may use outdated data, therefore force a second update after a few ms */
-			let obj = self.instance();
+			let obj = self.obj();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj => @default-panic, async move {
 					glib::timeout_future(std::time::Duration::from_millis(5)).await;
@@ -408,6 +437,7 @@ mod imp {
 
 			/* Failsafe against glitches */
 			if width <= 1 || height <= 1 {
+				log::debug!("  canvas size is zero, abort");
 				return;
 			}
 
@@ -474,9 +504,10 @@ mod imp {
 			}
 
 			carousel.queue_draw();
-			/* Drop song before calling this because nested callbacks */
 			let page = *song.page as u32;
+			/* Drop song before calling this because nested callbacks */
 			std::mem::drop(song_);
+			log::debug!("Scrolling to {page} after content update");
 			carousel.scroll_to(&carousel.nth_page(page), false);
 		}
 
@@ -514,6 +545,8 @@ mod imp {
 		/// When the current carousel page has changed
 		#[template_callback]
 		fn page_changed(&self, page: u32) {
+			log::debug!("On page changed: {page}");
+
 			/* Do nothing if no song loaded */
 			let mut song_ = self.song.borrow_mut();
 			let song = match song_.as_mut() {
@@ -595,6 +628,7 @@ mod imp {
 
 				carousel.scroll_to(&carousel.nth_page(page as u32), true);
 			}
+			self.carousel.grab_focus();
 		}
 
 		/// Go to the beginning of the next piece
@@ -612,6 +646,7 @@ mod imp {
 
 				carousel.scroll_to(&carousel.nth_page(page as u32), true);
 			}
+			self.carousel.grab_focus();
 		}
 
 		/// Part got selected from the dropdown, jump to it
@@ -619,12 +654,17 @@ mod imp {
 		fn select_part(&self) {
 			let carousel = &self.carousel;
 			if let Some(song) = self.song.borrow().as_ref() {
-				let section = self.part_selection.active_id().unwrap();
-				let page = *song
-					.layout
-					.get_page_of_staff(section.parse::<collection::StaffIndex>().unwrap());
-				carousel.scroll_to(&carousel.nth_page(page as u32), true);
+				let Some(section) = self.part_selection.active_id() else {
+					return;
+				};
+				let index = section.parse::<collection::StaffIndex>().unwrap();
+				let page = *song.layout.get_page_of_staff(index);
+				if (page as u32) < carousel.n_pages() {
+					log::debug!("Scrolling to {page} after part selection ({section})");
+					carousel.scroll_to(&carousel.nth_page(page as u32), true);
+				}
 			}
+			self.carousel.grab_focus();
 		}
 
 		/* Events from the zoom gesture */
@@ -684,14 +724,15 @@ mod imp {
 				song.zoom = modify_zoom(song);
 				song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
 			}
-			self.sizing_mode_action.set_state(&"manual".to_variant());
+			self.sizing_mode_action.set_state("manual".to_variant());
 			self.update_content();
 			self.on_activity();
+			self.carousel.grab_focus();
 		}
 
-		pub(super) fn scale_mode_changed(&self, mode: &glib::Variant) {
+		pub(super) fn scale_mode_changed(&self, mode: glib::Variant) {
 			/* Idempotent if the signal came from the action itself */
-			self.sizing_mode_action.set_state(mode);
+			self.sizing_mode_action.set_state(mode.clone());
 			if let Some(song) = self.song.borrow_mut().as_mut() {
 				song.scale_mode = match mode.get::<String>().unwrap().as_str() {
 					"fit-staves" => ScaleMode::FitStaves(3),
@@ -702,10 +743,11 @@ mod imp {
 			}
 			self.update_content();
 			self.on_activity();
+			self.carousel.grab_focus();
 		}
 
 		fn stop_cursor_timer(&self) {
-			self.instance().set_cursor(None);
+			self.obj().set_cursor(None);
 			if let Some(hide_cursor) = self.hide_cursor.borrow_mut().take() {
 				hide_cursor.remove();
 			}
@@ -713,7 +755,7 @@ mod imp {
 
 		fn restart_cursor_timer(&self) {
 			self.stop_cursor_timer();
-			let obj = self.instance().clone();
+			let obj = self.obj().clone();
 			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
 				std::time::Duration::from_secs(4),
 				move || {
@@ -750,12 +792,13 @@ mod imp {
 			if let Some(song_load_time) = self.song_load_time.get() {
 				/* Only register the song as played after 90 seconds */
 				if last_interaction.duration_since(song_load_time).as_secs() > 90 {
+					log::debug!("Song now counts as \"played\"");
+					self.song_load_time.take();
 					library
 						.stats
 						.get_mut(&song.song.song_uuid)
 						.unwrap()
 						.on_load();
-					self.song_load_time.take();
 				}
 			}
 			library.save_in_background();
@@ -851,11 +894,12 @@ mod imp {
 					.unwrap();
 			}
 			self.load_annotations();
+			self.carousel.grab_focus();
 		}
 	}
 }
 
-struct SongState {
+pub(self) struct SongState {
 	song: Arc<collection::SongMeta>,
 	page: layout::PageIndex,
 	layout: Arc<layout::PageLayout>,
@@ -934,6 +978,7 @@ impl SongState {
 				.map(|(page, _count)| *page)
 				.unwrap()
 		};
+
 		self.current_staves = self.layout.get_staves_of_page(self.page).collect();
 
 		/* Calculate the maximum effective page width for this layout */

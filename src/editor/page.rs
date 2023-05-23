@@ -414,7 +414,7 @@ mod imp {
 		#[template_callback]
 		fn on_leave(&self, _controller: gtk::EventControllerMotion) {
 			// log::debug!("Cursor: none");
-			self.instance().set_cursor(None);
+			self.obj().set_cursor(None);
 		}
 
 		#[template_callback]
@@ -441,20 +441,20 @@ mod imp {
 					match handle {
 						StaffHandle::Center => {
 							// log::debug!("Cursor: move");
-							self.instance().set_cursor_from_name(Some("move"));
+							self.obj().set_cursor_from_name(Some("move"));
 						},
 						StaffHandle::Corner(dir) | StaffHandle::Edge(dir) => {
 							// log::debug!("Cursor: {dir}");
-							self.instance()
+							self.obj()
 								.set_cursor_from_name(Some(&format!("{dir}-resize")));
 						},
 					}
 				} else if !cast_result.is_empty() {
 					// log::debug!("Cursor: none");
-					self.instance().set_cursor(None);
+					self.obj().set_cursor(None);
 				} else {
 					// log::debug!("Cursor: cell");
-					self.instance().set_cursor_from_name(Some("cell"));
+					self.obj().set_cursor_from_name(Some("cell"));
 				}
 			}
 		}

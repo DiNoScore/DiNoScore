@@ -63,7 +63,7 @@ glib::wrapper! {
 
 impl EditorWindow {
 	pub fn new(app: &Application) -> Self {
-		let obj: Self = Object::new(&[("application", app)]);
+		let obj: Self = Object::builder().property("application", app).build();
 		obj.imp().init(&obj);
 		obj
 	}
@@ -174,17 +174,23 @@ mod imp {
 		}
 
 		fn load_with_dialog(&self) {
-			let obj = &*self.instance();
+			let obj = &*self.obj();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("DiNoScore zip files"));
 			filter.add_mime_type("application/zip");
+			filter.add_suffix("zip");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("File to load")
 				.action(gtk::FileChooserAction::Open)
 				.modal(true)
 				.select_multiple(false)
 				.transient_for(obj)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 			choose.show();
 
 			run_async(
@@ -232,7 +238,7 @@ mod imp {
 		fn save_with_ui(&self) {
 			log::info!("Saving staves");
 
-			let obj = self.instance();
+			let obj = self.obj();
 
 			if self.file.borrow().get_staves().len() == 0 {
 				let dialog = gtk::MessageDialog::new(
@@ -306,16 +312,22 @@ mod imp {
 		#[template_callback]
 		pub fn add_pages(&self) {
 			self.add_button.popdown();
-			let obj = &*self.instance();
+			let obj = &*self.obj();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("PDF files"));
 			filter.add_mime_type("application/pdf");
+			filter.add_suffix("pdf");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select PDFs to load")
 				.action(gtk::FileChooserAction::Open)
 				.transient_for(obj)
 				.select_multiple(true)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 
 			run_async(
 				&choose,
@@ -340,17 +352,23 @@ mod imp {
 		#[template_callback]
 		pub fn add_pages2(&self) {
 			self.add_button.popdown();
-			let obj = &*self.instance();
+			let obj = &*self.obj();
 			let filter = gtk::FileFilter::new();
+			filter.set_name(Some("Images or PDF files"));
 			filter.add_pixbuf_formats();
 			filter.add_mime_type("application/pdf");
+			filter.add_suffix("pdf");
+			let filter_all = gtk::FileFilter::new();
+			filter_all.set_name(Some("All files"));
+			filter_all.add_pattern("*");
 			let choose = gtk::FileChooserNative::builder()
 				.title("Select images or PDFs to load")
 				.action(gtk::FileChooserAction::Open)
 				.transient_for(obj)
 				.select_multiple(true)
-				.filter(&filter)
 				.build();
+			choose.add_filter(&filter);
+			choose.add_filter(&filter_all);
 
 			run_async(
 				&choose,
@@ -524,7 +542,7 @@ mod imp {
 				.map(|selected| selected.indices()[0] as usize)
 				.collect::<std::collections::BTreeSet<_>>();
 
-			let obj = self.instance().clone();
+			let obj = self.obj().clone();
 
 			let (progress_dialog, progress) =
 				dinoscore::create_progress_bar_dialog("Detecting staves …", &obj);

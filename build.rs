@@ -5,8 +5,9 @@ fn main() {
 
 	let xdg = xdg::BaseDirectories::with_prefix("icons").unwrap();
 	let theme = xdg.find_data_file("Adwaita/index.theme").unwrap();
-	gio::compile_resources(
-		theme.parent().unwrap().join("scalable"),
+	let theme = theme.parent().unwrap();
+	glib_build_tools::compile_resources(
+		&[theme.join("scalable"), theme.join("symbolic")],
 		"res/icons/resources.gresource.xml",
 		"icons.gresource",
 	)
