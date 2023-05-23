@@ -46,7 +46,7 @@ impl SongWidget {
 
 	#[cfg(test)]
 	pub fn set_zoom_mode(&self, mode: &str) {
-		self.imp().scale_mode_changed(&mode.to_variant());
+		self.imp().scale_mode_changed(mode.to_variant());
 	}
 
 	#[cfg(test)]
@@ -121,7 +121,7 @@ mod imp {
 			let sizing_mode_action = gio::SimpleAction::new_stateful(
 				"sizing-mode",
 				Some(&String::static_variant_type()),
-				&"manual".to_variant(),
+				"manual".to_variant(),
 			);
 			actions.add_action(&sizing_mode_action);
 
@@ -175,20 +175,18 @@ mod imp {
 	impl ObjectImpl for SongWidget {
 		fn properties() -> &'static [glib::ParamSpec] {
 			Box::leak(Box::new([
-				glib::ParamSpecString::new(
-					"song-name",                /* name */
-					"song-name",                /* nickname */
-					"name",                     /* "blurb" (?) */
-					None,                       /* default */
-					glib::ParamFlags::READABLE, /* read-only */
-				),
-				glib::ParamSpecString::new(
-					"song-id",                  /* name */
-					"song-id",                  /* nickname */
-					"uuid",                     /* "blurb" (?) */
-					None,                       /* default */
-					glib::ParamFlags::READABLE, /* read-only */
-				),
+				glib::ParamSpecString::builder("song-name")
+					.nick("song-name")
+					.blurb("name")
+					.default_value(None)
+					.flags(glib::ParamFlags::READABLE)
+					.build(),
+				glib::ParamSpecString::builder("song-id")
+					.nick("song-id")
+					.blurb("uuid")
+					.default_value(None)
+					.flags(glib::ParamFlags::READABLE)
+					.build(),
 			]))
 		}
 
@@ -243,7 +241,7 @@ mod imp {
 				}));
 			self.sizing_mode_action
 				.connect_activate(clone_!(self, move |obj, _a, p| {
-					obj.imp().scale_mode_changed(p.unwrap());
+					obj.imp().scale_mode_changed(p.unwrap().clone());
 				}));
 
 			let hide_mouse_controller = gtk4::EventControllerMotion::new();
@@ -256,7 +254,7 @@ mod imp {
 			hide_mouse_controller.connect_motion(clone_!(self, move |obj, _, _x, _y| {
 				obj.imp().restart_cursor_timer();
 			}));
-			self.carousel.add_controller(&hide_mouse_controller);
+			self.carousel.add_controller(hide_mouse_controller);
 
 			/* MIDI handling */
 			#[cfg(unix)]
@@ -350,11 +348,11 @@ mod imp {
 			self.part_selection.set_visible(relevant);
 
 			self.sizing_mode_action
-				.set_state(&scale_mode.action_string().to_variant());
+				.set_state(scale_mode.action_string().to_variant());
 
 			*self.song.borrow_mut() = Some(song);
-			self.instance().notify("song-name");
-			self.instance().notify("song-id");
+			self.obj().notify("song-name");
+			self.obj().notify("song-id");
 
 			self.load_annotations();
 			self.update_content();
@@ -366,7 +364,7 @@ mod imp {
 
 			/* Scroll to the requested page */
 			/* Hack: defer this because of reasons. Also this may be racy */
-			let obj = self.instance();
+			let obj = self.obj();
 			let carousel = &self.carousel.get();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj, @strong carousel => @default-panic, async move {
@@ -410,8 +408,8 @@ mod imp {
 			self.part_selection.set_active(None);
 			self.part_selection.set_sensitive(false);
 			self.part_selection.remove_all();
-			self.instance().notify("song-name");
-			self.instance().notify("song-id");
+			self.obj().notify("song-name");
+			self.obj().notify("song-id");
 			self.on_activity();
 			self.song_load_time.take();
 		}
@@ -421,7 +419,7 @@ mod imp {
 		fn on_resize(&self) {
 			self.update_content();
 			/* Hack: For some reason resizing may use outdated data, therefore force a second update after a few ms */
-			let obj = self.instance();
+			let obj = self.obj();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj => @default-panic, async move {
 					glib::timeout_future(std::time::Duration::from_millis(5)).await;
@@ -726,15 +724,15 @@ mod imp {
 				song.zoom = modify_zoom(song);
 				song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
 			}
-			self.sizing_mode_action.set_state(&"manual".to_variant());
+			self.sizing_mode_action.set_state("manual".to_variant());
 			self.update_content();
 			self.on_activity();
 			self.carousel.grab_focus();
 		}
 
-		pub(super) fn scale_mode_changed(&self, mode: &glib::Variant) {
+		pub(super) fn scale_mode_changed(&self, mode: glib::Variant) {
 			/* Idempotent if the signal came from the action itself */
-			self.sizing_mode_action.set_state(mode);
+			self.sizing_mode_action.set_state(mode.clone());
 			if let Some(song) = self.song.borrow_mut().as_mut() {
 				song.scale_mode = match mode.get::<String>().unwrap().as_str() {
 					"fit-staves" => ScaleMode::FitStaves(3),
@@ -749,7 +747,7 @@ mod imp {
 		}
 
 		fn stop_cursor_timer(&self) {
-			self.instance().set_cursor(None);
+			self.obj().set_cursor(None);
 			if let Some(hide_cursor) = self.hide_cursor.borrow_mut().take() {
 				hide_cursor.remove();
 			}
@@ -757,7 +755,7 @@ mod imp {
 
 		fn restart_cursor_timer(&self) {
 			self.stop_cursor_timer();
-			let obj = self.instance().clone();
+			let obj = self.obj().clone();
 			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
 				std::time::Duration::from_secs(4),
 				move || {

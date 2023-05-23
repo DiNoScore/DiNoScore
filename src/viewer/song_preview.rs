@@ -125,7 +125,7 @@ mod imp {
 				for name in song.index.piece_starts.values() {
 					let picture = gtk::Picture::builder()
 						.paintable(&gdk::Paintable::new_empty(400, 100))
-						.alternative_text(&name)
+						.alternative_text(name)
 						.keep_aspect_ratio(true)
 						.can_shrink(false)
 						.build();
@@ -258,7 +258,7 @@ mod imp {
 			&self,
 		) -> Sender<(uuid::Uuid, collection::SongMeta, T)> {
 			let (in_tx, in_rx) = channel();
-			let obj = Arc::new(fragile::Fragile::new(self.instance().clone()));
+			let obj = Arc::new(fragile::Fragile::new(self.obj().clone()));
 
 			/* We always only want the latest value */
 			type Update<T> = (uuid::Uuid, collection::SongMeta, T);

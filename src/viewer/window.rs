@@ -14,7 +14,7 @@ glib::wrapper! {
 
 impl Window {
 	pub fn new(app: &Application) -> Self {
-		Object::new(&[("application", app)])
+		Object::builder().property("application", app).build()
 	}
 
 	pub fn show_no_gl_toast(&self) {
@@ -89,7 +89,7 @@ mod imp {
 						&format!("'{}' and {} more songs have an old format version. Upgrade them with the CLI to reduce loading time.", outdated_format.iter().next().unwrap(), n - 1)
 					),
 				};
-				self.toasts.add_toast(&toast);
+				self.toasts.add_toast(toast);
 			}
 
 			let library = Rc::new(RefCell::new(library));
@@ -132,16 +132,16 @@ mod imp {
 		pub fn show_no_gl_toast(&self) {
 			log::warn!("No OpenGL context found. Expect degraded performance.");
 			let toast = adw::Toast::new("No OpenGL context found. Expect degraded performance.");
-			self.toasts.add_toast(&toast);
+			self.toasts.add_toast(toast);
 		}
 
 		#[template_callback]
 		fn update_song_loaded(&self) {
 			let uuid = self.song.property::<Option<String>>("song-id");
-			let application = self.instance().application().unwrap();
+			let application = self.obj().application().unwrap();
 			if uuid.is_some() {
 				self.inhibit_cookie.set(Some(application.inhibit(
-					Some(&*self.instance()),
+					Some(&*self.obj()),
 					gtk::ApplicationInhibitFlags::IDLE,
 					Some("You wouldn't want your screen to go blank while playing an instrument"),
 				)));
@@ -154,7 +154,7 @@ mod imp {
 
 		#[template_callback]
 		fn update_song_title(&self) {
-			let obj = self.instance();
+			let obj = self.obj();
 			obj.set_title(
 				self.song
 					.property::<Option<String>>("song-name")
@@ -168,7 +168,7 @@ mod imp {
 
 		#[template_callback]
 		fn fullscreen_changed(&self) {
-			let obj = self.instance();
+			let obj = self.obj();
 			let fullscreen = obj.is_fullscreened();
 
 			/* This will automatically show and hide the buttons */

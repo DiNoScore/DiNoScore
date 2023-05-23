@@ -27,7 +27,7 @@ impl SongPage {
 			TiVec<collection::PageIndex, RefCell<(Option<gdk::Texture>, Option<poppler::Page>)>>,
 		>,
 	) -> Self {
-		let obj: Self = Object::new(&[]);
+		let obj: Self = Object::new();
 		obj.imp().song.set(song).unwrap();
 		obj.imp().pages.set(pages).unwrap();
 		obj.update_layout(layout);

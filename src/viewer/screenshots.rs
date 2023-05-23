@@ -61,7 +61,10 @@ fn create_screenshots() -> anyhow::Result<()> {
 		.args(["-c", "/dev/null", "--verbose"])
 		.spawn()
 		.context("Failed to start sway")?;
-	std::thread::sleep(std::time::Duration::from_secs(1));
+	// TODO properly wait for sway to come up, maybe by checking paths or the output log or something?
+	// TODO while we're at it, don't hard-code "wayland-1" backend but do something more clever to find
+	// the "correct" one
+	std::thread::sleep(std::time::Duration::from_secs(5));
 
 	/* Force the correct wayland display */
 	env::set_var("GDK_BACKEND", "wayland");
@@ -144,8 +147,14 @@ fn create_screenshots() -> anyhow::Result<()> {
 
 	application.run_with_args(&[] as &[&str]);
 
-	sway.kill()?;
-	sway.wait()?;
+	// /* Send SIGTERM to sway */
+	// let mut kill = std::process::Command::new("kill")
+	// 	.args(["-s", "TERM", &sway.id().to_string()])
+	// 	.spawn()?;
+	// kill.wait()?;
+
+	// sway.wait()?;
+	// sway.kill()?;
 
 	Ok(())
 }

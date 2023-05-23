@@ -33,11 +33,11 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-libadwaita = "0.2.1"
-gtk4 = { version = "0.5.3", features = [ "v4_4" ] }
+libadwaita = "0.4.1"
+gtk4 = { version = "0.6.6", features = [ "v4_4" ] }
 glib = { version = "*", features = ["log"] }
 cairo-rs = { version = "*", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.20.0", features = ["v20_9"] }
+poppler-rs = { version = "0.21.0", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.3.0"
@@ -100,7 +100,7 @@ midi-event = "0.2.0"
 portmidi = "0.2.5"
 
 [build-dependencies]
-gio = "0.15"
+glib-build-tools = "0.17.0"
 xdg = { git = "https://github.com/piegamesde/rust-xdg"}
 
 [dev-dependencies]
