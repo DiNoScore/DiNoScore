@@ -25,8 +25,9 @@ pub fn init() -> anyhow::Result<()> {
 	logger = logger.chain(fern::logger::stdout());
 	match catch!({
 		// TODO don't hardcode here
-		let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
-		let mut path = xdg.get_state_file("logs");
+		let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
+		// TODO fall back gracefully somehow
+		let mut path = xdg.get_state_file("logs").expect("No HOME found");
 		std::fs::create_dir_all(&path)?;
 
 		/* Log rotation. Ignore most errors that may occur. */
@@ -169,7 +170,7 @@ fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
 fn write_crash_message(info: &std::panic::PanicInfo) -> anyhow::Result<std::path::PathBuf> {
 	use std::io::Write;
 	// TODO don't hardcode here
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
+	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 	let report = xdg.place_state_file(format!(
 		"crash {}.md",
 		chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
@@ -251,8 +252,9 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 	);
 
 	// TODO don't hardcode here
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
-	let logs_dir = xdg.get_cache_file("logs");
+	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
+	// TODO fall back gracefully somehow
+	let logs_dir = xdg.get_state_file("logs").expect("No HOME found");
 	dialog.set_secondary_use_markup(true);
 	dialog.set_secondary_text(Some(&format!(
 		"\

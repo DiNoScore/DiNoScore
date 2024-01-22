@@ -30,7 +30,7 @@ pub fn load() -> anyhow::Result<(HashMap<Uuid, SongFile>, HashSet<String>)> {
 	let mut outdated_format = HashSet::new();
 
 	// TODO don't hardcode here
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
+	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 	xdg.find_data_files("songs")
 		.flat_map(|dir| walkdir::WalkDir::new(dir).follow_links(true))
 		.filter_ok(|entry| entry.file_type().is_file())

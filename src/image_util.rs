@@ -157,12 +157,10 @@ impl PageImage {
 /// Split a PDF file into its own pages
 pub fn explode_pdf_raw(pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
-	let gil = pyo3::Python::acquire_gil();
-	let py = gil.python();
-
-	let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
-	py.run(
-		r#"
+	pyo3::Python::with_gil(|py| {
+		let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
+		py.run(
+			r#"
 from pikepdf import Pdf
 from io import BytesIO
 
@@ -170,18 +168,19 @@ pdf = Pdf.open(BytesIO(bytes(pdf)))
 
 pages = []
 for page in pdf.pages:
-	buf = BytesIO(bytearray())
-	dst = Pdf.new()
-	dst.pages.append(page)
-	dst.save(buf)
-	del dst
-	pages += [buf.getvalue()]
-"#,
-		None,
-		Some(locals),
-	)?;
+buf = BytesIO(bytearray())
+dst = Pdf.new()
+dst.pages.append(page)
+dst.save(buf)
+del dst
+pages += [buf.getvalue()]
+			"#,
+			None,
+			Some(locals),
+		)?;
 
-	Ok(locals.get_item("pages").unwrap().extract().unwrap())
+		Ok(locals.get_item("pages").unwrap().extract().unwrap())
+	})
 }
 
 /// Split a PDF file into its own pages, map the result to something sensible
@@ -206,12 +205,10 @@ pub fn explode_pdf(
 /// Return type: `([(format, bytes)], pdf_n_pages)`
 pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<(Vec<(String, Vec<u8>)>, usize)> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
-	let gil = pyo3::Python::acquire_gil();
-	let py = gil.python();
-
-	let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
-	py.run(
-		r#"
+	pyo3::Python::with_gil(|py| {
+		let locals = [("pdf", pdf.into_py(py))].into_py_dict(py);
+		py.run(
+			r#"
 import pikepdf
 from pikepdf import Pdf, PdfImage
 from io import BytesIO
@@ -255,26 +252,25 @@ if len(images) < n_pages:
 # Return type: have the images plus the number of PDF pages in a tuple
 images = (images, n_pages)
 "#,
-		None,
-		Some(locals),
-	)
-	// TODO replace with inspect_err once stable
-	.map_err(|err| {
-		err.print(py);
-		err
-	})?;
+			None,
+			Some(locals),
+		)
+		// TODO replace with inspect_err once stable
+		.map_err(|err| {
+			err.print(py);
+			err
+		})?;
 
-	Ok(locals.get_item("images").unwrap().extract().unwrap())
+		Ok(locals.get_item("images").unwrap().extract().unwrap())
+	})
 }
 
 pub fn concat_pdfs(pdfs: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
-	let gil = pyo3::Python::acquire_gil();
-	let py = gil.python();
-
-	let locals = [("pdfs", pdfs.into_py(py))].into_py_dict(py);
-	py.run(
-		r#"
+	pyo3::Python::with_gil(|py| {
+		let locals = [("pdfs", pdfs.into_py(py))].into_py_dict(py);
+		py.run(
+			r#"
 from pikepdf import Pdf
 from io import BytesIO
 
@@ -289,11 +285,12 @@ out.save(buf)
 del out
 buf = buf.getvalue()
 "#,
-		None,
-		Some(locals),
-	)?;
+			None,
+			Some(locals),
+		)?;
 
-	Ok(locals.get_item("buf").unwrap().extract().unwrap())
+		Ok(locals.get_item("buf").unwrap().extract().unwrap())
+	})
 }
 
 pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {

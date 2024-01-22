@@ -11,7 +11,7 @@ use std::{io::Write, process::Command};
 
 pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Result<()> {
 	// TODO don't hardcode here
-	let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
+	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 
 	catch!({
 		log::debug!("Checking Xournal++ availability and version");

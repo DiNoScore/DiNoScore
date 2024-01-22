@@ -129,7 +129,7 @@ mod imp {
 							}
 						}
 						obj.imp().editor.queue_draw();
-						Continue(true)
+						glib::ControlFlow::Continue
 					}),
 				);
 
@@ -1025,7 +1025,7 @@ fn spawn_song_renderer(
 	page: Arc<PageImage>,
 ) -> (Sender<i32>, glib::Receiver<(gdk::Texture, PageIndex)>) {
 	let (in_tx, in_rx) = channel();
-	let (out_tx, out_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+	let (out_tx, out_rx) = glib::MainContext::channel(glib::Priority::DEFAULT);
 
 	std::thread::spawn(move || {
 		/* For a start, render at minimum resolution. This should not take long */

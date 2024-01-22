@@ -121,7 +121,7 @@ mod imp {
 			let sizing_mode_action = gio::SimpleAction::new_stateful(
 				"sizing-mode",
 				Some(&String::static_variant_type()),
-				"manual".to_variant(),
+				&"manual".to_variant(),
 			);
 			actions.add_action(&sizing_mode_action);
 
@@ -263,7 +263,7 @@ mod imp {
 				let handler = crate::pedal::run(midi_tx).unwrap();
 				midi_rx.attach(
 					None,
-					clone!(@weak obj => @default-return Continue(false), move |event| {
+					clone!(@weak obj => @default-return glib::ControlFlow::Break, move |event| {
 						/* Reference the MIDI handler which holds the Sender so that it doesn't get dropped. */
 						let _handler = &handler;
 						match event {
@@ -274,7 +274,7 @@ mod imp {
 								obj.imp().previous.activate(None);
 							},
 						}
-						Continue(true)
+						glib::ControlFlow::Continue
 					}),
 				);
 			}
@@ -317,7 +317,7 @@ mod imp {
 				None,
 				clone_!(self, move |obj, update_page| {
 					obj.imp().update_page(update_page);
-					Continue(true)
+					glib::ControlFlow::Continue
 				}),
 			);
 
@@ -348,7 +348,7 @@ mod imp {
 			self.part_selection.set_visible(relevant);
 
 			self.sizing_mode_action
-				.set_state(scale_mode.action_string().to_variant());
+				.set_state(&scale_mode.action_string().to_variant());
 
 			*self.song.borrow_mut() = Some(song);
 			self.obj().notify("song-name");
@@ -601,15 +601,15 @@ mod imp {
 
 		/// Key press on the drawingarea
 		#[template_callback]
-		fn carousel_key(&self, keyval: gdk::Key) -> gtk::Inhibit {
+		fn carousel_key(&self, keyval: gdk::Key) -> glib::Propagation {
 			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left {
 				self.previous.activate(None);
-				gtk::Inhibit(true)
+				glib::Propagation::Stop
 			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right {
 				self.next.activate(None);
-				gtk::Inhibit(true)
+				glib::Propagation::Stop
 			} else {
-				gtk::Inhibit(false)
+				glib::Propagation::Proceed
 			}
 		}
 
@@ -724,7 +724,7 @@ mod imp {
 				song.zoom = modify_zoom(song);
 				song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
 			}
-			self.sizing_mode_action.set_state("manual".to_variant());
+			self.sizing_mode_action.set_state(&"manual".to_variant());
 			self.update_content();
 			self.on_activity();
 			self.carousel.grab_focus();
@@ -732,7 +732,7 @@ mod imp {
 
 		pub(super) fn scale_mode_changed(&self, mode: glib::Variant) {
 			/* Idempotent if the signal came from the action itself */
-			self.sizing_mode_action.set_state(mode.clone());
+			self.sizing_mode_action.set_state(&mode.clone());
 			if let Some(song) = self.song.borrow_mut().as_mut() {
 				song.scale_mode = match mode.get::<String>().unwrap().as_str() {
 					"fit-staves" => ScaleMode::FitStaves(3),
@@ -824,7 +824,7 @@ mod imp {
 
 		/* Scroll events on the page, for zooming */
 		#[template_callback]
-		fn carousel_scroll(&self, _dx: f64, dy: f64) -> gtk::Inhibit {
+		fn carousel_scroll(&self, _dx: f64, dy: f64) -> glib::Propagation {
 			if self
 				.scroll_gesture
 				.current_event_state()
@@ -838,9 +838,9 @@ mod imp {
 					};
 					zoom.clamp(0.6, 3.0)
 				});
-				gtk::Inhibit(true)
+				glib::Propagation::Stop
 			} else {
-				gtk::Inhibit(false)
+				glib::Propagation::Proceed
 			}
 		}
 
@@ -849,7 +849,7 @@ mod imp {
 				log::debug!("Reloading annotations");
 				let uuid = song.song.song_uuid;
 				// TODO don't hardcode here
-				let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
+				let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 				let annotations_export = xdg
 					.place_data_file(format!("annotations/{}.pdf", uuid))
 					.unwrap();
@@ -1097,7 +1097,7 @@ fn spawn_song_renderer(
 	piece_starts.dedup();
 
 	let (in_tx, in_rx) = channel();
-	let (out_tx, out_rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+	let (out_tx, out_rx) = glib::MainContext::channel(glib::Priority::DEFAULT);
 
 	std::thread::spawn(move || {
 		use std::collections::VecDeque;

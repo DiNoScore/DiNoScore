@@ -132,7 +132,7 @@ pub struct Library {
 impl Library {
 	pub fn load() -> anyhow::Result<(Self, HashSet<String>)> {
 		// TODO don't hardcode here
-		let xdg = xdg::BaseDirectories::with_prefix("dinoscore")?;
+		let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 		let (songs, outdated_format) =
 			collection::load().context("Failed to load song collection")?;
 		let mut stats: HashMap<Uuid, LibrarySong> = catch!({
@@ -171,7 +171,7 @@ impl Library {
 		let stats = self.stats.clone();
 		std::thread::spawn(move || {
 			// TODO don't hardcode here
-			let xdg = xdg::BaseDirectories::with_prefix("dinoscore").unwrap();
+			let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 			let path = xdg.place_data_file("library.json").unwrap();
 			log::info!("Saving database file ({})", path.display());
 			let file = atomicwrites::AtomicFile::new(path, atomicwrites::AllowOverwrite);

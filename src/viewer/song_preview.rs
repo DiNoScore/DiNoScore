@@ -88,9 +88,9 @@ mod imp {
 
 			glib::source::timeout_add_seconds_local(
 				10,
-				clone!(@weak obj => @default-return glib::Continue(false), move || {
+				clone!(@weak obj => @default-return glib::ControlFlow::Break, move || {
 					obj.imp().on_timer();
-					glib::Continue(true)
+					glib::ControlFlow::Continue
 				}),
 			);
 		}

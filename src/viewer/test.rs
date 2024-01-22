@@ -63,7 +63,7 @@ where
 
 	application.connect_activate(move |application| {
 		let window = window::Window::new(application);
-		glib::MainContext::default().spawn_local_with_priority(glib::PRIORITY_LOW, runner(window));
+		glib::MainContext::default().spawn_local_with_priority(glib::Priority::LOW, runner(window));
 	});
 
 	application.run_with_args(&[] as &[&str]);

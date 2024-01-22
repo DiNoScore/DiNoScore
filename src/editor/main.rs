@@ -35,23 +35,14 @@ async fn yield_now() {
 	YieldNow(false).await
 }
 
-// TODO https://github.com/gtk-rs/gtk4-rs/issues/993
-fn run_async<D: IsA<gtk::NativeDialog>, F: FnOnce(&D, gtk::ResponseType) + 'static>(
-	this: &D,
-	f: F,
-) {
-	let response_handler = Rc::new(RefCell::new(None));
-	let response_handler_clone = response_handler.clone();
-	let f = RefCell::new(Some(f));
-	let this_clone = this.clone();
-	*response_handler.borrow_mut() = Some(this.connect_response(move |s, response_type| {
-		let _ = &this_clone;
-		if let Some(handler) = response_handler_clone.borrow_mut().take() {
-			s.disconnect(handler);
-		}
-		(*f.borrow_mut()).take().expect("cannot get callback")(s, response_type);
-	}));
-	this.show();
+fn create_listmodel<T>(items: &[&T]) -> gio::ListStore
+where T: glib::StaticType + glib::IsA<glib::Object>
+{
+	let store = gio::ListStore::with_type(T::static_type());
+	for &item in items {
+		store.append(item);
+	}
+	store
 }
 
 glib::wrapper! {
@@ -175,47 +166,44 @@ mod imp {
 
 		fn load_with_dialog(&self) {
 			let obj = &*self.obj();
+
 			let filter = gtk::FileFilter::new();
 			filter.set_name(Some("DiNoScore zip files"));
 			filter.add_mime_type("application/zip");
 			filter.add_suffix("zip");
+
 			let filter_all = gtk::FileFilter::new();
 			filter_all.set_name(Some("All files"));
 			filter_all.add_pattern("*");
-			let choose = gtk::FileChooserNative::builder()
+
+			let choose = gtk::FileDialog::builder()
 				.title("File to load")
-				.action(gtk::FileChooserAction::Open)
 				.modal(true)
-				.select_multiple(false)
-				.transient_for(obj)
+				.default_filter(&filter)
+				.filters(&create_listmodel(&[&filter, &filter_all]))
 				.build();
-			choose.add_filter(&filter);
-			choose.add_filter(&filter_all);
-			choose.show();
 
-			run_async(
-				&choose,
-				clone!(@weak obj => @default-panic, move |choose, response| {
-					if response == gtk::ResponseType::Accept {
-						if let Some(file) = choose.file() {
-							let path = file.path().unwrap();
-							let progress_dialog = dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
-							glib::MainContext::default().spawn_local_with_priority(
-								glib::source::PRIORITY_DEFAULT_IDLE,
-								clone!(@strong obj, @strong choose => async move {
-									yield_now().await;
+			choose.open(
+				Some(obj),
+				None::<&gio::Cancellable>,
+				clone!(@weak obj => @default-panic, move |response| {
+					let Ok(file) = response else { return; };
+					let path = file.path().unwrap();
+					let progress_dialog = dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
+					glib::MainContext::default().spawn_local_with_priority(
+						glib::source::Priority::DEFAULT_IDLE,
+						clone!(@strong obj => async move {
+							yield_now().await;
 
-									let song = SongFile::new(path, &mut Default::default()).unwrap();
-									let load_sheets = song.load_sheets();
-									let sheets = blocking::unblock(move || load_sheets()).await.unwrap();
-									obj.imp().load(sheets, song.index);
+							let song = SongFile::new(path, &mut Default::default()).unwrap();
+							let load_sheets = song.load_sheets();
+							let sheets = blocking::unblock(move || load_sheets()).await.unwrap();
+							obj.imp().load(sheets, song.index);
 
-									yield_now().await;
-									progress_dialog.emit_close();
-								}),
-							);
-						}
-					}
+							yield_now().await;
+							progress_dialog.emit_close();
+						}),
+					);
 				}),
 			);
 		}
@@ -238,11 +226,11 @@ mod imp {
 		fn save_with_ui(&self) {
 			log::info!("Saving staves");
 
-			let obj = self.obj();
+			let obj = &*self.obj();
 
 			if self.file.borrow().get_staves().len() == 0 {
 				let dialog = gtk::MessageDialog::new(
-					Some(&*obj),
+					Some(obj),
 					gtk::DialogFlags::MODAL,
 					gtk::MessageType::Error,
 					gtk::ButtonsType::Ok,
@@ -256,30 +244,26 @@ mod imp {
 
 			let filter = gtk::FileFilter::new();
 			filter.add_mime_type("application/zip");
-			let choose = gtk::FileChooserNative::builder()
+			let choose = gtk::FileDialog::builder()
 				.title("Save song")
-				.action(gtk::FileChooserAction::Save)
-				.transient_for(&*obj)
-				.select_multiple(false)
-				.filter(&filter)
+				.filters(&create_listmodel(&[&filter]))
+				.initial_name({
+					let title = &self.file.borrow().song_name;
+					let composer = &self.file.borrow().song_composer;
+					match (title.is_empty(), composer.is_empty()) {
+						(false, false) => format!("{composer} – {title}.zip"),
+						(false, true) => format!("{title}.zip"),
+						_ => Default::default(),
+					}
+				})
 				.build();
 
-			let title = &self.file.borrow().song_name;
-			let composer = &self.file.borrow().song_composer;
-			match (title.is_empty(), composer.is_empty()) {
-				(false, false) => choose.set_current_name(&format!("{composer} – {title}.zip")),
-				(false, true) => choose.set_current_name(&format!("{title}.zip")),
-				_ => {},
-			}
-
-			run_async(
-				&choose,
-				clone!(@weak obj => @default-panic, move |choose, response| {
-					if response == gtk::ResponseType::Accept {
-						if let Some(file) = choose.file() {
-							obj.imp().file.borrow().save(file.path().unwrap()).unwrap();
-						}
-					}
+			choose.save(
+				Some(obj),
+				None::<&gio::Cancellable>,
+				clone!(@weak obj => @default-panic, move |response| {
+					let Ok(file) = response else { return; };
+					obj.imp().file.borrow().save(file.path().unwrap()).unwrap();
 				}),
 			);
 		}
@@ -320,30 +304,28 @@ mod imp {
 			let filter_all = gtk::FileFilter::new();
 			filter_all.set_name(Some("All files"));
 			filter_all.add_pattern("*");
-			let choose = gtk::FileChooserNative::builder()
-				.title("Select PDFs to load")
-				.action(gtk::FileChooserAction::Open)
-				.transient_for(obj)
-				.select_multiple(true)
-				.build();
-			choose.add_filter(&filter);
-			choose.add_filter(&filter_all);
 
-			run_async(
-				&choose,
-				clone!(@weak obj => @default-panic, move |choose, response| {
-					if response == gtk::ResponseType::Accept {
-						glib::MainContext::default().spawn_local_with_priority(
-							glib::source::PRIORITY_DEFAULT_IDLE,
-							clone!(@strong obj, @strong choose => async move {
-								obj.clone().imp().load_pages(&obj, choose
-									.files()
-									.snapshot()
-									.iter()
-									.map(|file| file.clone().downcast::<gio::File>().unwrap()), false).await;
-							}),
-						);
-					}
+			let choose = gtk::FileDialog::builder()
+				.title("Select PDFs to load")
+				.default_filter(&filter)
+				.filters(&create_listmodel(&[&filter, &filter_all]))
+				.build();
+
+			choose.open_multiple(
+				Some(obj),
+				None::<&gio::Cancellable>,
+				clone!(@weak obj => @default-panic, move |response| {
+					let Ok(files) = response else { return; };
+					glib::MainContext::default().spawn_local_with_priority(
+						glib::source::Priority::DEFAULT_IDLE,
+						clone!(@strong obj => async move {
+							obj.clone().imp().load_pages(
+								&obj,
+								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
+								false
+							).await;
+						}),
+					);
 				}),
 			);
 		}
@@ -361,30 +343,27 @@ mod imp {
 			let filter_all = gtk::FileFilter::new();
 			filter_all.set_name(Some("All files"));
 			filter_all.add_pattern("*");
-			let choose = gtk::FileChooserNative::builder()
+			let choose = gtk::FileDialog::builder()
 				.title("Select images or PDFs to load")
-				.action(gtk::FileChooserAction::Open)
-				.transient_for(obj)
-				.select_multiple(true)
+				.default_filter(&filter)
+				.filters(&create_listmodel(&[&filter, &filter_all]))
 				.build();
-			choose.add_filter(&filter);
-			choose.add_filter(&filter_all);
 
-			run_async(
-				&choose,
-				clone!(@weak obj => @default-panic, move |choose, response| {
-					if response == gtk::ResponseType::Accept {
-						glib::MainContext::default().spawn_local_with_priority(
-							glib::source::PRIORITY_DEFAULT_IDLE,
-							clone!(@strong obj, @strong choose => async move {
-								obj.clone().imp().load_pages(&obj, choose
-									.files()
-									.snapshot()
-									.iter()
-									.map(|file| file.clone().downcast::<gio::File>().unwrap()), true).await;
-							}),
-						);
-					}
+			choose.open_multiple(
+				Some(obj),
+				None::<&gio::Cancellable>,
+				clone!(@weak obj => @default-panic, move |response| {
+					let Ok(files) = response else { return; };
+					glib::MainContext::default().spawn_local_with_priority(
+						glib::source::Priority::DEFAULT_IDLE,
+						clone!(@strong obj => async move {
+							obj.clone().imp().load_pages(
+								&obj,
+								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
+								true
+							).await;
+						}),
+					);
 				}),
 			);
 		}
@@ -548,7 +527,7 @@ mod imp {
 				dinoscore::create_progress_bar_dialog("Detecting staves …", &obj);
 
 			glib::MainContext::default().spawn_local_with_priority(
-				glib::source::PRIORITY_DEFAULT_IDLE,
+				glib::source::Priority::DEFAULT_IDLE,
 				async move {
 					let total_work = selected_items.len();
 					yield_now().await;
@@ -672,7 +651,7 @@ fn main() -> anyhow::Result<()> {
 		/* Load some test data for debugging (enable by hard-coding) */
 		if cfg!(any()) {
 			glib::MainContext::default().spawn_local_with_priority(
-				glib::source::PRIORITY_DEFAULT_IDLE,
+				glib::source::Priority::DEFAULT_IDLE,
 				async move {
 					/* Load pages */
 					window.clone().imp().load_pages(&window, [
