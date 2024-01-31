@@ -145,6 +145,9 @@ fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
 
 	log::logger().flush();
 
+	/* Separator to know which messages are from which application instance */
+	println!("------------------------------");
+
 	/* Ignore everything that can go wrong from here */
 
 	if let Ok(exe) = std::env::current_exe() {
@@ -238,70 +241,66 @@ fn write_crash_message(info: &std::panic::PanicInfo) -> anyhow::Result<std::path
  * but there is also the option for the user to directly re-start DiNoScore.
  */
 pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
-	use gtk::prelude::*;
-
 	let crash_file = &args[1];
 
 	gtk::init().expect("Failed to initialize GTK");
-	let dialog = gtk::MessageDialog::new(
-		None::<&gtk::Window>,
-		gtk::DialogFlags::MODAL,
-		gtk::MessageType::Error,
-		gtk::ButtonsType::None,
-		"DiNoScore crashed :(",
-	);
+	adw::init().expect("Failed to initialize libadwaita");
 
 	// TODO don't hardcode here
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 	// TODO fall back gracefully somehow
 	let logs_dir = xdg.get_state_file("logs").expect("No HOME found");
-	dialog.set_secondary_use_markup(true);
-	dialog.set_secondary_text(Some(&format!(
+
+	let dialog = gtk::Builder::from_string(include_str!("../../res/viewer/crash.ui"))
+		.object::<adw::MessageDialog>("crash_dialog")
+		.unwrap();
+
+	dialog.set_body(&format!(
 		"\
-		Crash information has been written to <a href=\"file://{crash_file}\">{crash_file}</a>. \
-		Recent logs for more information can be found at <a href=\"file://{logs_dir}\">{logs_dir}</a>. \
-		Please open a bug report at <a href=\"https://github.com/DiNoScore/DiNoScore/issues\">\
+		Crash information has been written to\n<a href=\"file://{crash_file}\">{crash_file}</a>.\n\n \
+		Recent logs for more information can be found at\n<a href=\"file://{logs_dir}\">{logs_dir}</a>.\n\n \
+		Please open a bug report at\n<a href=\"https://github.com/DiNoScore/DiNoScore/issues\">\
 		https://github.com/DiNoScore/DiNoScore/issues</a>. \
 		",
 		crash_file = std::path::Path::new(crash_file).display(),
 		logs_dir = logs_dir.display(),
-	)));
-	dialog.add_buttons(&[
-		("Close", gtk::ResponseType::Close),
-		("Restart DiNoScore", gtk::ResponseType::Ok),
-	]);
-	dialog.set_default_response(gtk::ResponseType::Ok);
-	dialog.present();
+	));
 
 	let main_loop = glib::MainLoop::new(None, false);
 
 	#[allow(unused_variables)]
-	dialog.connect_response(|dialog, response| match response {
-		gtk::ResponseType::Ok => {
-			/* Exec back into new DiNoScore process */
-			if let Ok(exe) = std::env::current_exe() {
-				use std::process::Command;
+	dialog.choose(
+		None::<&gio::Cancellable>,
+		|response| match &*response.to_string() {
+			"restart" => {
+				/* Separator to know which messages are from which application instance */
+				println!("------------------------------");
 
-				#[cfg(unix)]
-				{
-					use std::os::unix::process::CommandExt;
-					let _ = Command::new(&exe).exec();
-				}
-				#[cfg(windows)]
-				{
-					dialog.destroy();
-					if let Ok(status) = Command::new(&exe).status() {
-						std::process::exit(status.code().unwrap_or_default());
+				/* Exec back into new DiNoScore process */
+				if let Ok(exe) = std::env::current_exe() {
+					use std::process::Command;
+
+					#[cfg(unix)]
+					{
+						use std::os::unix::process::CommandExt;
+						let _ = Command::new(&exe).exec();
+					}
+					#[cfg(windows)]
+					{
+						dialog.destroy();
+						if let Ok(status) = Command::new(&exe).status() {
+							std::process::exit(status.code().unwrap_or_default());
+						}
 					}
 				}
-			}
-			/* If everything went well, this won't be reached. */
-			std::process::exit(110);
-		},
-		_ => {
-			std::process::exit(110);
-		},
-	});
+				/* If everything went well, this won't be reached. */
+				std::process::exit(110);
+			},
+			_ => {
+				std::process::exit(110);
+			},
+		}
+	);
 
 	main_loop.run();
 
