@@ -4,8 +4,7 @@
 //! Soft pedal (MIDI controller 67) to "next" and the Sostenuto pedal (MIDI
 //! controller 66) to "previous".
 
-use gtk::glib::Sender;
-use gtk4 as gtk;
+use futures::channel::mpsc::UnboundedSender;
 use std::{any::Any, error::Error};
 
 use midi_event::*;
@@ -16,7 +15,7 @@ pub enum PageEvent {
 	Previous,
 }
 
-pub fn run(midi_tx: Sender<PageEvent>) -> Result<Box<dyn Any>, Box<dyn Error>> {
+pub fn run(midi_tx: UnboundedSender<PageEvent>) -> Result<Box<dyn Any>, Box<dyn Error>> {
 	/* PortMidi is awful. Not my fault. Please, someone make RtMidi bindings for Rust and save us! */
 	std::thread::spawn(move || {
 		let pm = pm::PortMidi::new().unwrap();
@@ -43,14 +42,17 @@ pub fn run(midi_tx: Sender<PageEvent>) -> Result<Box<dyn Any>, Box<dyn Error>> {
 						event.message.data2,
 					]) {
 						dbg!(&event);
-						match event.event {
+						let result = match event.event {
 							MidiEventType::Controller(67, 127) => {
-								midi_tx.send(PageEvent::Next).unwrap();
+								midi_tx.unbounded_send(PageEvent::Next)
 							},
 							MidiEventType::Controller(66, 127) => {
-								midi_tx.send(PageEvent::Previous).unwrap();
+								midi_tx.unbounded_send(PageEvent::Previous)
 							},
-							_ => {},
+							_ => Ok(()),
+						};
+						if result.err().map(|e| e.is_disconnected()).unwrap_or(false) {
+							return;
 						}
 					}
 				}

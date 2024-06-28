@@ -112,7 +112,7 @@ pub mod prelude {
 
 	pub use typed_index_collections::{TiSlice, TiVec};
 
-	pub use glib::Object;
+	pub use glib::{Object, Properties};
 	pub use gtk::Application;
 	pub use once_cell::unsync::{Lazy, OnceCell};
 	pub use std::{

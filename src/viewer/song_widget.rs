@@ -210,7 +210,7 @@ mod imp {
 
 		fn constructed(&self) {
 			self.parent_constructed();
-			let obj = self.obj();
+			let obj: glib::BorrowedObject<super::SongWidget> = self.obj();
 
 			obj.insert_action_group("song", Some(&self.actions));
 
@@ -259,11 +259,12 @@ mod imp {
 			/* MIDI handling */
 			#[cfg(unix)]
 			{
-				let (midi_tx, midi_rx) = glib::MainContext::channel(glib::Priority::default());
+				let (midi_tx, mut midi_rx) = futures::channel::mpsc::unbounded();
 				let handler = crate::pedal::run(midi_tx).unwrap();
-				midi_rx.attach(
-					None,
-					clone!(@weak obj => @default-return glib::ControlFlow::Break, move |event| {
+				let obj = obj.clone();
+				glib::MainContext::default().spawn_local(async move {
+					use futures::StreamExt;
+					while let Some(event) = midi_rx.next().await {
 						/* Reference the MIDI handler which holds the Sender so that it doesn't get dropped. */
 						let _handler = &handler;
 						match event {
@@ -274,9 +275,9 @@ mod imp {
 								obj.imp().previous.activate(None);
 							},
 						}
-						glib::ControlFlow::Continue
-					}),
-				);
+					}
+					log::info!("Midi thread exited.");
+				});
 			}
 		}
 	}
@@ -294,6 +295,8 @@ mod imp {
 			scale_mode: ScaleMode,
 			start_at: collection::StaffIndex,
 		) {
+			let obj = self.obj();
+
 			log::debug!("Loading song");
 			log::debug!(
 				"UUID: {}, starting at: {}, scale mode: {:?}",
@@ -302,7 +305,7 @@ mod imp {
 				scale_mode
 			);
 			let song = Arc::new(song);
-			let (renderer, update_page) = spawn_song_renderer(
+			let (renderer, mut update_page) = spawn_song_renderer(
 				pages.clone(),
 				song.version_uuid,
 				song.piece_starts
@@ -313,12 +316,13 @@ mod imp {
 			let width = self.carousel.allocated_width();
 			let height = self.carousel.allocated_height();
 
-			update_page.attach(
-				None,
-				clone_!(self, move |obj, update_page| {
-					obj.imp().update_page(update_page);
-					glib::ControlFlow::Continue
-				}),
+			glib::MainContext::default().spawn_local(
+				clone!(@weak obj => @default-panic, async move {
+					use futures::StreamExt;
+					while let Some(update_page) = update_page.next().await {
+						obj.imp().update_page(update_page);
+					}
+				})
 			);
 
 			self.carousel.grab_focus();
@@ -351,8 +355,8 @@ mod imp {
 				.set_state(&scale_mode.action_string().to_variant());
 
 			*self.song.borrow_mut() = Some(song);
-			self.obj().notify("song-name");
-			self.obj().notify("song-id");
+			obj.notify("song-name");
+			obj.notify("song-id");
 
 			self.load_annotations();
 			self.update_content();
@@ -364,7 +368,6 @@ mod imp {
 
 			/* Scroll to the requested page */
 			/* Hack: defer this because of reasons. Also this may be racy */
-			let obj = self.obj();
 			let carousel = &self.carousel.get();
 			glib::MainContext::default().spawn_local(
 				clone!(@weak obj, @strong carousel => @default-panic, async move {
@@ -1091,13 +1094,13 @@ fn spawn_song_renderer(
 	mut piece_starts: Vec<collection::PageIndex>,
 ) -> (
 	Sender<(collection::PageIndex, Option<i32>)>,
-	glib::Receiver<ScaledPage>,
+	futures::channel::mpsc::UnboundedReceiver<ScaledPage>,
 ) {
 	/* Sometimes, two pieces start on the same page. Irrelevant for our purposes */
 	piece_starts.dedup();
 
 	let (in_tx, in_rx) = channel();
-	let (out_tx, out_rx) = glib::MainContext::channel(glib::Priority::DEFAULT);
+	let (out_tx, out_rx) = futures::channel::mpsc::unbounded();
 
 	std::thread::spawn(move || {
 		use std::collections::VecDeque;
@@ -1134,7 +1137,7 @@ fn spawn_song_renderer(
 		for i in reset_work_queue() {
 			let image = gdk::Texture::for_pixbuf(&pages[i].render_scaled(250));
 			if out_tx
-				.send(ScaledPage {
+				.unbounded_send(ScaledPage {
 					index: i,
 					image,
 					song,
@@ -1230,7 +1233,7 @@ fn spawn_song_renderer(
 
 				/* Send it off */
 				if out_tx
-					.send(ScaledPage {
+					.unbounded_send(ScaledPage {
 						index: page,
 						image,
 						song,

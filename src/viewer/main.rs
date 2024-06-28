@@ -96,7 +96,8 @@ fn main() -> anyhow::Result<()> {
 		log::info!("Application started");
 
 		/* Check hardware acceleration */
-		if window.surface().create_gl_context().is_err() {
+		if window.surface()
+			.map_or_else(|| true, |surface| surface.create_gl_context().is_err()) {
 			window.show_no_gl_toast();
 		}
 	});
