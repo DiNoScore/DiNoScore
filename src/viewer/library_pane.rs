@@ -1,13 +1,13 @@
 use dinoscore::{prelude::*, *};
 
 glib::wrapper! {
-	pub struct LibraryWidget(ObjectSubclass<imp::LibraryWidget>)
+	pub struct LibraryPane(ObjectSubclass<imp::LibraryPane>)
 		@extends gtk::Box, gtk::Widget,
 		@implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
 					gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
-impl LibraryWidget {
+impl LibraryPane {
 	pub fn init(
 		&self,
 		library: Rc<RefCell<library::Library>>,
@@ -32,50 +32,54 @@ impl LibraryWidget {
 	pub fn select_first_entry(&self) {
 		self.imp()
 			.library_grid
-			.get()
-			.select_path(&gtk::TreePath::new_first());
+			.model()
+			.unwrap()
+			.select_item(0, true);
 	}
 
 	#[cfg(test)]
 	pub fn activate_selected_entry(&self, part_no: usize) {
-		let uuid = {
-			/* There is exactly one item */
-			let song = self
-				.imp()
+		let song: uuid::Uuid = {
+			self.imp()
 				.library_grid
-				.selected_items()
-				.into_iter()
-				.next()
-				.unwrap();
-			let uuid = self
-				.imp()
-				.store_songs
-				.get()
-				.get::<glib::GString>(&self.imp().store_songs.iter(&song).unwrap(), 2);
-			uuid::Uuid::parse_str(uuid.as_str()).unwrap()
+				.model()
+				.and_downcast_ref::<gtk::SingleSelection>()
+				.and_then(gtk::SingleSelection::selected_item)
+				.and_downcast_ref::<crate::library_item::LibraryItem>()
+				.map(crate::library_item::LibraryItem::uuid)
+				.expect("No entry was selected")
 		};
 
 		let start_at = {
 			let library = self.imp().library.get().unwrap().borrow();
-			let song = library.songs.get(&uuid).unwrap();
+			let song = library.songs.get(&song).unwrap();
 
 			*song.index.piece_starts.keys().nth(part_no).unwrap()
 		};
 
-		self.load_song(uuid, start_at.into());
+		self.load_song(song, start_at.into());
 	}
 }
 
 mod imp {
 	use super::*;
 
+	const SORT_FUN: fn(&glib::Object, &glib::Object) -> std::cmp::Ordering =
+		|l, r|
+		std::cmp::PartialOrd::partial_cmp(
+			&l.property::<f64>("score"),
+			&r.property::<f64>("score"),
+		)
+		.expect("score can't be inf or NaN")
+		.reverse();
+
 	#[derive(CompositeTemplate)]
 	#[template(resource = "/de/piegames/dinoscore/viewer/library.ui")]
-	pub struct LibraryWidget {
+	pub struct LibraryPane {
 		#[template_child]
-		pub store_songs: TemplateChild<gtk::ListStore>,
+		pub store_songs: TemplateChild<gio::ListStore>,
 		#[template_child]
-		pub library_grid: TemplateChild<gtk::IconView>,
+		pub library_grid: TemplateChild<gtk::GridView>,
 		#[template_child]
 		search_entry: TemplateChild<gtk::SearchEntry>,
 		/* Revealer (when clicked on song) */
@@ -93,9 +97,9 @@ mod imp {
 		song_filter: RefCell<Box<dyn Fn(&collection::SongMeta) -> bool>>,
 	}
 
-	impl Default for LibraryWidget {
+	impl Default for LibraryPane {
 		fn default() -> Self {
-			LibraryWidget {
+			LibraryPane {
 				store_songs: Default::default(),
 				library_grid: Default::default(),
 				search_entry: Default::default(),
@@ -109,9 +113,9 @@ mod imp {
 	}
 
 	#[glib::object_subclass]
-	impl ObjectSubclass for LibraryWidget {
+	impl ObjectSubclass for LibraryPane {
 		const NAME: &'static str = "ViewerLibrary";
-		type Type = super::LibraryWidget;
+		type Type = super::LibraryPane;
 		type ParentType = gtk::Box;
 
 		fn class_init(klass: &mut Self::Class) {
@@ -124,14 +128,10 @@ mod imp {
 		}
 	}
 
-	impl ObjectImpl for LibraryWidget {
+	impl ObjectImpl for LibraryPane {
 		fn constructed(&self) {
 			self.parent_constructed();
 			let obj = self.obj();
-
-			let store_songs = &self.store_songs;
-			/* Sort by usage score */
-			store_songs.set_sort_column_id(gtk::SortColumn::Index(3), gtk::SortType::Descending);
 
 			/* Deferring is required for some reason */
 			glib::MainContext::default().spawn_local(
@@ -142,29 +142,26 @@ mod imp {
 		}
 	}
 
-	impl WidgetImpl for LibraryWidget {}
+	impl WidgetImpl for LibraryPane {}
 
-	impl BoxImpl for LibraryWidget {}
+	impl BoxImpl for LibraryPane {}
 
 	#[gtk::template_callbacks]
-	impl LibraryWidget {
+	impl LibraryPane {
 		/// Update the songs list according to our library and the set filter
 		pub fn reload_songs_filtered(&self) {
 			let library = &self.library.get().unwrap().borrow();
-			self.store_songs.clear();
+			self.store_songs.remove_all();
 			for (uuid, song) in library.songs.iter() {
 				if (*self.song_filter.borrow())(&song.index) {
 					/* Add an item with the name and UUID */
-					// TODO cleanup once glib::Value implements ToValue
-					let thumbnail = song.thumbnail().cloned();
+					let thumbnail = song.thumbnail().map(gdk::Texture::for_pixbuf);
 					let title = song.title().unwrap_or("<no title>").to_owned();
 					let score = library.stats[uuid].usage_score(&self.reference_time);
-					let uuid = uuid.to_string();
 
-					self.store_songs.set(
-						&self.store_songs.append(),
-						/* The columns are: thumbnail, title, UUID, usage_score */
-						&[(0, &thumbnail), (1, &title), (2, &uuid), (3, &score)],
+					self.store_songs.insert_sorted(
+						&crate::library_item::LibraryItem::new(uuid, title, &thumbnail, score),
+						SORT_FUN
 					);
 				}
 			}
@@ -176,24 +173,17 @@ mod imp {
 
 			let mut library = self.library.get().unwrap().borrow_mut();
 
-			/* Find our song and update it. */
-			let store_songs = &self.store_songs;
-			store_songs.foreach(|_model, _path, iter| {
-				let uuid2: String = store_songs.get().get(iter, 2);
-				let uuid2: uuid::Uuid = uuid::Uuid::parse_str(&uuid2).unwrap();
-				if uuid2 == uuid {
-					store_songs.set_value(
-						iter,
-						3,
-						&library.stats[&uuid]
-							.usage_score(&self.reference_time)
-							.to_value(),
-					);
-					true
-				} else {
-					false
-				}
-			});
+			/* Find our song in the UI and update its usage score. */
+			let store_songs = &*self.store_songs;
+			if let Some(item) = 
+				store_songs.find_with_equal_func(
+					|item| item.downcast_ref::<crate::library_item::LibraryItem>().unwrap().uuid() == uuid
+				)
+				.map(|idx| store_songs.item(idx).and_downcast::<crate::library_item::LibraryItem>().unwrap())
+			{
+				item.set_score(&library.stats[&uuid].usage_score(&self.reference_time));
+				store_songs.sort(SORT_FUN);
+			}
 
 			let song = library.songs.get_mut(&uuid).unwrap();
 
@@ -219,15 +209,11 @@ mod imp {
 		pub fn on_item_selected(&self) {
 			let song: Option<uuid::Uuid> = {
 				self.library_grid
-					.selected_items()
-					.into_iter()
-					.next() /* There is at most one item */
-					.map(|song| {
-						self.store_songs
-							.get()
-							.get::<glib::GString>(&self.store_songs.iter(&song).unwrap(), 2)
-					})
-					.map(|uuid| uuid::Uuid::parse_str(uuid.as_str()).unwrap())
+					.model()
+					.and_downcast_ref::<gtk::SingleSelection>()
+					.and_then(gtk::SingleSelection::selected_item)
+					.and_downcast_ref::<crate::library_item::LibraryItem>()
+					.map(crate::library_item::LibraryItem::uuid)
 			};
 
 			if let Some(song) = song {
@@ -239,12 +225,13 @@ mod imp {
 
 		/// A song entry from the IconView was activated through double-click or enter
 		#[template_callback]
-		fn on_item_activated(&self, item: &gtk::TreePath) {
+		fn on_item_activated(&self, item: u32) {
 			let uuid = self
 				.store_songs
-				.get()
-				.get::<glib::GString>(&self.store_songs.iter(item).unwrap(), 2);
-			let uuid = uuid::Uuid::parse_str(uuid.as_str()).unwrap();
+				.item(item)
+				.and_downcast_ref::<crate::library_item::LibraryItem>()
+				.unwrap()
+				.uuid();
 			self.load_song(uuid, 0.into());
 		}
 
@@ -271,34 +258,36 @@ mod imp {
 
 		#[template_callback]
 		fn on_search_entry_next(&self) {
-			let selected = self
-				.library_grid
-				.selected_items()
-				.into_iter()
-				.next()
-				.map(|mut path| {
-					path.next();
-					path
-				})
-				.unwrap_or_else(gtk::TreePath::new_first);
-			let library_grid = self.library_grid.clone();
-			library_grid.select_path(&selected);
+			// let selected = self
+			// 	.library_grid
+			// 	.selected_items()
+			// 	.into_iter()
+			// 	.next()
+			// 	.map(|mut path| {
+			// 		path.next();
+			// 		path
+			// 	})
+			// 	.unwrap_or_else(gtk::TreePath::new_first);
+			// let selected = todo!();
+			// let library_grid = self.library_grid.clone();
+			// library_grid.select_path(&selected);
 		}
 
 		#[template_callback]
 		fn on_search_entry_previous(&self) {
-			let selected = self
-				.library_grid
-				.selected_items()
-				.into_iter()
-				.next()
-				.map(|mut path| {
-					path.prev();
-					path
-				})
-				.unwrap_or_else(gtk::TreePath::new_first);
-			let library_grid = self.library_grid.clone();
-			library_grid.select_path(&selected);
+			// let selected = self
+			// 	.library_grid
+			// 	.selected_items()
+			// 	.into_iter()
+			// 	.next()
+			// 	.map(|mut path| {
+			// 		path.prev();
+			// 		path
+			// 	})
+			// 	.unwrap_or_else(gtk::TreePath::new_first);
+			// let selected = todo!();
+			// let library_grid = self.library_grid.clone();
+			// library_grid.select_path(&selected);
 		}
 
 		#[template_callback]

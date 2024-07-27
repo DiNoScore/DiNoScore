@@ -22,7 +22,7 @@ impl Window {
 	}
 
 	#[cfg(test)]
-	pub fn library(&self) -> crate::library_widget::LibraryWidget {
+	pub fn library(&self) -> crate::library_pane::LibraryPane {
 		self.imp().library.get()
 	}
 
@@ -43,7 +43,7 @@ mod imp {
 		#[template_child]
 		deck: TemplateChild<adw::Leaflet>,
 		#[template_child]
-		pub library: TemplateChild<crate::library_widget::LibraryWidget>,
+		pub library: TemplateChild<crate::library_pane::LibraryPane>,
 		#[template_child]
 		pub song: TemplateChild<crate::song_widget::SongWidget>,
 		/// When a song is loaded, prevent the screen from going blank

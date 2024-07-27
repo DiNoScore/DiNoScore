@@ -12,7 +12,7 @@ impl SongPreview {
 	pub fn init(
 		&self,
 		library: Rc<RefCell<library::Library>>,
-		library_widget: crate::library_widget::LibraryWidget,
+		library_widget: crate::library_pane::LibraryPane,
 	) {
 		self.imp().library.set(library).unwrap();
 		self.imp().library_widget.set(library_widget).unwrap();
@@ -53,7 +53,7 @@ mod imp {
 		stats_last_played: TemplateChild<gtk::Label>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
-		pub library_widget: OnceCell<crate::library_widget::LibraryWidget>,
+		pub library_widget: OnceCell<crate::library_pane::LibraryPane>,
 		song_uuid: Cell<uuid::Uuid>,
 		inhibit_autoscroll: Cell<bool>,
 		pub background_renderer: OnceCell<

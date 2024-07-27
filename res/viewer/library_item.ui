@@ -1,0 +1,28 @@
+<interface>
+  <template class="GtkListItem">
+    <property name="child">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkPicture">
+            <binding name="paintable">
+              <lookup name="thumbnail" type="ViewerLibraryItem">
+                <lookup name="item">GtkListItem</lookup>
+              </lookup>
+            </binding>
+            <property name="can-shrink">False</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <binding name="label">
+              <lookup name="title" type="ViewerLibraryItem">
+                <lookup name="item">GtkListItem</lookup>
+              </lookup>
+            </binding>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

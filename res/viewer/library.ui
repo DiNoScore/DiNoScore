@@ -1,17 +1,6 @@
 <interface>
-  <!-- Model used by the library IconView -->
-  <object class="GtkListStore" id="store_songs">
-    <columns>
-      <!-- column-name gdkpixbuf -->
-      <column type="GdkPixbuf"/>
-      <!-- column-name title -->
-      <column type="gchararray"/>
-      <!-- column-name UUID -->
-      <column type="gchararray"/>
-      <!-- column-name score -->
-      <column type="gfloat"/>
-    </columns>
-  </object>
+  <!-- Model used by the library GridView -->
+  <object class="GListStore" id="store_songs"></object>
 
   <template class="ViewerLibrary" parent="GtkBox">
     <property name="orientation">vertical</property>
@@ -72,19 +61,19 @@
             <property name="hexpand">True</property>
             <property name="vexpand">True</property>
             <child>
-              <object class="GtkIconView" id="library_grid">
-                <property name="margin">6</property>
-                <property name="selection_mode">single</property>
-                <property name="model">store_songs</property>
-                <property name="reorderable">False</property>
-                <property name="activate-on-single-click">False</property>
-                <property name="column-spacing">1</property>
-                <property name="item-padding">1</property>
-                <property name="item-width">300</property>
-                <property name="pixbuf-column">0</property>
-                <property name="text-column">1</property>
-                <signal name="selection-changed" handler="on_item_selected" swapped="true"/>
-                <signal name="item-activated" handler="on_item_activated" swapped="true"/>
+              <object class="GtkGridView" id="library_grid">
+                <property name="factory">
+                  <object class="GtkBuilderListItemFactory">
+                    <property name="resource">/de/piegames/dinoscore/viewer/library_item.ui</property>
+                  </object>
+                </property>
+                <property name="model">
+                  <object class="GtkSingleSelection">
+                    <property name="model">store_songs</property>
+                    <signal name="selection-changed" handler="on_item_selected" swapped="true"/>
+                  </object>
+                </property>
+                <signal name="activate" handler="on_item_activated" swapped="true"/>
               </object>
             </child>
           </object>

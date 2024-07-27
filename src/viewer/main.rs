@@ -3,8 +3,9 @@
 //! Widget hierarchy (only custom widgets):
 //!
 //! - [`window`]: Application window. Also does fullscreen handling
-//!   - [`library_widget`]: The library/song selection pane
+//!   - [`library_pane`]: The library/song selection pane
 //!     - [`song_preview`]: The song preview statistics on the right
+//!     - [`library_item`]: For the list models in the library view
 //!   - [`song_widget`]: The "play song" pane
 //!     - [`song_page`]: A single page on the song carousel
 
@@ -17,7 +18,8 @@ use anyhow::Context;
 use dinoscore::{prelude::*, *};
 
 mod crash_n_log;
-mod library_widget;
+mod library_pane;
+mod library_item;
 #[cfg(target_family = "unix")]
 mod pedal;
 #[cfg(test)]
@@ -30,10 +32,11 @@ mod test;
 mod window;
 mod xournal;
 
+
 fn gtk_init(_application: &gtk::Application) {
 	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
-	let _ = library_widget::LibraryWidget::static_type();
 	let _ = song_widget::SongWidget::static_type();
+	let _ = library_pane::LibraryPane::static_type();
 	let _ = song_page::SongPage::static_type();
 	adw::init().expect("Failed to initialize libadwaita");
 }
