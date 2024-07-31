@@ -3,13 +3,13 @@ use dinoscore::{library::ScaleMode, prelude::*, *};
 use std::sync::mpsc::*;
 
 glib::wrapper! {
-	pub struct SongWidget(ObjectSubclass<imp::SongWidget>)
+	pub struct SongPane(ObjectSubclass<imp::SongPane>)
 		@extends gtk::Box, gtk::Widget,
 		@implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
 					gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
-impl SongWidget {
+impl SongPane {
 	pub fn init(&self, library: Rc<RefCell<library::Library>>) {
 		self.imp().library.set(library).unwrap();
 	}
@@ -60,7 +60,7 @@ mod imp {
 
 	#[derive(CompositeTemplate)]
 	#[template(resource = "/de/piegames/dinoscore/viewer/song.ui")]
-	pub struct SongWidget {
+	pub struct SongPane {
 		#[template_child]
 		header: TemplateChild<adw::HeaderBar>,
 		#[template_child]
@@ -101,9 +101,9 @@ mod imp {
 	}
 
 	#[glib::object_subclass]
-	impl ObjectSubclass for SongWidget {
+	impl ObjectSubclass for SongPane {
 		const NAME: &'static str = "ViewerSong";
-		type Type = super::SongWidget;
+		type Type = super::SongPane;
 		type ParentType = gtk::Box;
 
 		fn new() -> Self {
@@ -125,7 +125,7 @@ mod imp {
 			);
 			actions.add_action(&sizing_mode_action);
 
-			SongWidget {
+			SongPane {
 				header: Default::default(),
 				carousel: Default::default(),
 				size_catcher: Default::default(),
@@ -172,7 +172,7 @@ mod imp {
 		}
 	}
 
-	impl ObjectImpl for SongWidget {
+	impl ObjectImpl for SongPane {
 		fn properties() -> &'static [glib::ParamSpec] {
 			Box::leak(Box::new([
 				glib::ParamSpecString::builder("song-name")
@@ -210,7 +210,7 @@ mod imp {
 
 		fn constructed(&self) {
 			self.parent_constructed();
-			let obj: glib::BorrowedObject<super::SongWidget> = self.obj();
+			let obj: glib::BorrowedObject<super::SongPane> = self.obj();
 
 			obj.insert_action_group("song", Some(&self.actions));
 
@@ -282,12 +282,12 @@ mod imp {
 		}
 	}
 
-	impl WidgetImpl for SongWidget {}
+	impl WidgetImpl for SongPane {}
 
-	impl BoxImpl for SongWidget {}
+	impl BoxImpl for SongPane {}
 
 	#[gtk::template_callbacks]
-	impl SongWidget {
+	impl SongPane {
 		pub fn load_song(
 			&self,
 			song: collection::SongMeta,

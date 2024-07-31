@@ -27,7 +27,7 @@ impl Window {
 	}
 
 	#[cfg(test)]
-	pub fn song(&self) -> crate::song_widget::SongWidget {
+	pub fn song(&self) -> crate::song_pane::SongPane {
 		self.imp().song.get()
 	}
 }
@@ -45,7 +45,7 @@ mod imp {
 		#[template_child]
 		pub library: TemplateChild<crate::library_pane::LibraryPane>,
 		#[template_child]
-		pub song: TemplateChild<crate::song_widget::SongWidget>,
+		pub song: TemplateChild<crate::song_pane::SongPane>,
 		/// When a song is loaded, prevent the screen from going blank
 		inhibit_cookie: Cell<Option<u32>>,
 	}

@@ -11,7 +11,7 @@ impl LibraryPane {
 	pub fn init(
 		&self,
 		library: Rc<RefCell<library::Library>>,
-		song: crate::song_widget::SongWidget,
+		song: crate::song_pane::SongPane,
 	) {
 		self.imp().library.set(library.clone()).unwrap();
 		self.imp().song.set(song).unwrap();
@@ -93,7 +93,7 @@ mod imp {
 		 */
 		reference_time: std::time::SystemTime,
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
-		pub song: OnceCell<crate::song_widget::SongWidget>,
+		pub song: OnceCell<crate::song_pane::SongPane>,
 		song_filter: RefCell<Box<dyn Fn(&collection::SongMeta) -> bool>>,
 	}
 

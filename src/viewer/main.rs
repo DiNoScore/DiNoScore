@@ -6,7 +6,7 @@
 //!   - [`library_pane`]: The library/song selection pane
 //!     - [`song_preview`]: The song preview statistics on the right
 //!     - [`library_item`]: For the list models in the library view
-//!   - [`song_widget`]: The "play song" pane
+//!   - [`song_pane`]: The "play song" pane
 //!     - [`song_page`]: A single page on the song carousel
 
 #![allow(clippy::too_many_arguments)]
@@ -26,17 +26,16 @@ mod pedal;
 mod screenshots;
 mod song_page;
 mod song_preview;
-mod song_widget;
+mod song_pane;
 #[cfg(test)]
 mod test;
 mod window;
 mod xournal;
 
-
 fn gtk_init(_application: &gtk::Application) {
 	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
-	let _ = song_widget::SongWidget::static_type();
 	let _ = library_pane::LibraryPane::static_type();
+	let _ = song_pane::SongPane::static_type();
 	let _ = song_page::SongPage::static_type();
 	adw::init().expect("Failed to initialize libadwaita");
 }
