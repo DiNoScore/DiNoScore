@@ -34,6 +34,7 @@ pub struct PageIndex(pub usize);
 #[derive(Clone, Debug)]
 pub struct StaffLayout {
 	pub index: collection::StaffIndex,
+	/* position of the top-left corner */
 	pub x: f64,
 	pub y: f64,
 	pub width: f64,
@@ -41,10 +42,11 @@ pub struct StaffLayout {
 
 #[derive(Clone, Debug)]
 pub struct PageLayout {
+	/* size the layout was made for */
+	pub width: f64,
+	pub height: f64,
 	/* Pages[Staves] */
 	pub pages: TiVec<PageIndex, Vec<StaffLayout>>,
-	/* A random Uuid regenerated for each layout change */
-	pub random_id: uuid::Uuid,
 }
 
 impl PageLayout {
@@ -347,7 +349,8 @@ pub fn layout_fixed_scale(
 
 	PageLayout {
 		pages,
-		random_id: uuid::Uuid::new_v4(),
+		width,
+		height,
 	}
 }
 
@@ -465,7 +468,8 @@ pub fn layout_fixed_width(
 
 	PageLayout {
 		pages,
-		random_id: uuid::Uuid::new_v4(),
+		width,
+		height,
 	}
 }
 
@@ -532,6 +536,7 @@ pub fn layout_fixed_height(
 
 	PageLayout {
 		pages,
-		random_id: uuid::Uuid::new_v4(),
+		width,
+		height,
 	}
 }
