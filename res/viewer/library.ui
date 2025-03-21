@@ -15,8 +15,6 @@
             <property name="width-chars">20</property>
             <property name="placeholder-text" translatable="yes">Search songs</property>
             <signal name="search-changed" handler="on_search_entry_changed" swapped="true"/>
-            <signal name="next-match" handler="on_search_entry_next" swapped="true"/>
-            <signal name="previous-match" handler="on_search_entry_previous" swapped="true"/>
             <signal name="stop-search" handler="on_search_stopped" swapped="true"/>
             <child>
               <object class="GtkShortcutController">

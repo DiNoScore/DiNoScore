@@ -17,6 +17,7 @@ impl LibraryPane {
 		self.imp().song.set(song).unwrap();
 		self.imp().reload_songs_filtered();
 		self.imp().side_bar.get().init(library, self.clone());
+		self.imp().library_grid.scroll_to(0, gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS, None);
 	}
 
 	/* Called when leaving a song to update the statistics */
@@ -254,40 +255,6 @@ mod imp {
 				})
 			};
 			self.reload_songs_filtered();
-		}
-
-		#[template_callback]
-		fn on_search_entry_next(&self) {
-			// let selected = self
-			// 	.library_grid
-			// 	.selected_items()
-			// 	.into_iter()
-			// 	.next()
-			// 	.map(|mut path| {
-			// 		path.next();
-			// 		path
-			// 	})
-			// 	.unwrap_or_else(gtk::TreePath::new_first);
-			// let selected = todo!();
-			// let library_grid = self.library_grid.clone();
-			// library_grid.select_path(&selected);
-		}
-
-		#[template_callback]
-		fn on_search_entry_previous(&self) {
-			// let selected = self
-			// 	.library_grid
-			// 	.selected_items()
-			// 	.into_iter()
-			// 	.next()
-			// 	.map(|mut path| {
-			// 		path.prev();
-			// 		path
-			// 	})
-			// 	.unwrap_or_else(gtk::TreePath::new_first);
-			// let selected = todo!();
-			// let library_grid = self.library_grid.clone();
-			// library_grid.select_path(&selected);
 		}
 
 		#[template_callback]
