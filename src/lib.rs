@@ -114,9 +114,8 @@ pub mod prelude {
 
 	pub use glib::{Object, Properties};
 	pub use gtk::Application;
-	pub use once_cell::unsync::{Lazy, OnceCell};
 	pub use std::{
-		cell::{Cell, RefCell},
+		cell::{Cell, OnceCell, RefCell},
 		rc::Rc,
 		sync::Arc,
 	};

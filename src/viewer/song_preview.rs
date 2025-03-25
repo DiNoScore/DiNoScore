@@ -88,10 +88,14 @@ mod imp {
 
 			glib::source::timeout_add_seconds_local(
 				10,
-				clone!(@weak obj => @default-return glib::ControlFlow::Break, move || {
-					obj.imp().on_timer();
-					glib::ControlFlow::Continue
-				}),
+				clone!(
+					#[weak] obj,
+					#[upgrade_or] glib::ControlFlow::Break,
+					move || {
+						obj.imp().on_timer();
+						glib::ControlFlow::Continue
+					}
+				),
 			);
 		}
 	}
@@ -126,7 +130,7 @@ mod imp {
 					let picture = gtk::Picture::builder()
 						.paintable(&gdk::Paintable::new_empty(400, 100))
 						.alternative_text(name)
-						.keep_aspect_ratio(true)
+						.content_fit(gtk::ContentFit::Contain)
 						.can_shrink(false)
 						.build();
 					carousel.append(&picture);

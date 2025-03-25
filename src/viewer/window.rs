@@ -41,7 +41,7 @@ mod imp {
 		#[template_child]
 		toasts: TemplateChild<adw::ToastOverlay>,
 		#[template_child]
-		deck: TemplateChild<adw::Leaflet>,
+		deck: TemplateChild<adw::NavigationView>,
 		#[template_child]
 		pub library: TemplateChild<crate::library_pane::LibraryPane>,
 		#[template_child]
@@ -100,22 +100,31 @@ mod imp {
 
 			let enter_fullscreen = gio::SimpleAction::new("enter-fullscreen", None);
 			obj.add_action(&enter_fullscreen);
-			enter_fullscreen.connect_activate(clone!(@weak obj => @default-panic, move |_a, _p| {
-				obj.fullscreen();
-			}));
+			enter_fullscreen.connect_activate(clone!(
+				#[weak] obj,
+				move |_a, _p| {
+					obj.fullscreen();
+				})
+			);
 
 			let leave_fullscreen = gio::SimpleAction::new("leave-fullscreen", None);
 			leave_fullscreen.set_enabled(false);
 			obj.add_action(&leave_fullscreen);
-			leave_fullscreen.connect_activate(clone!(@weak obj => @default-panic, move |_a, _p| {
-				obj.unfullscreen();
-			}));
+			leave_fullscreen.connect_activate(clone!(
+				#[weak] obj,
+				move |_a, _p| {
+					obj.unfullscreen();
+				}
+			));
 
 			let toggle_fullscreen = gio::SimpleAction::new("toggle-fullscreen", None);
 			obj.add_action(&toggle_fullscreen);
-			toggle_fullscreen.connect_activate(clone!(@weak obj => @default-panic, move |_a, _p| {
-				obj.set_fullscreened(!obj.is_fullscreened());
-			}));
+			toggle_fullscreen.connect_activate(clone!(
+				#[weak] obj,
+				move |_a, _p| {
+					obj.set_fullscreened(!obj.is_fullscreen());
+				})
+			);
 		}
 	}
 
@@ -145,10 +154,10 @@ mod imp {
 					gtk::ApplicationInhibitFlags::IDLE,
 					Some("You wouldn't want your screen to go blank while playing an instrument"),
 				)));
-				self.deck.navigate(adw::NavigationDirection::Forward);
+				self.deck.push_by_tag("song");
 			} else {
 				application.uninhibit(self.inhibit_cookie.take().unwrap());
-				self.deck.navigate(adw::NavigationDirection::Back);
+				self.deck.pop();
 			}
 		}
 
@@ -169,7 +178,7 @@ mod imp {
 		#[template_callback]
 		fn fullscreen_changed(&self) {
 			let obj = self.obj();
-			let fullscreen = obj.is_fullscreened();
+			let fullscreen = obj.is_fullscreen();
 
 			/* This will automatically show and hide the buttons */
 			obj.lookup_action("enter-fullscreen")

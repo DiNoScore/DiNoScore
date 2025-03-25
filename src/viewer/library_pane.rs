@@ -129,7 +129,7 @@ mod imp {
 
 			/* Deferring is required for some reason */
 			glib::MainContext::default().spawn_local(
-				clone!(@weak obj => @default-panic, async move {
+				clone!(#[weak] obj, async move {
 					obj.imp().library_grid.grab_focus();
 				}),
 			);

@@ -6,6 +6,7 @@
         <!-- Hide the close buttons when in fullscreen -->
         <property name="show-start-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
         <property name="show-end-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
+        <property name="show-back-button">False</property>
         <child type="start">
           <object class="GtkButton">
             <property name="tooltip-text" translatable="yes">Go back</property>

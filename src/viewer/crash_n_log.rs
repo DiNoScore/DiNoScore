@@ -3,9 +3,9 @@
 //! Panic handler, crash dialogs, log configuration, etc.
 
 use crate::*;
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 
-type PanicHook = Box<dyn Fn(&PanicInfo<'_>) + 'static + Sync + Send>;
+type PanicHook = Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>;
 
 /** Initialize log and panic handling */
 pub fn init() -> anyhow::Result<()> {
@@ -123,7 +123,7 @@ pub fn init() -> anyhow::Result<()> {
 	Ok(())
 }
 
-fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
+fn panic_hook(panic_info: &PanicHookInfo, log_panics_hook: &PanicHook) {
 	log::error!("An unrecoverable error occured, shutting down …");
 
 	log_panics_hook(panic_info);
@@ -170,7 +170,7 @@ fn panic_hook(panic_info: &PanicInfo, log_panics_hook: &PanicHook) {
 	std::process::exit(110);
 }
 
-fn write_crash_message(info: &std::panic::PanicInfo) -> anyhow::Result<std::path::PathBuf> {
+fn write_crash_message(info: &std::panic::PanicHookInfo) -> anyhow::Result<std::path::PathBuf> {
 	use std::io::Write;
 	// TODO don't hardcode here
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");

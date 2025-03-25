@@ -33,25 +33,24 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-libadwaita = { version = "0.6", features = [ "v1_4" ] }
-gtk4 = { version = "0.8", features = [ "v4_14" ] }
-glib = { version = "0.19.8", features = ["log", "v2_74"] }
-gio = { version = "0.19.8", features = ["v2_74"] }
-cairo-rs = { version = "0.19", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.23", features = ["v20_9"] }
+libadwaita = { version = "0.7", features = [ "v1_4" ] }
+gtk4 = { version = "0.9", features = [ "v4_14" ] }
+glib = { version = "0.20", features = ["log", "v2_74"] }
+gio = { version = "0.20", features = ["v2_74"] }
+cairo-rs = { version = "0.20", features = ["png", "pdf", "svg", "v1_16"]}
+poppler-rs = { version = "0.24", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.4.0"
 pipeline = { git = "https://github.com/piegamesde/pipeline.rs" }
 git-version = "0.3.4"
-itertools = "0.13.0"
+itertools = "0.14.0"
 noisy_float = "0.2.0"
 
 # Utility containers
 either = "1.6.0"
 maybe-owned = { version = "0.3.4", features = ["serde"] }
 typed-index-collections = { version = "3.0.3", features = [ "serde-std" ] }
-once_cell = "1.4.1"
 fragile = "2.0"
 
 # File format
@@ -82,14 +81,14 @@ anyhow = "1.0.40"
 backtrace = "0.3.60"
 
 # Resource compilation
-gvdb = { version = "0.5", features = [ "gresource" ] }
+gvdb = { version = "0.8", features = [ "gresource" ] }
 gvdb-macros = "0.1.4"
 
 # Editor dependencies
 blocking = { version = "1.0", optional = true }
 image = { version = "0.24.1", features = ["png"], default-features = false, optional = true }
 imageproc = { version = "0.23.0", optional = true }
-attohttpc = { version = "0.26", features = ["multipart-form", "json"], optional = true }
+attohttpc = { version = "0.29", features = ["multipart-form", "json"], optional = true }
 
 # CLI dependencies
 clap = { version = "3.2", features = ["cargo", "derive", "wrap_help"], optional = true }
@@ -100,7 +99,7 @@ midi-event = "0.2.0"
 portmidi = "0.3"
 
 [build-dependencies]
-glib-build-tools = "0.18"
+glib-build-tools = "0.20"
 xdg = { git = "https://github.com/piegamesde/rust-xdg", branch = "windows" }
 
 [dev-dependencies]

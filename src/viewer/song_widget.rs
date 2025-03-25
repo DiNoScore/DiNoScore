@@ -33,7 +33,7 @@ impl SongWidget {
 		);
 
 		glib::MainContext::default().spawn_local(
-			clone!(@weak self as obj => @default-panic, async move {
+			clone!(#[weak(rename_to = obj)] self, #[upgrade_or_panic] async move {
 				use futures::StreamExt;
 				while let Some(update_page) = update_page.next().await {
 					obj.imp().update_page(update_page);
@@ -191,7 +191,8 @@ mod imp {
 			]);
 
 			let target = adw::CallbackAnimationTarget::new(glib::clone!(
-				@weak obj => @default-panic,
+				#[weak] obj,
+				#[upgrade_or_panic]
 				move |position| log::debug!("Animation pos: {position}")
 			));
 
@@ -212,7 +213,8 @@ mod imp {
 				.build();
 
 			animation.connect_done(glib::clone!(
-				@weak obj => @default-panic,
+				#[weak] obj,
+				#[upgrade_or_panic]
 				move |_| log::debug!("Animation end")
 			));
 			self.scroll_animation.set(animation).unwrap();

@@ -60,8 +60,8 @@ fn main() -> anyhow::Result<()> {
 	#[cfg(debug_assertions)]
 	{
 		pipeline::pipe! {
-			gvdb::gresource::GResourceXMLDocument::from_file("res/viewer/resources.gresource.xml".as_ref()).unwrap()
-			=> gvdb::gresource::GResourceBuilder::from_xml(_).unwrap()
+			gvdb::gresource::XmlManifest::from_file("res/viewer/resources.gresource.xml".as_ref()).unwrap()
+			=> gvdb::gresource::BundleBuilder::from_xml(_).unwrap()
 			=> _.build().unwrap()
 			=> glib::Bytes::from_owned
 			=> &gio::Resource::from_data(&_)?
