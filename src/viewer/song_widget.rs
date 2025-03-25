@@ -41,7 +41,7 @@ impl SongWidget {
 			})
 		);
 
-		let mut state = SongState::new(
+		let state = SongState::new(
 			renderer,
 			song.clone(),
 			rendered_pages,
@@ -49,7 +49,6 @@ impl SongWidget {
 			self.height() as f64,
 			mode
 		);
-		self.imp().change_page(&mut state, 0.into());
 		*self.imp().state.borrow_mut() = Some(state);
 	}
 
@@ -79,12 +78,14 @@ impl SongWidget {
 }
 
 mod imp {
+	use noisy_float::prelude::Float;
+
 	use super::*;
 
 	#[derive(Default)]
 	pub struct SongWidget {
 		pub(super) state: RefCell<Option<SongState>>,
-		pub(super) scroll_animation: OnceCell<adw::SpringAnimation>,
+		pub(super) scroll_animation: OnceCell<adw::TimedAnimation>,
 		pub actions: gio::SimpleActionGroup,
 	}
 
@@ -157,8 +158,6 @@ mod imp {
 			self.parent_constructed();
 			let obj = self.obj();
 
-			let actions = &self.actions;
-
 			/* Actions are declared here but registered on the SongPane */
 			self.actions.add_action_entries([
 				gio::ActionEntry::builder("next-page")
@@ -193,29 +192,21 @@ mod imp {
 			let target = adw::CallbackAnimationTarget::new(glib::clone!(
 				#[weak] obj,
 				#[upgrade_or_panic]
-				move |position| log::debug!("Animation pos: {position}")
+				move |_| obj.queue_draw()
 			));
 
-			/* Zero mass, high friction, critically damped => no oscillation or overswinging */
-			const SCROLL_DAMPING_RATIO: f64 = 1.0;
-			const SCROLL_MASS: f64 = 0.0;
-			const SCROLL_STIFFNESS: f64 = 500.0;
-
-			let animation = adw::SpringAnimation::builder()
-				// .spring_params(&adw::SpringParams::new(
-				// 	SCROLL_DAMPING_RATIO,
-				// 	SCROLL_MASS,
-				// 	SCROLL_STIFFNESS,
-				// ))
+			let animation: libadwaita::TimedAnimation = adw::TimedAnimation::builder()
+				.value_to(0.0)
+				.duration(200)
+				.easing(adw::Easing::EaseOutCubic)
 				.widget(&*obj)
 				.target(&target)
-				.value_to(0.0)
 				.build();
 
 			animation.connect_done(glib::clone!(
 				#[weak] obj,
 				#[upgrade_or_panic]
-				move |_| log::debug!("Animation end")
+				move |_| obj.queue_draw()
 			));
 			self.scroll_animation.set(animation).unwrap();
 		}
@@ -237,7 +228,11 @@ mod imp {
 			/* We recalculate the layout on the fly during rendering if our size changed.
 			 * This means that we must keep everything else constant (not trigger any signals).
 			 */
-			state.check_size(obj.width(), obj.height());
+			if obj.width() != state.layout.width as i32 || obj.height() != state.layout.height as i32 {
+				state.change_size(obj.width() as f64, obj.height() as f64);
+				/* Cancel the scrolling animation on resize, as the render_offset is now invalid */
+				self.scroll_animation.get().unwrap().skip();
+			}
 
 			let layout = &state.layout;
 
@@ -247,95 +242,114 @@ mod imp {
 			snapshot.push_clip(&bounds);
 
 			/* The actual rendering code. Might be called twice for dark mode */
-			let render = || {
-				snapshot.append_color(&gdk::RGBA::WHITE, &bounds);
-				layout.get_page_of_staff(state.position).1
-					.iter()
-					.try_for_each(|staff_layout| {
-						snapshot.save();
-						/* Point origin at staff start */
-						snapshot.translate(&graphene::Point::new(
-							staff_layout.x as f32,
-							staff_layout.y as f32,
+			let render_staff = |staff_layout: &layout::StaffLayout| {
+				snapshot.save();
+				/* Point origin at staff start */
+				snapshot.translate(&graphene::Point::new(
+					staff_layout.x as f32,
+					staff_layout.y as f32,
+				));
+
+				/* Staff */
+				snapshot.save();
+				let staff = &state.song.staves[staff_layout.index];
+				let (rendered_page, annotations) =
+					&*state.rendered_pages[staff.page].borrow();
+				match rendered_page.as_ref() {
+					Some(page) => {
+						/* Render the image */
+						snapshot.push_clip(&graphene::Rect::new(
+							0.0,
+							0.0,
+							staff_layout.width as f32,
+							staff_layout.width as f32 * staff.aspect_ratio() as f32,
 						));
+						let scale = staff_layout.width as f32 / staff.width() as f32;
+						snapshot.scale(scale, scale);
+						snapshot.append_texture(
+							page,
+							&graphene::Rect::new(
+								-staff.start.0 as f32,
+								-staff.start.1 as f32,
+								1.0,
+								page.height() as f32 / page.width() as f32,
+							),
+						);
+						snapshot.pop();
+					},
+					None => {
+						/* Render a placeholder */
+						snapshot.append_color(
+							&gdk::RGBA::new(0.8, 0.8, 0.8, 1.0),
+							&graphene::Rect::new(
+								0.0,
+								0.0,
+								staff_layout.width as f32,
+								staff_layout.width as f32 * staff.aspect_ratio() as f32,
+							),
+						);
+					},
+				}
+				snapshot.restore();
 
-						/* Staff */
-						snapshot.save();
-						let staff = &state.song.staves[staff_layout.index];
-						let (rendered_page, annotations) =
-							&*state.rendered_pages[staff.page].borrow();
-						match rendered_page.as_ref() {
-							Some(page) => {
-								/* Render the image */
-								snapshot.push_clip(&graphene::Rect::new(
-									0.0,
-									0.0,
-									staff_layout.width as f32,
-									staff_layout.width as f32 * staff.aspect_ratio() as f32,
-								));
-								let scale = staff_layout.width as f32 / staff.width() as f32;
-								snapshot.scale(scale, scale);
-								snapshot.append_texture(
-									page,
-									&graphene::Rect::new(
-										-staff.start.0 as f32,
-										-staff.start.1 as f32,
-										1.0,
-										page.height() as f32 / page.width() as f32,
-									),
-								);
-								snapshot.pop();
-							},
-							None => {
-								/* Render a placeholder */
-								snapshot.append_color(
-									&gdk::RGBA::new(0.8, 0.8, 0.8, 1.0),
-									&graphene::Rect::new(
-										0.0,
-										0.0,
-										staff_layout.width as f32,
-										staff_layout.width as f32 * staff.aspect_ratio() as f32,
-									),
-								);
-							},
-						}
-						snapshot.restore();
+				/* Page/Staff number */
+				let context = snapshot.append_cairo(&bounds);
+				context.set_font_size(20.0);
+				context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+				context.move_to(10.0, 16.0);
+				let (page_index, staff_index) = state.song.page_of_piece(staff_layout.index);
+				context.show_text(&format!("{}-{}", *page_index + 1, *staff_index))?;
 
-						/* Page/Staff number */
-						let context = snapshot.append_cairo(&bounds);
-						context.set_font_size(20.0);
-						context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
-						context.move_to(10.0, 16.0);
-						let (page_index, staff_index) = state.song.page_of_piece(staff_layout.index);
-						context.show_text(&format!("{}-{}", *page_index + 1, *staff_index))?;
+				snapshot.restore();
 
-						snapshot.restore();
+				/* Render annotations */
+				if let Some(page) = annotations.as_ref() {
+					let context = snapshot.append_cairo(&bounds);
 
-						/* Render annotations */
-						if let Some(page) = annotations.as_ref() {
-							let context = snapshot.append_cairo(&bounds);
+					context.translate(staff_layout.x, staff_layout.y);
 
-							context.translate(staff_layout.x, staff_layout.y);
+					let scale = staff_layout.width / staff.width();
+					context.scale(scale, scale);
+					context.translate(-staff.start.0, -staff.start.1);
 
-							let scale = staff_layout.width / staff.width();
-							context.scale(scale, scale);
-							context.translate(-staff.start.0, -staff.start.1);
+					context.rectangle(
+						staff.start.0,
+						staff.start.1,
+						staff.width(),
+						staff.height(),
+					);
+					context.clip();
 
-							context.rectangle(
-								staff.start.0,
-								staff.start.1,
-								staff.width(),
-								staff.height(),
-							);
-							context.clip();
+					context.scale(1.0 / page.size().0, 1.0 / page.size().0);
+					page.render(&context);
+				}
 
-							context.scale(1.0 / page.size().0, 1.0 / page.size().0);
-							page.render(&context);
-						}
+				cairo::Result::Ok(())
+			};
 
-						cairo::Result::Ok(())
-					})
-					.expect("Failed to draw");
+			let render = || {
+				/* Draw background */
+				snapshot.append_color(&gdk::RGBA::WHITE, &bounds);
+
+				let scroll_animation = self.scroll_animation.get().unwrap();
+				let render_offset = scroll_animation.value();
+				let current_pos = *layout.get_page_of_staff(state.position).0 as f64 + render_offset;
+				assert!((0.0..=layout.pages.len() as f64 - 1.0).contains(&current_pos));
+				/* This range will contain only one item if we are exactly on a page */
+				let pages = layout::PageIndex(current_pos.floor() as _)..=layout::PageIndex(current_pos.ceil() as _);
+
+				let offset = current_pos.fract();
+				for (idx, page) in layout.pages[pages].iter().enumerate() {
+					snapshot.save();
+					/* Make sure we don't overdraw our pages, which might cause clipping */
+					snapshot.translate(&graphene::Point::new((idx as f32 - offset as f32) * obj.width() as f32, 0.0));
+					snapshot.push_clip(&bounds);
+					page.iter()
+						.try_for_each(render_staff)
+						.expect("Failed to draw");
+					snapshot.pop();
+					snapshot.restore();
+				}
 			};
 
 			if adw::StyleManager::default().is_dark() {
@@ -427,10 +441,11 @@ mod imp {
 
 		pub(super) fn change_position(&self, state: &mut SongState, position: collection::StaffIndex) {
 			let (page, _) = state.layout.get_page_of_staff(position);
+			let (old_page, _) = state.layout.get_page_of_staff(state.position);
 			log::debug!("Changing page {page} (staff {position})");
 			let old_part = state.current_piece_index();
 
-			self.scroll_animation.get().unwrap().set_value_from(*state.position as f64 - *position as f64);
+			self.scroll_animation.get().unwrap().set_value_from(*old_page as f64 - *page as f64);
 			self.scroll_animation.get().unwrap().play();
 			state.position = position;
 
@@ -481,8 +496,6 @@ pub(self) struct SongState {
 	renderer: Sender<(collection::PageIndex, Option<i32>)>,
 	zoom: f64,
 	scale_mode: ScaleMode,
-	/* Offset when animating between pages. Range -1.0..1.0 for previous/next page. */
-	render_offset: f64,
 	/* Backup for when a gesture starts */
 	zoom_before_gesture: Option<f64>,
 }
@@ -514,13 +527,6 @@ impl SongState {
 			zoom: 1.0,
 			scale_mode,
 			zoom_before_gesture: None,
-			render_offset: 0.0,
-		}
-	}
-
-	fn check_size(&mut self, width: i32, height: i32) {
-		if width != self.layout.width as i32 || height != self.layout.height as i32 {
-			self.change_size(width as f64, height as f64);
 		}
 	}
 
