@@ -25,8 +25,8 @@ impl LibraryPane {
 		self.imp().on_item_selected();
 	}
 
-	pub fn load_song(&self, song: uuid::Uuid, start_at: collection::StaffIndex) {
-		self.imp().load_song(song, start_at);
+	pub fn load_song(&self, song: uuid::Uuid, start_at_part: u32) {
+		self.imp().load_song(song, start_at_part);
 	}
 
 	#[cfg(test)]
@@ -39,7 +39,7 @@ impl LibraryPane {
 	}
 
 	#[cfg(test)]
-	pub fn activate_selected_entry(&self, part_no: usize) {
+	pub fn activate_selected_entry(&self, start_at_part: u32) {
 		let song: uuid::Uuid = {
 			self.imp()
 				.library_grid
@@ -51,14 +51,7 @@ impl LibraryPane {
 				.expect("No entry was selected")
 		};
 
-		let start_at = {
-			let library = self.imp().library.get().unwrap().borrow();
-			let song = library.songs.get(&song).unwrap();
-
-			*song.index.piece_starts.keys().nth(part_no).unwrap()
-		};
-
-		self.load_song(song, start_at.into());
+		self.load_song(song, start_at_part);
 	}
 }
 
@@ -169,7 +162,7 @@ mod imp {
 		}
 
 		/// Play a song
-		pub fn load_song(&self, uuid: uuid::Uuid, start_at: collection::StaffIndex) {
+		pub fn load_song(&self, uuid: uuid::Uuid, start_at_part: u32) {
 			log::info!("Loading song: {}", uuid);
 
 			let mut library = self.library.get().unwrap().borrow_mut();
@@ -203,7 +196,7 @@ mod imp {
 			self.song
 				.get()
 				.unwrap()
-				.load_song(index, sheets, scale_mode, start_at);
+				.load_song(index, sheets, scale_mode, start_at_part);
 		}
 
 		#[template_callback]
@@ -233,7 +226,7 @@ mod imp {
 				.and_downcast_ref::<crate::library_item::LibraryItem>()
 				.unwrap()
 				.uuid();
-			self.load_song(uuid, 0.into());
+			self.load_song(uuid, 0);
 		}
 
 		#[template_callback]

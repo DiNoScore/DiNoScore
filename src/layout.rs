@@ -60,16 +60,18 @@ impl PageLayout {
 		)
 	}
 
-	pub fn get_staves_of_page(&self, page: PageIndex) -> impl Iterator<Item = StaffIndex> + '_ {
+	/** Map a page to the staves it displays. Also useful to get the first and last staff of a page. */
+	pub fn get_staves_of_page(&self, page: PageIndex) -> impl DoubleEndedIterator<Item = StaffIndex> + '_ {
 		self.pages[page].iter().map(|page| page.index)
 	}
 
-	pub fn get_page_of_staff(&self, staff: StaffIndex) -> PageIndex {
+	/* For a given staff, find out on which page it is displayed */
+	pub fn get_page_of_staff(&self, staff: StaffIndex) -> (PageIndex, &[StaffLayout]) {
 		let mut sum = 0;
 		for (i, page) in self.pages.iter().enumerate() {
 			sum += page.len();
 			if sum > staff.into() {
-				return i.into();
+				return (i.into(), &*page);
 			}
 		}
 		unreachable!()

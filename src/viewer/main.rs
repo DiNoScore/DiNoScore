@@ -24,7 +24,7 @@ mod library_item;
 mod pedal;
 #[cfg(test)]
 mod screenshots;
-mod song_page;
+mod song_widget;
 mod song_preview;
 mod song_pane;
 #[cfg(test)]
@@ -36,7 +36,7 @@ fn gtk_init(_application: &gtk::Application) {
 	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 	let _ = library_pane::LibraryPane::static_type();
 	let _ = song_pane::SongPane::static_type();
-	let _ = song_page::SongPage::static_type();
+	let _ = song_widget::SongWidget::static_type();
 	adw::init().expect("Failed to initialize libadwaita");
 }
 

@@ -413,6 +413,21 @@ impl SongMeta {
 		sections
 	}
 
+	/* Same as `piece_starts`, but empty names are replaced with a placeholder */
+	pub fn parts(&self) -> Vec<(collection::StaffIndex, String)> {
+		self.piece_starts
+			.iter()
+			.map(|(k, v)| {
+				(
+					*k,
+					v.is_empty()
+						.then(|| format!("({})", k))
+						.unwrap_or_else(|| v.clone()),
+				)
+			})
+			.collect()
+	}
+
 	/// Convert absolute staff numbers into a (page, staff) pair.
 	/// Page indices are relative to the current piece's start. Indices start at 0.
 	pub fn page_of_piece(&self, index: StaffIndex) -> (PageIndex, StaffIndex) {

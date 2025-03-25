@@ -25,9 +25,15 @@
           </object>
         </child>
         <child type="start">
-          <object class="GtkComboBoxText" id="part_selection">
-            <!-- That signal handler is done in code because we sometimes need to inhibit it -->
-            <!-- <signal name="changed" handler="select_part" swapped="true" /> -->
+          <object class="GtkDropDown" id="part_selection">
+            <property name="model">
+              <object class="GtkStringList">
+              </object>
+            </property>
+            <property name="selected"
+                      bind-source="carousel"
+                      bind-property="part-index"
+                      bind-flags="bidirectional" />
           </object>
         </child>
         <child type="start">
@@ -96,23 +102,15 @@
     </child>
 
     <child>
-      <!-- Wrap the carousel in an overlay to grab off resize events (this is a hack) -->
+      <!-- Wrap the carousel in an overlay to add the progress bar -->
       <object class="GtkOverlay">
-        <child>
-          <object class="GtkDrawingArea" id="size_catcher">
-            <property name="vexpand">True</property>
-            <property name="hexpand">True</property>
-            <signal name="resize" handler="on_resize" swapped="true"/>
-          </object>
-        </child>
-        <!-- Wrap in another overlay to add the progress bar -->
+        <property name="vexpand">True</property>
+        <property name="hexpand">True</property>
         <child type="overlay">
-          <object class="AdwCarousel" id="carousel">
+          <object class="ViewerSongWidget" id="carousel">
             <property name="focusable">True</property>
-            <property name="allow-mouse-drag">True</property>
-            <property name="vexpand">True</property>
-            <property name="hexpand">True</property>
-            <signal name="page-changed" handler="page_changed" swapped="true" />
+            <property name="overflow">hidden</property>
+            <signal name="progress" handler="page_load_progress" swapped="true" />
             <child>
               <object class="GtkGestureZoom" id="zoom_gesture">
                 <signal name="begin" handler="zoom_gesture_start" swapped="true" />

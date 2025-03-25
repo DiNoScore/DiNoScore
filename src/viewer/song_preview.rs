@@ -191,27 +191,17 @@ mod imp {
 			self.library_widget
 				.get()
 				.unwrap()
-				.load_song(self.song_uuid.get(), 0.into());
+				.load_song(self.song_uuid.get(), 0);
 		}
 
 		/* That's the small "▶" button next to the part_name */
 		#[template_callback]
 		fn on_quick_play_button_pressed(&self) {
 			log::debug!("Activated (B)");
-			let library = self.library.get().unwrap().borrow();
-			let song = library.songs.get(&self.song_uuid.get()).unwrap();
-
-			let start_at = *song
-				.index
-				.piece_starts
-				.keys()
-				.nth(self.part_preview.position() as usize)
-				.unwrap();
-			std::mem::drop(library);
 			self.library_widget
 				.get()
 				.unwrap()
-				.load_song(self.song_uuid.get(), start_at);
+				.load_song(self.song_uuid.get(), self.part_preview.position() as u32);
 		}
 
 		/** Called every 20 seconds
