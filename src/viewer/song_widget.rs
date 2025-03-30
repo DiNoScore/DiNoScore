@@ -61,32 +61,55 @@ impl SongWidget {
 	}
 
 	pub fn next_page(&self) {
-		self.activate_action("song.next-page", None).unwrap();
+		if self.imp().get_action("next-page").is_enabled() {
+			self.imp().next_page();
+		}
 	}
 
+	/* Go back one page or until the repitition */
 	pub fn previous_page(&self) {
-		self.activate_action("song.previous-page", None).unwrap();
+		if self.imp().get_action("previous-page").is_enabled() {
+			self.imp().previous_page();
+		}
+	}
+
+	/* Only go back exactly one page */
+	pub fn previous_page_strict(&self) {
+		if self.imp().get_action("previous-page").is_enabled() {
+			self.imp().previous_page_strict();
+		}
 	}
 
 	pub fn next_piece(&self) {
-		self.activate_action("song.next-piece", None).unwrap();
+		if self.imp().get_action("next-piece").is_enabled() {
+			self.imp().next_piece();
+		}
 	}
 
 	pub fn previous_piece(&self) {
-		self.activate_action("song.previous-piece", None).unwrap();
+		if self.imp().get_action("previous-piece").is_enabled() {
+			self.imp().previous_piece();
+		}
 	}
 }
 
 mod imp {
-	use noisy_float::prelude::Float;
-
 	use super::*;
 
-	#[derive(Default)]
+	#[derive(Default, Properties)]
+	// #[template(resource = "/de/piegames/dinoscore/viewer/song_widget.ui")]
+	#[properties(wrapper_type = super::SongWidget)]
 	pub struct SongWidget {
 		pub(super) state: RefCell<Option<SongState>>,
-		pub(super) scroll_animation: OnceCell<adw::TimedAnimation>,
+		#[property(
+			get = |obj: &&SongWidget| obj.get_part_index(),
+			set = |obj: &&SongWidget, val| obj.set_part_index(val))
+		]
+		part_index: std::marker::PhantomData<u32>,
+		pub(super) scroll_animation: OnceCell<adw::SpringAnimation>,
+		pub(super) swipe_tracker: OnceCell<adw::SwipeTracker>,
 		pub actions: gio::SimpleActionGroup,
+		pub(super) offset: Cell<f64>,
 	}
 
 	#[glib::object_subclass]
@@ -94,13 +117,19 @@ mod imp {
 		const NAME: &'static str = "ViewerSongWidget";
 		type Type = super::SongWidget;
 		type ParentType = gtk::Widget;
-		// type Interfaces = (adw::Swipeable,);
+		type Interfaces = (adw::Swipeable,);
 
-		fn class_init(_klass: &mut Self::Class) {}
+		fn class_init(klass: &mut Self::Class) {
+			// klass.bind_template();
+			// klass.bind_template_callbacks();
+		}
 
-		fn instance_init(_obj: &InitializingObject<Self>) {}
+		fn instance_init(obj: &InitializingObject<Self>) {
+			// obj.init_template();
+		}
 	}
 
+	#[glib::derived_properties]
 	impl ObjectImpl for SongWidget {
 		fn signals() -> &'static [glib::subclass::Signal] {
 			use glib::subclass::Signal;
@@ -111,49 +140,6 @@ mod imp {
 			]))
 		}
 
-		fn properties() -> &'static [glib::ParamSpec] {
-			Box::leak(Box::new([
-				glib::ParamSpecUInt::builder("part-index")
-					.nick("part-index")
-					.blurb("part")
-					.default_value(gtk::INVALID_LIST_POSITION)
-					.flags(glib::ParamFlags::READWRITE)
-					.build(),
-			]))
-		}
-
-		fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-			match pspec.name() {
-				"part-index" => self
-					.state
-					.borrow()
-					.as_ref()
-					.map(|state| (state.current_piece_index() as u32).to_value())
-					.expect("TODO let's see if this ever happens"),
-				_ => unimplemented!(),
-			}
-		}
-
-		fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-			match pspec.name() {
-				"part-index" => {
-					let mut state = self.state.borrow_mut();
-					let Some(state) = state.as_mut() else { return; };
-					let part = value.get::<u32>().unwrap();
-					if part == gtk::INVALID_LIST_POSITION {
-						return;
-					}
-					self.change_position(
-						state,
-						*state.song.piece_starts.keys()
-							.nth(part as usize)
-							.expect("`part-index` out of bounds")
-					);
-				}
-				_ => unimplemented!(),
-			}
-		}
-
 		fn constructed(&self) {
 			self.parent_constructed();
 			let obj = self.obj();
@@ -162,22 +148,22 @@ mod imp {
 			self.actions.add_action_entries([
 				gio::ActionEntry::builder("next-page")
 					.activate(clone_!(self, move |obj, _g, _a, _p| {
-						obj.imp().next_page();
+						obj.next_page();
 					}))
 					.build(),
-					gio::ActionEntry::builder("previous-page")
-						.activate(clone_!(self, move |obj, _g, _a, _p| {
-							obj.imp().previous_page();
-						}))
-						.build(),
+				gio::ActionEntry::builder("previous-page")
+					.activate(clone_!(self, move |obj, _g, _a, _p| {
+						obj.previous_page();
+					}))
+					.build(),
 				gio::ActionEntry::builder("next-piece")
 					.activate(clone_!(self, move |obj, _g, _a, _p| {
-						obj.imp().next_piece();
+						obj.next_piece();
 					}))
 					.build(),
 				gio::ActionEntry::builder("previous-piece")
 					.activate(clone_!(self, move |obj, _g, _a, _p| {
-						obj.imp().previous_piece();
+						obj.previous_piece();
 					}))
 					.build(),
 				gio::ActionEntry::builder("sizing-mode")
@@ -189,16 +175,72 @@ mod imp {
 					.build(),
 			]);
 
-			let target = adw::CallbackAnimationTarget::new(glib::clone!(
+			let swipe_tracker = adw::SwipeTracker::builder()
+				.allow_mouse_drag(true)
+				.allow_long_swipes(false)
+				.swipeable(&*obj)
+				.orientation(gtk::Orientation::Vertical)
+				.build();
+			swipe_tracker.connect_begin_swipe(glib::clone!(
+				#[weak]
+				obj,
+				move |_| {
+					obj.imp().scroll_animation.get().unwrap().pause()
+				}
+			));
+			swipe_tracker.connect_update_swipe(glib::clone!(
+				#[weak]
+				obj,
+				move |_, position| {
+					let state = obj.imp().state.borrow();
+					let Some(state) = state.as_ref() else { return; };
+					obj.imp().offset.set(
+						position - *state.layout.get_page_of_staff(state.position).0 as f64
+					);
+					obj.queue_draw();
+				}
+			));
+			swipe_tracker.connect_end_swipe(glib::clone!(
+				#[weak]
+				obj,
+				move |_, velocity, to| {
+					let this = obj.imp();
+					let mut state = this.state.borrow_mut();
+					let Some(state) = state.as_mut() else { return; };
+					let new_pos = state.layout.get_staves_of_page(layout::PageIndex(to.round() as usize)).next().unwrap();
+					this.change_position(state, new_pos, this.offset.get(), velocity);
+				}
+			));
+			self.swipe_tracker.set(swipe_tracker).unwrap();
+
+			let target: libadwaita::CallbackAnimationTarget = adw::CallbackAnimationTarget::new(glib::clone!(
 				#[weak] obj,
 				#[upgrade_or_panic]
-				move |_| obj.queue_draw()
+				move |offset| {
+					obj.imp().offset.set(offset);
+					obj.queue_draw();
+				}
 			));
 
-			let animation: libadwaita::TimedAnimation = adw::TimedAnimation::builder()
+			// let animation: libadwaita::TimedAnimation = adw::TimedAnimation::builder()
+			// 	.value_to(0.0)
+			// 	.duration(200)
+			// 	.easing(adw::Easing::EaseOutCubic)
+			// 	.widget(&*obj)
+			// 	.target(&target)
+			// 	.build();
+
+			/* Same as in Loupe and AdwCarousel */
+			const SCROLL_DAMPING_RATIO: f64 = 1.0; /* Perfectly damped */
+			const SCROLL_MASS: f64 = 0.5;
+			const SCROLL_STIFFNESS: f64 = 500.0;
+			let animation = adw::SpringAnimation::builder()
 				.value_to(0.0)
-				.duration(200)
-				.easing(adw::Easing::EaseOutCubic)
+				.spring_params(&adw::SpringParams::new(
+					SCROLL_DAMPING_RATIO,
+					SCROLL_MASS,
+					SCROLL_STIFFNESS,
+				))
 				.widget(&*obj)
 				.target(&target)
 				.build();
@@ -331,9 +373,7 @@ mod imp {
 				/* Draw background */
 				snapshot.append_color(&gdk::RGBA::WHITE, &bounds);
 
-				let scroll_animation = self.scroll_animation.get().unwrap();
-				let render_offset = scroll_animation.value();
-				let current_pos = *layout.get_page_of_staff(state.position).0 as f64 + render_offset;
+				let current_pos = *layout.get_page_of_staff(state.position).0 as f64 + self.offset.get();
 				assert!((0.0..=layout.pages.len() as f64 - 1.0).contains(&current_pos));
 				/* This range will contain only one item if we are exactly on a page */
 				let pages = layout::PageIndex(current_pos.floor() as _)..=layout::PageIndex(current_pos.ceil() as _);
@@ -342,7 +382,7 @@ mod imp {
 				for (idx, page) in layout.pages[pages].iter().enumerate() {
 					snapshot.save();
 					/* Make sure we don't overdraw our pages, which might cause clipping */
-					snapshot.translate(&graphene::Point::new((idx as f32 - offset as f32) * obj.width() as f32, 0.0));
+					snapshot.translate(&graphene::Point::new(0.0, (idx as f32 - offset as f32) * obj.height() as f32));
 					snapshot.push_clip(&bounds);
 					page.iter()
 						.try_for_each(render_staff)
@@ -372,11 +412,71 @@ mod imp {
 		}
 	}
 
+	impl SwipeableImpl for SongWidget {
+		fn distance(&self) -> f64 {
+			match self.swipe_tracker.get().unwrap().orientation() {
+				gtk::Orientation::Horizontal => self.obj().width() as f64,
+				gtk::Orientation::Vertical => self.obj().height() as f64,
+				_ => unimplemented!(),
+			}
+		}
+
+		fn progress(&self) -> f64 {
+			let state = self.state.borrow();
+			let Some(state) = state.as_ref() else { return Default::default(); };
+
+			*state.layout.get_page_of_staff(state.position).0 as f64 + self.offset.get()
+		}
+
+		fn snap_points(&self) -> Vec<f64> {
+			let state = self.state.borrow();
+			let Some(state) = state.as_ref() else { return Default::default(); };
+
+			(0..state.layout.pages.len()).map(|i| i as f64).collect()
+		}
+
+		fn cancel_progress(&self) -> f64 {
+			let snap_points = self.snap_points();
+			/* Copied over from Loupe, no clue what it does */
+			if let (Some(min), Some(max)) = (snap_points.first(), snap_points.last()) {
+				self.progress().round().clamp(*min, *max)
+			} else {
+				0.0
+			}
+		}
+	}
+
+	// #[gtk::template_callbacks]
 	impl SongWidget {
+		fn get_part_index(&self) -> u32 {
+			self
+				.state
+				.borrow()
+				.as_ref()
+				.map(|state| state.current_piece_index() as u32)
+				.unwrap_or_default()
+		}
+
+		fn set_part_index(&self, part: u32) {
+			let mut state = self.state.borrow_mut();
+			let Some(state) = state.as_mut() else { return; };
+			if part == gtk::INVALID_LIST_POSITION {
+				return;
+			}
+			self.change_position(
+				state,
+				*state.song.piece_starts.keys()
+					.nth(part as usize)
+					.expect("`part-index` out of bounds"),
+				0.0,
+				0.0
+			);
+		}
+
 		/// The background thread has finished rendering some page
 		pub(super) fn update_page(&self, update_page: ScaledPage) {
 			let mut state = self.state.borrow_mut();
-			let state = state.as_mut().unwrap();
+			let Some(state) = state.as_mut() else { return; };
 
 			/* Check for stale data (probably wouldn't have to with the current design, but it may change in the future */
 			log::debug!("Received page");
@@ -410,8 +510,16 @@ mod imp {
 				state,
 				state.section_start().unwrap_or(
 					state.layout.pages[state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1)][0].index
-				)
+				),
+				0.0,
+				0.0,
 			);
+		}
+
+		pub fn previous_page_strict(&self) {
+			let mut state = self.state.borrow_mut();
+			let Some(state) = state.as_mut() else { return; };
+			self.change_page(state, state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1));
 		}
 
 		/// Go to the beginning of the next piece
@@ -419,14 +527,19 @@ mod imp {
 			let mut state = self.state.borrow_mut();
 			let Some(state) = state.as_mut() else { return; };
 
-			self.change_position(state, state.next_piece().expect("This action should have been disabled"));
+			self.change_position(
+				state,
+				state.next_piece().expect("This action should have been disabled"),
+				0.0,
+				0.0,
+			);
 		}
 
 		/// Go to beginning of the current or previous piece
 		pub fn previous_piece(&self) {
 			let mut state = self.state.borrow_mut();
 			let Some(state) = state.as_mut() else { return; };
-			self.change_position(state, state.previous_piece());
+			self.change_position(state, state.previous_piece(), 0.0, 0.0);
 		}
 
 		pub(super) fn change_page(&self, state: &mut SongState, page: layout::PageIndex) {
@@ -435,18 +548,28 @@ mod imp {
 				state.layout.pages[page]
 					.first()
 					.expect("Every page must have at least one Staff")
-					.index
+					.index,
+				0.0,
+				0.0,
 			);
 		}
 
-		pub(super) fn change_position(&self, state: &mut SongState, position: collection::StaffIndex) {
+		pub(super) fn change_position(
+			&self,
+			state: &mut SongState,
+			position: collection::StaffIndex,
+			animation_offset: f64,
+			animation_velocity: f64,
+		) {
 			let (page, _) = state.layout.get_page_of_staff(position);
 			let (old_page, _) = state.layout.get_page_of_staff(state.position);
 			log::debug!("Changing page {page} (staff {position})");
 			let old_part = state.current_piece_index();
 
-			self.scroll_animation.get().unwrap().set_value_from(*old_page as f64 - *page as f64);
-			self.scroll_animation.get().unwrap().play();
+			let animation = self.scroll_animation.get().unwrap();
+			animation.set_value_from(*old_page as f64 - *page as f64 + animation_offset);
+			animation.set_initial_velocity(animation_velocity);
+			animation.play();
 			state.position = position;
 
 			self.get_action("next-page").set_enabled(*page < state.layout.pages.len() - 1);

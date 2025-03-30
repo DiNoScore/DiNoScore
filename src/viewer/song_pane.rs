@@ -199,10 +199,10 @@ mod imp {
 						let _handler = &handler;
 						match event {
 							crate::pedal::PageEvent::Next => {
-								WidgetExt::activate_action(&obj, "song.next-page", None).unwrap();
+								obj.imp().carousel.next_page();
 							},
 							crate::pedal::PageEvent::Previous => {
-								WidgetExt::activate_action(&obj, "song.previous-page", None).unwrap();
+								obj.imp().carousel.previous_page();
 							},
 						}
 					}
@@ -435,22 +435,22 @@ mod imp {
 			};
 
 			let library = &mut self.library.get().unwrap().borrow_mut();
-			// let stats = library.stats.get_mut(&song.song.song_uuid).unwrap();
-			// stats.on_update(diff);
+			let stats = library.stats.get_mut(&song.song_uuid).unwrap();
+			stats.on_update(diff);
 			// stats.scale_options = Some(song.scale_mode);
 
-			// if let Some(song_load_time) = self.song_load_time.get() {
-			// 	/* Only register the song as played after 90 seconds */
-			// 	if last_interaction.duration_since(song_load_time).as_secs() > 90 {
-			// 		log::debug!("Song now counts as \"played\"");
-			// 		self.song_load_time.take();
-			// 		library
-			// 			.stats
-			// 			.get_mut(&song.song.song_uuid)
-			// 			.unwrap()
-			// 			.on_load();
-			// 	}
-			// }
+			if let Some(song_load_time) = self.song_load_time.get() {
+				/* Only register the song as played after 90 seconds */
+				if last_interaction.duration_since(song_load_time).as_secs() > 90 {
+					log::debug!("Song now counts as \"played\"");
+					self.song_load_time.take();
+					library
+						.stats
+						.get_mut(&song.song_uuid)
+						.unwrap()
+						.on_load();
+				}
+			}
 			library.save_in_background();
 
 			self.last_interaction.set(last_interaction);
@@ -490,7 +490,12 @@ mod imp {
 				// });
 				glib::Propagation::Stop
 			} else {
-				glib::Propagation::Proceed
+				if dy > 0.0 {
+					self.carousel.next_page();
+				} else {
+					self.carousel.previous_page_strict();
+				}
+				glib::Propagation::Stop
 			}
 		}
 
