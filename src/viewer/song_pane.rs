@@ -174,18 +174,6 @@ mod imp {
 
 			obj.insert_action_group("song", Some(&self.carousel.imp().actions));
 
-			let hide_mouse_controller = gtk4::EventControllerMotion::new();
-			hide_mouse_controller.connect_enter(clone_!(self, move |obj, _, _x, _y| {
-				obj.imp().restart_cursor_timer();
-			}));
-			hide_mouse_controller.connect_leave(clone_!(self, move |obj, _| {
-				obj.imp().stop_cursor_timer();
-			}));
-			hide_mouse_controller.connect_motion(clone_!(self, move |obj, _, _x, _y| {
-				obj.imp().restart_cursor_timer();
-			}));
-			self.carousel.add_controller(hide_mouse_controller);
-
 			/* MIDI handling */
 			#[cfg(unix)]
 			{
@@ -396,6 +384,7 @@ mod imp {
 		// 	self.carousel.grab_focus();
 		// }
 
+		#[template_callback]
 		fn stop_cursor_timer(&self) {
 			self.obj().set_cursor(None);
 			if let Some(hide_cursor) = self.hide_cursor.borrow_mut().take() {
@@ -403,6 +392,7 @@ mod imp {
 			}
 		}
 
+		#[template_callback]
 		fn restart_cursor_timer(&self) {
 			self.stop_cursor_timer();
 			let obj = self.obj().clone();

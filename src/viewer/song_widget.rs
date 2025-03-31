@@ -119,12 +119,12 @@ mod imp {
 		type ParentType = gtk::Widget;
 		type Interfaces = (adw::Swipeable,);
 
-		fn class_init(klass: &mut Self::Class) {
+		fn class_init(_klass: &mut Self::Class) {
 			// klass.bind_template();
 			// klass.bind_template_callbacks();
 		}
 
-		fn instance_init(obj: &InitializingObject<Self>) {
+		fn instance_init(_obj: &InitializingObject<Self>) {
 			// obj.init_template();
 		}
 	}

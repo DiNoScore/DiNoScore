@@ -128,13 +128,20 @@
             </child>
             <child>
               <object class="GtkEventControllerScroll" id="scroll_gesture">
-                <property name="flags">vertical</property>
+                <property name="flags">vertical, discrete</property>
                 <signal name="scroll" handler="carousel_scroll" swapped="true" />
               </object>
             </child>
             <child>
               <object class="GtkEventControllerKey">
                 <signal name="key-pressed" handler="carousel_key" swapped="true" />
+              </object>
+            </child>
+            <child>
+              <object class="GtkEventControllerMotion">
+                <signal name="enter" handler="restart_cursor_timer" swapped="true" />
+                <signal name="leave" handler="stop_cursor_timer" swapped="true" />
+                <signal name="motion" handler="restart_cursor_timer" swapped="true" />
               </object>
             </child>
           </object>
