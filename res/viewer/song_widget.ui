@@ -1,0 +1,12 @@
+<interface>
+  <template class="ViewerSongWidget" parent="GtkWidget">
+    <child>
+      <object class="GtkGestureZoom" id="zoom_gesture">
+        <signal name="begin" handler="zoom_gesture_start" swapped="true" />
+        <signal name="end" handler="zoom_gesture_end" swapped="true" />
+        <signal name="cancel" handler="zoom_gesture_cancel" swapped="true" />
+        <signal name="scale-changed" handler="zoom_gesture_update" swapped="true" />
+      </object>
+    </child>
+  </template>
+</interface>

@@ -73,9 +73,6 @@ mod imp {
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		pub song: RefCell<Option<Arc<collection::SongMeta>>>,
 
-		/* Zoom */
-		#[template_child]
-		zoom_gesture: TemplateChild<gtk::GestureZoom>,
 		#[template_child]
 		scroll_gesture: TemplateChild<gtk::EventControllerScroll>,
 
@@ -102,7 +99,6 @@ mod imp {
 				library: Default::default(),
 				song: Default::default(),
 
-				zoom_gesture: Default::default(),
 				scroll_gesture: Default::default(),
 
 				last_interaction: std::time::Instant::now().into(),
@@ -115,16 +111,6 @@ mod imp {
 		fn class_init(klass: &mut Self::Class) {
 			klass.bind_template();
 			klass.bind_template_callbacks();
-
-			// klass.install_action("song.zoom-in", None, move |obj, _, _| {
-			// 	// obj.imp().zoom_in();
-			// });
-			// klass.install_action("song.zoom-out", None, move |obj, _, _| {
-			// 	// obj.imp().zoom_out();
-			// });
-			// klass.install_action("song.zoom-original", None, move |obj, _, _| {
-			// 	// obj.imp().zoom_reset();
-			// });
 		}
 
 		fn instance_init(obj: &InitializingObject<Self>) {
@@ -173,6 +159,13 @@ mod imp {
 			let obj: glib::BorrowedObject<super::SongPane> = self.obj();
 
 			obj.insert_action_group("song", Some(&self.carousel.imp().actions));
+
+			self.carousel.bind_property("zoom", &*self.zoom_button, "label")
+				.transform_to(|_, zoom: f64| {
+					Some(format!("{:.0}%", zoom * 100.0).to_value())
+				})
+				.sync_create()
+				.build();
 
 			/* MIDI handling */
 			#[cfg(unix)]
@@ -241,10 +234,11 @@ mod imp {
 			let relevant = parts.len() > 1;
 			self.part_selection.set_sensitive(relevant);
 			self.part_selection.set_visible(relevant);
+			/* Scroll to the requested page */
 			self.part_selection.set_selected(start_at_part);
 
 			// self.sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
-			self.carousel.activate_action("song.sizing-mode", Some(&scale_mode.action_string().to_variant())).unwrap();
+			// self.carousel.activate_action("song.sizing-mode", Some(&scale_mode.action_string().to_variant())).unwrap();
 
 			*self.song.borrow_mut() = Some(song);
 			obj.notify("song-name");
@@ -256,9 +250,6 @@ mod imp {
 			let now = std::time::Instant::now();
 			self.last_interaction.set(now);
 			self.song_load_time.set(Some(now));
-
-			/* Scroll to the requested page */
-			// carousel.scroll_to(&carousel.nth_page(*page as u32), false);
 		}
 
 		/// Unload the song
@@ -304,85 +295,6 @@ mod imp {
 				glib::Propagation::Proceed
 			}
 		}
-
-		/* Events from the zoom gesture */
-		#[template_callback]
-		fn zoom_gesture_start(&self) {
-		// 	log::debug!("Zoom begin");
-		// 	if let Some(song) = self.song.borrow_mut().as_mut() {
-		// 		song.zoom_before_gesture = Some(song.zoom);
-		// 	}
-		}
-
-		#[template_callback]
-		fn zoom_gesture_end(&self) {
-		// 	log::debug!("Zoom end");
-		// 	if let Some(song) = self.song.borrow_mut().as_mut() {
-		// 		song.zoom_before_gesture = None;
-		// 	}
-		}
-
-		#[template_callback]
-		fn zoom_gesture_cancel(&self) {
-		// 	log::debug!("Zoom cancel");
-		// 	self.update_manual_zoom(|song| {
-		// 		song.zoom_before_gesture
-		// 			.take()
-		// 			.expect("Should always be Some within after gesture started")
-		// 		// .unwrap_or(song.zoom)
-		// 	});
-		}
-
-		#[template_callback]
-		fn zoom_gesture_update(&self, scale: f64) {
-		// 	self.update_manual_zoom(|song| {
-		// 		let zoom = scale
-		// 			* song
-		// 				.zoom_before_gesture
-		// 				.expect("Should always be Some within after gesture started");
-		// 		zoom.clamp(0.6, 3.0)
-		// 	});
-		}
-
-		// /// One zoom in increment
-		// fn zoom_in(&self) {
-		// 	self.update_manual_zoom(|song| (song.zoom / 0.95).clamp(0.6, 3.0));
-		// }
-		// /// One zoom out increment
-		// fn zoom_out(&self) {
-		// 	self.update_manual_zoom(|song| (song.zoom * 0.95).clamp(0.6, 3.0));
-		// }
-		// /// Set zoom back to 100%
-		// fn zoom_reset(&self) {
-		// 	self.update_manual_zoom(|_| 1.0);
-		// }
-
-		// fn update_manual_zoom(&self, modify_zoom: impl FnOnce(&mut SongState) -> f64) {
-		// 	if let Some(song) = self.song.borrow_mut().as_mut() {
-		// 		song.zoom = modify_zoom(song);
-		// 		song.scale_mode = ScaleMode::Zoom(song.zoom as f32);
-		// 	}
-		// 	self.sizing_mode_action.set_state(&"manual".to_variant());
-		// 	self.update_content();
-		// 	self.on_activity();
-		// 	self.carousel.grab_focus();
-		// }
-
-		// pub(super) fn scale_mode_changed(&self, mode: glib::Variant) {
-		// 	/* Idempotent if the signal came from the action itself */
-		// 	self.sizing_mode_action.set_state(&mode.clone());
-		// 	if let Some(song) = self.song.borrow_mut().as_mut() {
-		// 		song.scale_mode = match mode.get::<String>().unwrap().as_str() {
-		// 			"fit-staves" => ScaleMode::FitStaves(3),
-		// 			"fit-columns" => ScaleMode::FitPages(2),
-		// 			"manual" => return,
-		// 			invalid => unreachable!("Invalid value: '{}'", invalid),
-		// 		};
-		// 	}
-		// 	self.update_content();
-		// 	self.on_activity();
-		// 	self.carousel.grab_focus();
-		// }
 
 		#[template_callback]
 		fn stop_cursor_timer(&self) {
@@ -470,22 +382,17 @@ mod imp {
 				.current_event_state()
 				.contains(gdk::ModifierType::CONTROL_MASK)
 			{
-				// self.update_manual_zoom(|song| {
-				// 	let zoom = if dy > 0.0 {
-				// 		song.zoom * 0.95
-				// 	} else {
-				// 		song.zoom / 0.95
-				// 	};
-				// 	zoom.clamp(0.6, 3.0)
-				// });
+				self.carousel.set_zoom(
+					(if dy > 0.0 {
+						self.carousel.zoom() * 0.95
+					} else {
+						self.carousel.zoom() / 0.95
+					})
+					.clamp(0.6, 3.0)
+				);
 				glib::Propagation::Stop
 			} else {
-				if dy > 0.0 {
-					self.carousel.next_page();
-				} else {
-					self.carousel.previous_page_strict();
-				}
-				glib::Propagation::Stop
+				glib::Propagation::Proceed
 			}
 		}
 

@@ -37,7 +37,7 @@ pub struct LibrarySong {
 pub enum ScaleMode {
 	FitStaves(u32),
 	FitPages(u32),
-	Zoom(f32),
+	Zoom(f64),
 }
 
 impl Default for ScaleMode {

@@ -31,10 +31,12 @@
               <object class="GtkStringList">
               </object>
             </property>
-            <property name="selected"
-                      bind-source="carousel"
-                      bind-property="part-index"
-                      bind-flags="bidirectional" />
+            <property
+                name="selected"
+                bind-source="carousel"
+                bind-property="part-index"
+                bind-flags="bidirectional"
+            />
           </object>
         </child>
         <child type="start">
@@ -113,14 +115,6 @@
             <property name="overflow">hidden</property>
             <signal name="progress" handler="page_load_progress" swapped="true" />
             <child>
-              <object class="GtkGestureZoom" id="zoom_gesture">
-                <signal name="begin" handler="zoom_gesture_start" swapped="true" />
-                <signal name="end" handler="zoom_gesture_end" swapped="true" />
-                <signal name="cancel" handler="zoom_gesture_cancel" swapped="true" />
-                <signal name="scale-changed" handler="zoom_gesture_update" swapped="true" />
-              </object>
-            </child>
-            <child>
               <object class="GtkGestureClick">
                 <signal name="pressed" handler="carousel_button_press" swapped="true" />
                 <signal name="released" handler="carousel_button_release" swapped="true" />
@@ -128,7 +122,7 @@
             </child>
             <child>
               <object class="GtkEventControllerScroll" id="scroll_gesture">
-                <property name="flags">vertical, discrete</property>
+                <property name="flags">vertical|discrete</property>
                 <signal name="scroll" handler="carousel_scroll" swapped="true" />
               </object>
             </child>

@@ -46,8 +46,7 @@ impl SongWidget {
 			song.clone(),
 			rendered_pages,
 			self.width() as f64,
-			self.height() as f64,
-			mode
+			self.height() as f64
 		);
 		*self.imp().state.borrow_mut() = Some(state);
 	}
@@ -96,8 +95,8 @@ impl SongWidget {
 mod imp {
 	use super::*;
 
-	#[derive(Default, Properties)]
-	// #[template(resource = "/de/piegames/dinoscore/viewer/song_widget.ui")]
+	#[derive(Default, Properties, CompositeTemplate)]
+	#[template(resource = "/de/piegames/dinoscore/viewer/song_widget.ui")]
 	#[properties(wrapper_type = super::SongWidget)]
 	pub struct SongWidget {
 		pub(super) state: RefCell<Option<SongState>>,
@@ -109,7 +108,12 @@ mod imp {
 		pub(super) scroll_animation: OnceCell<adw::SpringAnimation>,
 		pub(super) swipe_tracker: OnceCell<adw::SwipeTracker>,
 		pub actions: gio::SimpleActionGroup,
+		/* Rendering offset, for swiping and animations */
 		pub(super) offset: Cell<f64>,
+		#[property(get, set =  |obj: &&SongWidget, val| obj.set_zoom(val), construct, default = 1.0)]
+		zoom: Cell<f64>,
+		/* Backup for when a gesture starts. Always Some during a gesture */
+		zoom_before_gesture: Cell<Option<f64>>,
 	}
 
 	#[glib::object_subclass]
@@ -119,13 +123,13 @@ mod imp {
 		type ParentType = gtk::Widget;
 		type Interfaces = (adw::Swipeable,);
 
-		fn class_init(_klass: &mut Self::Class) {
-			// klass.bind_template();
-			// klass.bind_template_callbacks();
+		fn class_init(klass: &mut Self::Class) {
+			klass.bind_template();
+			klass.bind_template_callbacks();
 		}
 
-		fn instance_init(_obj: &InitializingObject<Self>) {
-			// obj.init_template();
+		fn instance_init(obj: &InitializingObject<Self>) {
+			obj.init_template();
 		}
 	}
 
@@ -169,8 +173,24 @@ mod imp {
 				gio::ActionEntry::builder("sizing-mode")
 					.parameter_type(Some(&String::static_variant_type()))
 					.state("manual".to_variant())
-					.activate(clone_!(self, move |obj, _g, _a, p| {
-						// obj.imp().scale_mode_changed(p.unwrap().clone());
+					.activate(clone_!(self, move |obj, _g, a, p| {
+						a.set_state(p.unwrap());
+						obj.imp().scale_mode_changed();
+					}))
+					.build(),
+					gio::ActionEntry::builder("zoom-in")
+						.activate(clone_!(self, move |obj, _g, a, p| {
+							obj.imp().zoom_in();
+						}))
+						.build(),
+				gio::ActionEntry::builder("zoom-out")
+					.activate(clone_!(self, move |obj, _g, a, p| {
+						obj.imp().zoom_out();
+					}))
+					.build(),
+				gio::ActionEntry::builder("zoom-original")
+					.activate(clone_!(self, move |obj, _g, a, p| {
+						obj.imp().zoom_reset();
 					}))
 					.build(),
 			]);
@@ -271,9 +291,7 @@ mod imp {
 			 * This means that we must keep everything else constant (not trigger any signals).
 			 */
 			if obj.width() != state.layout.width as i32 || obj.height() != state.layout.height as i32 {
-				state.change_size(obj.width() as f64, obj.height() as f64);
-				/* Cancel the scrolling animation on resize, as the render_offset is now invalid */
-				self.scroll_animation.get().unwrap().skip();
+				self.update_layout(state);
 			}
 
 			let layout = &state.layout;
@@ -446,7 +464,7 @@ mod imp {
 		}
 	}
 
-	// #[gtk::template_callbacks]
+	#[gtk::template_callbacks]
 	impl SongWidget {
 		fn get_part_index(&self) -> u32 {
 			self
@@ -491,8 +509,9 @@ mod imp {
 			self.obj().queue_draw();
 		}
 
+		#[track_caller]
 		pub(super) fn get_action(&self, name: &str) -> gio::SimpleAction {
-			self.actions.lookup_action(name).unwrap()
+			self.actions.lookup_action(name).expect("Action not found")
 				.downcast::<gio::SimpleAction>()
 				.unwrap()
 		}
@@ -597,6 +616,127 @@ mod imp {
 			self.obj().queue_draw();
 			self.obj().grab_focus();
 		}
+
+		fn set_zoom(&self, zoom: f64) {
+			self.zoom.set(zoom);
+			/* We can't use `get_action` here, because the zoom may be set before actions are initialized */
+			if let Some(scale_mode) = self.actions.lookup_action("sizing-mode") {
+				scale_mode.activate(Some(&"manual".into()));
+			}
+			self.obj().notify("zoom");
+
+			if let Some(state) = self.state.borrow_mut().as_mut() {
+				self.update_layout(state);
+				// self.on_activity();
+			}
+			self.obj().queue_draw();
+		}
+
+		fn get_scale_mode(&self) -> ScaleMode {
+			let scale_mode = self.get_action("sizing-mode").state().unwrap().get::<String>().unwrap();
+			match &*scale_mode {
+				"fit-staves" => ScaleMode::FitStaves(3),
+				"fit-columns" => ScaleMode::FitPages(2),
+				"manual" => ScaleMode::Zoom(self.zoom.get()),
+				other => panic!("Invalid value for `scale-mode` '{}'", other),
+			}
+		}
+
+		fn scale_mode_changed(&self) {
+			if let Some(state) = self.state.borrow_mut().as_mut() {
+				self.update_layout(state);
+				// self.on_activity();
+				self.grab_focus();
+			}
+		}
+
+		/* Widget size or scale mode changed */
+		fn update_layout(&self, state: &mut SongState) {
+			let obj = self.obj();
+			let zoom = state.change_size(obj.width() as f64, obj.height() as f64, self.get_scale_mode());
+
+			{
+				self.zoom.set(zoom);
+				/* It's rude to trigger potential layout changes during snapshot */
+				let obj = obj.clone();
+				glib::spawn_future_local(async move {
+					obj.notify("zoom");
+				});
+			}
+
+			/* Cancel the scrolling animation, as the potentially different number of pages invalidates render_offset */
+			self.scroll_animation.get().unwrap().skip();
+			obj.queue_draw();
+		}
+
+		/// One zoom in increment
+		fn zoom_in(&self) {
+			self.zoom.set((self.zoom.get() / 0.95).clamp(0.6, 3.0));
+			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			if let Some(state) = self.state.borrow_mut().as_mut() {
+				self.update_layout(state);
+				// self.on_activity();
+			}
+			self.obj().grab_focus();
+		}
+
+		/// One zoom out increment
+		fn zoom_out(&self) {
+			self.zoom.set((self.zoom.get() * 0.95).clamp(0.6, 3.0));
+			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			if let Some(state) = self.state.borrow_mut().as_mut() {
+				self.update_layout(state);
+				// self.on_activity();
+			}
+			self.obj().grab_focus();
+		}
+
+		/// Set zoom back to 100%
+		fn zoom_reset(&self) {
+			self.zoom.set(1.0);
+			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			if let Some(state) = self.state.borrow_mut().as_mut() {
+				self.update_layout(state);
+				// self.on_activity();
+			}
+			self.obj().grab_focus();
+		}
+
+		/* Events from the zoom gesture */
+		#[template_callback]
+		fn zoom_gesture_start(&self) {
+			log::debug!("Zoom begin");
+			self.zoom_before_gesture.set(Some(self.zoom.get()));
+		}
+
+		#[template_callback]
+		fn zoom_gesture_end(&self) {
+			log::debug!("Zoom end");
+			self.zoom_before_gesture.set(None);
+		}
+
+		#[template_callback]
+		fn zoom_gesture_cancel(&self) {
+			log::debug!("Zoom cancel");
+			self.obj().set_zoom(
+				self.zoom_before_gesture
+					.take()
+					.expect("Should always be Some within after gesture started")
+			);
+		}
+
+		#[template_callback]
+		fn zoom_gesture_update(&self, scale: f64) {
+			self.obj().set_zoom(
+				(
+					scale
+					* self
+						.zoom_before_gesture
+						.get()
+						.expect("Should always be Some within after gesture started")
+				).clamp(0.6, 3.0)
+			);
+		}
 	}
 }
 
@@ -617,10 +757,6 @@ pub(self) struct SongState {
 	position: collection::StaffIndex,
 	layout: layout::PageLayout,
 	renderer: Sender<(collection::PageIndex, Option<i32>)>,
-	zoom: f64,
-	scale_mode: ScaleMode,
-	/* Backup for when a gesture starts */
-	zoom_before_gesture: Option<f64>,
 }
 
 impl SongState {
@@ -636,7 +772,6 @@ impl SongState {
 		>,
 		width: f64,
 		height: f64,
-		scale_mode: ScaleMode,
 	) -> Self {
 		// let layout = Arc::new(layout::layout_fixed_width(&song, width, height, 1.0, 10.0));
 		// let layout = Arc::new(layout::layout_fixed_height(&song, width, height));
@@ -647,27 +782,25 @@ impl SongState {
 			position: 0.into(),
 			layout,
 			renderer,
-			zoom: 1.0,
-			scale_mode,
-			zoom_before_gesture: None,
 		}
 	}
 
-	fn change_size(&mut self, width: f64, height: f64) {
+	/* Returns the calculated zoom. */
+	fn change_size(&mut self, width: f64, height: f64, scale_mode: ScaleMode) -> f64 {
 		// self.layout = Arc::new(layout::layout_fixed_width(&self.song, width, height, zoom, 10.0));
 		// self.layout = Arc::new(layout::layout_fixed_height(&self.song, width, height));
-		match self.scale_mode {
-			ScaleMode::Zoom(_) => {},
+		let zoom = match scale_mode {
+			ScaleMode::Zoom(zoom) => zoom,
 			ScaleMode::FitStaves(num) => {
-				self.zoom = layout::find_scale_for_fixed_staves(&self.song, width, height, num)
+				layout::find_scale_for_fixed_staves(&self.song, width, height, num)
 			},
 			ScaleMode::FitPages(num) => {
-				self.zoom = layout::find_scale_for_fixed_columns(&self.song, width, height, num)
+				layout::find_scale_for_fixed_columns(&self.song, width, height, num)
 			},
-		}
+		};
 
 		self.layout = layout::layout_fixed_scale(
-			&self.song, width, height, self.zoom,
+			&self.song, width, height, zoom,
 		);
 
 		/* Calculate the maximum effective page width for this layout */
@@ -692,6 +825,8 @@ impl SongState {
 				Some(render_width as i32),
 			))
 			.unwrap();
+
+		zoom
 	}
 
 	/* On which staff does our current page start? */
