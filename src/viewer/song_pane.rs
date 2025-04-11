@@ -255,13 +255,14 @@ mod imp {
 			}
 		}
 
-		/// Should be called on every user action. Update the time played statistic
+		/// Should be called on every user action. Updates the time played statistic
+		#[template_callback]
 		fn on_activity(&self) {
 			let last_interaction = std::time::Instant::now();
 			let diff = last_interaction
 				.duration_since(self.last_interaction.get())
 				.as_secs()
-				/* Consider everything about 3 minutes as "idle" */
+				/* Consider everything above 3 minutes as "idle" */
 				.min(180);
 			/* Don't update too often */
 			if diff < 5 {
@@ -276,7 +277,7 @@ mod imp {
 			let library = &mut self.library.get().unwrap().borrow_mut();
 			let stats = library.stats.get_mut(&song.song_uuid).unwrap();
 			stats.on_update(diff);
-			// stats.scale_options = Some(song.scale_mode);
+			stats.scale_options = Some(self.carousel.get_scale_mode());
 
 			if let Some(song_load_time) = self.song_load_time.get() {
 				/* Only register the song as played after 90 seconds */

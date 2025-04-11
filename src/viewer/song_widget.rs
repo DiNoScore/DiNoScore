@@ -11,7 +11,7 @@ glib::wrapper! {
 }
 
 impl SongWidget {
-	fn get_scale_mode(&self) -> ScaleMode {
+	pub fn get_scale_mode(&self) -> ScaleMode {
 		let scale_mode = self.imp().get_action("sizing-mode").state().unwrap().get::<String>().unwrap();
 		match &*scale_mode {
 			"fit-staves" => ScaleMode::FitStaves(3),
@@ -162,6 +162,13 @@ mod imp {
 			Box::leak(Box::new([
 				Signal::builder("progress")
 					.param_types([f64::static_type()])
+					.build(),
+				/* Changing a page counts as "activity", changing zoom etc. does not
+				 * For simplicity, page changes induced by recize also count as activity, even though
+				 * one may consider them as false positive
+				 */
+				Signal::builder("activity")
+					.param_types([] as [glib::subclass::SignalType; 0])
 					.build(),
 			]))
 		}
@@ -629,6 +636,7 @@ mod imp {
 
 			self.obj().queue_draw();
 			self.obj().grab_focus();
+			self.obj().emit_by_name::<()>("activity", &[]);
 		}
 
 		fn set_zoom(&self, zoom: f64) {
@@ -641,7 +649,6 @@ mod imp {
 
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
-				// self.on_activity();
 			}
 			self.obj().queue_draw();
 		}
@@ -649,7 +656,6 @@ mod imp {
 		fn scale_mode_changed(&self) {
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
-				// self.on_activity();
 				self.grab_focus();
 			}
 		}
@@ -679,7 +685,6 @@ mod imp {
 			self.get_action("sizing-mode").set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
-				// self.on_activity();
 			}
 			self.obj().grab_focus();
 		}
@@ -690,7 +695,6 @@ mod imp {
 			self.get_action("sizing-mode").set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
-				// self.on_activity();
 			}
 			self.obj().grab_focus();
 		}
@@ -701,7 +705,6 @@ mod imp {
 			self.get_action("sizing-mode").set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
-				// self.on_activity();
 			}
 			self.obj().grab_focus();
 		}
@@ -774,7 +777,6 @@ mod imp {
 					obj.set_cursor_from_name(Some("none"));
 				},
 			));
-			// self.on_activity();
 		}
 
 		/* Focus on click */

@@ -110,11 +110,14 @@
         <property name="vexpand">True</property>
         <property name="hexpand">True</property>
         <child type="overlay">
+
           <object class="ViewerSongWidget" id="carousel">
             <property name="focusable">True</property>
             <property name="overflow">hidden</property>
             <signal name="progress" handler="page_load_progress" swapped="true" />
+            <signal name="activity" handler="on_activity" swapped="true" />
           </object>
+
         </child>
         <child type="overlay">
           <object class="GtkProgressBar" id="song_progress">
@@ -126,6 +129,7 @@
         </child>
       </object>
     </child>
+
     <child>
       <object class="GtkShortcutController">
         <property name="scope">managed</property>
