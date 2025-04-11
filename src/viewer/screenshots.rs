@@ -99,6 +99,8 @@ fn create_screenshots() -> anyhow::Result<()> {
 		let song = window.song();
 
 		library.select_first_entry();
+		/* Wait for the preview image to load */
+		glib::timeout_future(std::time::Duration::from_secs(1)).await;
 		yield_now().await;
 		take_screenshot("gallery/01-overview.png")
 			.context("Failed to take screenshot")
@@ -113,15 +115,15 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.context("Failed to take screenshot")
 			.unwrap();
 
-		song.part_selection().popup();
+		song.part_selection().last_child().unwrap().downcast::<gtk::Popover>().unwrap().popup();
 		yield_now().await;
 		take_screenshot("gallery/03-parts.png")
 			.context("Failed to take screenshot")
 			.unwrap();
-		song.part_selection().popdown();
+		song.part_selection().last_child().unwrap().downcast::<gtk::Popover>().unwrap().popdown();
 		yield_now().await;
 
-		song.set_zoom_mode("fit-staves");
+		song.carousel().set_scale_mode(library::ScaleMode::FitStaves(3));
 		yield_now().await;
 		song.zoom_button().activate();
 		yield_now().await;
@@ -147,14 +149,14 @@ fn create_screenshots() -> anyhow::Result<()> {
 
 	application.run_with_args(&[] as &[&str]);
 
-	// /* Send SIGTERM to sway */
-	// let mut kill = std::process::Command::new("kill")
-	// 	.args(["-s", "TERM", &sway.id().to_string()])
-	// 	.spawn()?;
-	// kill.wait()?;
+	/* Send SIGTERM to sway */
+	let mut kill = std::process::Command::new("kill")
+		.args(["-s", "TERM", &sway.id().to_string()])
+		.spawn()?;
+	kill.wait()?;
 
-	// sway.wait()?;
-	// sway.kill()?;
+	sway.wait()?;
+	sway.kill()?;
 
 	Ok(())
 }

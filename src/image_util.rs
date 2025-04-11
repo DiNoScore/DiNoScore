@@ -168,12 +168,12 @@ pdf = Pdf.open(BytesIO(bytes(pdf)))
 
 pages = []
 for page in pdf.pages:
-buf = BytesIO(bytearray())
-dst = Pdf.new()
-dst.pages.append(page)
-dst.save(buf)
-del dst
-pages += [buf.getvalue()]
+	buf = BytesIO(bytearray())
+	dst = Pdf.new()
+	dst.pages.append(page)
+	dst.save(buf)
+	del dst
+	pages += [buf.getvalue()]
 			"#,
 			None,
 			Some(locals),

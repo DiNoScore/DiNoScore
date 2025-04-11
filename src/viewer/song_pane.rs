@@ -36,6 +36,11 @@ impl SongPane {
 	pub fn zoom_button(&self) -> gtk::MenuButton {
 		self.imp().zoom_button.get()
 	}
+
+	#[cfg(test)]
+	pub fn part_selection(&self) -> gtk::DropDown {
+		self.imp().part_selection.get()
+	}
 }
 
 mod imp {

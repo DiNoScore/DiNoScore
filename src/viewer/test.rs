@@ -108,20 +108,17 @@ fn test_viewer_gui() -> anyhow::Result<()> {
 		yield_now().await;
 
 		/* Check that we actually are in the second piece */
-		assert_eq!(song.part_selection().active_id(), Some("22".into()));
-		assert!(song.carousel().position() > 0.0);
+		assert_eq!(song.carousel().part_index(), 1);
 
 		/* Change the zoom level */
 		log::info!("Change zoom level");
-		song.set_zoom_mode("fit-staves");
+		song.carousel().set_scale_mode(library::ScaleMode::FitStaves(3));
 		yield_now().await;
 		glib::timeout_future(std::time::Duration::from_secs(10)).await;
 		yield_now().await;
 
-		// Disabled, looks like a bug in libadwaita :(
-		// /* Check that we are still in the correct song */
-		// assert_eq!(song.part_selection().active_id(), Some("22".into()));
-		// assert!(song.carousel().position() > 0.0);
+		/* Check that we are still in the correct song */
+		assert_eq!(song.carousel().part_index(), 1);
 
 		/* Unload the song */
 		log::info!("Unload song");
@@ -135,11 +132,11 @@ fn test_viewer_gui() -> anyhow::Result<()> {
 		yield_now().await;
 
 		/* Check that the zoom level was saved (and also the position is correct) */
-		assert_eq!(song.zoom_mode(), library::ScaleMode::FitStaves(3));
-		assert_eq!(song.part_selection().active_id(), Some("22".into()));
-		assert!(song.carousel().position() > 0.0);
+		assert_eq!(song.carousel().get_scale_mode(), library::ScaleMode::FitStaves(3));
+		assert_eq!(song.carousel().part_index(), 1);
 
 		window.close();
+		log::info!("Test should end now");
 	});
 
 	broadway.kill()?;

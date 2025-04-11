@@ -31,11 +31,8 @@ impl LibraryPane {
 
 	#[cfg(test)]
 	pub fn select_first_entry(&self) {
-		self.imp()
-			.library_grid
-			.model()
-			.unwrap()
-			.select_item(0, true);
+		self.imp().library_grid.scroll_to(0, gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS, None);
+		self.imp().on_item_selected();
 	}
 
 	#[cfg(test)]
