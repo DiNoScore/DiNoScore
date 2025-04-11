@@ -89,7 +89,11 @@ mod imp {
 		fn constructed(&self) {
 			self.parent_constructed();
 			let obj = self.obj();
-			self.editor.set_draw_func(clone!(@weak obj => @default-panic, move |editor, ctx, w, h| obj.imp().editor_draw(editor, ctx, w, h)));
+			self.editor.set_draw_func(clone!(
+				#[weak] obj,
+				#[upgrade_or_panic]
+				move |editor, ctx, w, h| obj.imp().editor_draw(editor, ctx, w, h)
+			));
 		}
 	}
 
@@ -118,19 +122,20 @@ mod imp {
 			let file = self.file.get().unwrap().borrow();
 			*self.current_page.borrow_mut() = current_page.map(|page_index| {
 				let (image, bars) = file.get_page(page_index);
-				let (renderer, update_page) = spawn_song_renderer(page_index, image.clone());
+				let (renderer, mut update_page) = spawn_song_renderer(page_index, image.clone());
 
-				update_page.attach(
-					None,
-					clone_!(self, move |obj, (image, index)| {
-						if let Some(page) = obj.imp().current_page.borrow_mut().as_mut() {
-							if index == page.page {
-								page.image = Some(image);
+				glib::MainContext::default().spawn_local(
+					clone!(#[weak(rename_to = obj)] self.obj(), #[upgrade_or_panic] async move {
+						use futures::StreamExt;
+						while let Some((image, index)) = update_page.next().await {
+							if let Some(page) = obj.imp().current_page.borrow_mut().as_mut() {
+								if index == page.page {
+									page.image = Some(image);
+								}
 							}
+							obj.imp().editor.queue_draw();
 						}
-						obj.imp().editor.queue_draw();
-						glib::ControlFlow::Continue
-					}),
+					})
 				);
 
 				renderer.send(self.editor.get().width()).unwrap();
@@ -1023,15 +1028,15 @@ impl PageState {
 fn spawn_song_renderer(
 	index: PageIndex,
 	page: Arc<PageImage>,
-) -> (Sender<i32>, glib::Receiver<(gdk::Texture, PageIndex)>) {
+) -> (Sender<i32>, futures::channel::mpsc::UnboundedReceiver<(gdk::Texture, PageIndex)>) {
 	let (in_tx, in_rx) = channel();
-	let (out_tx, out_rx) = glib::MainContext::channel(glib::Priority::DEFAULT);
+	let (out_tx, out_rx) =futures::channel::mpsc::unbounded();
 
 	std::thread::spawn(move || {
 		/* For a start, render at minimum resolution. This should not take long */
 		let mut last_width = 250;
 		let image = gdk::Texture::for_pixbuf(&page.render_scaled(250));
-		if out_tx.send((image, index)).is_err() {
+		if out_tx.unbounded_send((image, index)).is_err() {
 			return;
 		}
 		log::debug!("Background renderer ready");
@@ -1071,7 +1076,7 @@ fn spawn_song_renderer(
 						let image = gdk::Texture::for_pixbuf(&page.render_scaled(actual_width));
 
 						/* Send it off */
-						if out_tx.send((image, index)).is_err() {
+						if out_tx.unbounded_send((image, index)).is_err() {
 							return;
 						}
 					}

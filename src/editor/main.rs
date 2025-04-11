@@ -36,7 +36,7 @@ async fn yield_now() {
 }
 
 fn create_listmodel<T>(items: &[&T]) -> gio::ListStore
-where T: glib::StaticType + glib::IsA<glib::Object>
+where T: StaticType + IsA<glib::Object>
 {
 	let store = gio::ListStore::with_type(T::static_type());
 	for &item in items {
@@ -125,21 +125,21 @@ mod imp {
 			let application = obj.application().unwrap();
 
 			let new = gio::SimpleAction::new("new", None);
-			new.connect_activate(clone!(@weak obj => @default-panic, move |_, _| {
+			new.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
 				obj.imp().unload_and_clear();
 			}));
 			application.add_action(&new);
 			application.set_accels_for_action("app.new", &["<Primary>N"]);
 
 			let open = gio::SimpleAction::new("open", None);
-			open.connect_activate(clone!(@weak obj => @default-panic, move |_, _| {
+			open.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
 				obj.imp().load_with_dialog();
 			}));
 			application.add_action(&open);
 			application.set_accels_for_action("app.open", &["<Primary>O"]);
 
 			let save = gio::SimpleAction::new("save", None);
-			save.connect_activate(clone!(@weak obj => @default-panic, move |_, _| {
+			save.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
 				obj.imp().save_with_ui();
 			}));
 			application.add_action(&save);
@@ -186,13 +186,13 @@ mod imp {
 			choose.open(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(@weak obj => @default-panic, move |response| {
+				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
 					let Ok(file) = response else { return; };
 					let path = file.path().unwrap();
 					let progress_dialog = dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
 					glib::MainContext::default().spawn_local_with_priority(
 						glib::source::Priority::DEFAULT_IDLE,
-						clone!(@strong obj => async move {
+						clone!(#[strong] obj, async move {
 							yield_now().await;
 
 							let song = SongFile::new(path, &mut Default::default()).unwrap();
@@ -261,7 +261,7 @@ mod imp {
 			choose.save(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(@weak obj => @default-panic, move |response| {
+				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
 					let Ok(file) = response else { return; };
 					obj.imp().file.borrow().save(file.path().unwrap()).unwrap();
 				}),
@@ -314,11 +314,11 @@ mod imp {
 			choose.open_multiple(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(@weak obj => @default-panic, move |response| {
+				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
 					let Ok(files) = response else { return; };
 					glib::MainContext::default().spawn_local_with_priority(
 						glib::source::Priority::DEFAULT_IDLE,
-						clone!(@strong obj => async move {
+						clone!(#[strong] obj, async move {
 							obj.clone().imp().load_pages(
 								&obj,
 								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
@@ -352,11 +352,11 @@ mod imp {
 			choose.open_multiple(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(@weak obj => @default-panic, move |response| {
+				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
 					let Ok(files) = response else { return; };
 					glib::MainContext::default().spawn_local_with_priority(
 						glib::source::Priority::DEFAULT_IDLE,
-						clone!(@strong obj => async move {
+						clone!(#[strong] obj, async move {
 							obj.clone().imp().load_pages(
 								&obj,
 								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
@@ -614,8 +614,8 @@ fn main() -> anyhow::Result<()> {
 	#[cfg(debug_assertions)]
 	{
 		pipeline::pipe! {
-			gvdb::gresource::GResourceXMLDocument::from_file("res/editor/resources.gresource.xml".as_ref()).unwrap()
-			=> gvdb::gresource::GResourceBuilder::from_xml(_).unwrap()
+			gvdb::gresource::XmlManifest::from_file("res/editor/resources.gresource.xml".as_ref()).unwrap()
+			=> gvdb::gresource::BundleBuilder::from_xml(_).unwrap()
 			=> _.build().unwrap()
 			=> glib::Bytes::from_owned
 			=> &gio::Resource::from_data(&_)?
