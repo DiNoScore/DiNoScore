@@ -114,30 +114,6 @@
             <property name="focusable">True</property>
             <property name="overflow">hidden</property>
             <signal name="progress" handler="page_load_progress" swapped="true" />
-            <child>
-              <object class="GtkGestureClick">
-                <signal name="pressed" handler="carousel_button_press" swapped="true" />
-                <signal name="released" handler="carousel_button_release" swapped="true" />
-              </object>
-            </child>
-            <child>
-              <object class="GtkEventControllerScroll" id="scroll_gesture">
-                <property name="flags">vertical|discrete</property>
-                <signal name="scroll" handler="carousel_scroll" swapped="true" />
-              </object>
-            </child>
-            <child>
-              <object class="GtkEventControllerKey">
-                <signal name="key-pressed" handler="carousel_key" swapped="true" />
-              </object>
-            </child>
-            <child>
-              <object class="GtkEventControllerMotion">
-                <signal name="enter" handler="restart_cursor_timer" swapped="true" />
-                <signal name="leave" handler="stop_cursor_timer" swapped="true" />
-                <signal name="motion" handler="restart_cursor_timer" swapped="true" />
-              </object>
-            </child>
           </object>
         </child>
         <child type="overlay">

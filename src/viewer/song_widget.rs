@@ -11,11 +11,29 @@ glib::wrapper! {
 }
 
 impl SongWidget {
+	fn get_scale_mode(&self) -> ScaleMode {
+		let scale_mode = self.imp().get_action("sizing-mode").state().unwrap().get::<String>().unwrap();
+		match &*scale_mode {
+			"fit-staves" => ScaleMode::FitStaves(3),
+			"fit-columns" => ScaleMode::FitPages(2),
+			"manual" => ScaleMode::Zoom(self.zoom()),
+			other => panic!("Invalid value for `scale-mode` '{}'", other),
+		}
+	}
+
+	pub fn set_scale_mode(&self, scale_mode: ScaleMode) {
+		let action = self.imp().get_action("sizing-mode");
+		match scale_mode {
+			ScaleMode::FitStaves(_) => action.activate(Some(&"fit-staves".to_variant())),
+			ScaleMode::FitPages(_) => action.activate(Some(&"fit-columns".to_variant())),
+			ScaleMode::Zoom(zoom) => self.set_zoom(zoom),
+		}
+	}
+
 	pub fn load_song(
 		&self,
 		song: &Arc<collection::SongMeta>,
 		pages: Arc<TiVec<collection::PageIndex, PageImage>>,
-		mode: ScaleMode,
 	) {
 		let rendered_pages = Rc::new(
 			std::iter::repeat(Default::default())
@@ -65,7 +83,7 @@ impl SongWidget {
 		}
 	}
 
-	/* Go back one page or until the repitition */
+	/* Go back one page or until the repetition */
 	pub fn previous_page(&self) {
 		if self.imp().get_action("previous-page").is_enabled() {
 			self.imp().previous_page();
@@ -114,6 +132,10 @@ mod imp {
 		zoom: Cell<f64>,
 		/* Backup for when a gesture starts. Always Some during a gesture */
 		zoom_before_gesture: Cell<Option<f64>>,
+		/* Automatically hide the cursor after some seconds of inactivity */
+		hide_cursor: RefCell<Option<glib::source::SourceId>>,
+		#[template_child]
+		scroll_gesture: TemplateChild<gtk::EventControllerScroll>,
 	}
 
 	#[glib::object_subclass]
@@ -178,18 +200,18 @@ mod imp {
 						obj.imp().scale_mode_changed();
 					}))
 					.build(),
-					gio::ActionEntry::builder("zoom-in")
-						.activate(clone_!(self, move |obj, _g, a, p| {
-							obj.imp().zoom_in();
-						}))
-						.build(),
+				gio::ActionEntry::builder("zoom-in")
+					.activate(clone_!(self, move |obj, _g, _a, _p| {
+						obj.imp().zoom_in();
+					}))
+					.build(),
 				gio::ActionEntry::builder("zoom-out")
-					.activate(clone_!(self, move |obj, _g, a, p| {
+					.activate(clone_!(self, move |obj, _g, _a, _p| {
 						obj.imp().zoom_out();
 					}))
 					.build(),
 				gio::ActionEntry::builder("zoom-original")
-					.activate(clone_!(self, move |obj, _g, a, p| {
+					.activate(clone_!(self, move |obj, _g, _a, _p| {
 						obj.imp().zoom_reset();
 					}))
 					.build(),
@@ -241,14 +263,6 @@ mod imp {
 					obj.queue_draw();
 				}
 			));
-
-			// let animation: libadwaita::TimedAnimation = adw::TimedAnimation::builder()
-			// 	.value_to(0.0)
-			// 	.duration(200)
-			// 	.easing(adw::Easing::EaseOutCubic)
-			// 	.widget(&*obj)
-			// 	.target(&target)
-			// 	.build();
 
 			/* Same as in Loupe and AdwCarousel */
 			const SCROLL_DAMPING_RATIO: f64 = 1.0; /* Perfectly damped */
@@ -632,16 +646,6 @@ mod imp {
 			self.obj().queue_draw();
 		}
 
-		fn get_scale_mode(&self) -> ScaleMode {
-			let scale_mode = self.get_action("sizing-mode").state().unwrap().get::<String>().unwrap();
-			match &*scale_mode {
-				"fit-staves" => ScaleMode::FitStaves(3),
-				"fit-columns" => ScaleMode::FitPages(2),
-				"manual" => ScaleMode::Zoom(self.zoom.get()),
-				other => panic!("Invalid value for `scale-mode` '{}'", other),
-			}
-		}
-
 		fn scale_mode_changed(&self) {
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
@@ -653,7 +657,7 @@ mod imp {
 		/* Widget size or scale mode changed */
 		fn update_layout(&self, state: &mut SongState) {
 			let obj = self.obj();
-			let zoom = state.change_size(obj.width() as f64, obj.height() as f64, self.get_scale_mode());
+			let zoom = state.change_size(obj.width() as f64, obj.height() as f64, obj.get_scale_mode());
 
 			{
 				self.zoom.set(zoom);
@@ -736,6 +740,79 @@ mod imp {
 						.expect("Should always be Some within after gesture started")
 				).clamp(0.6, 3.0)
 			);
+		}
+
+		#[template_callback]
+		fn on_key(&self, keyval: gdk::Key) -> glib::Propagation {
+			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left {
+				self.obj().previous_page();
+				glib::Propagation::Stop
+			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right {
+				self.obj().next_page();
+				glib::Propagation::Stop
+			} else {
+				glib::Propagation::Proceed
+			}
+		}
+
+		#[template_callback]
+		fn stop_cursor_timer(&self) {
+			self.obj().set_cursor(None);
+			if let Some(hide_cursor) = self.hide_cursor.borrow_mut().take() {
+				hide_cursor.remove();
+			}
+		}
+
+		#[template_callback]
+		fn restart_cursor_timer(&self) {
+			self.stop_cursor_timer();
+			let obj = self.obj().clone();
+			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
+				std::time::Duration::from_secs(4),
+				move || {
+					obj.imp().hide_cursor.borrow_mut().take();
+					obj.set_cursor_from_name(Some("none"));
+				},
+			));
+			// self.on_activity();
+		}
+
+		/* Focus on click */
+		#[template_callback]
+		fn on_button_press(&self, _n_press: i32, _x: f64, _y: f64) {
+			self.obj().grab_focus();
+		}
+
+		#[template_callback]
+		fn on_button_release(&self, _n_press: i32, x: f64, _y: f64) {
+			let x = x / self.obj().width() as f64;
+			if (0.0..0.3).contains(&x) {
+				self.obj().previous_page();
+			} else if (0.7..1.0).contains(&x) {
+				self.obj().next_page();
+			}
+		}
+
+		/* Scroll events on the page, for zooming */
+		#[template_callback]
+		fn on_scroll(&self, _dx: f64, dy: f64) -> glib::Propagation {
+			if self
+				.scroll_gesture
+				.current_event_state()
+				.contains(gdk::ModifierType::CONTROL_MASK)
+			{
+				self.obj().set_zoom(
+					(if dy > 0.0 {
+						self.obj().zoom() * 0.95
+					} else {
+						self.obj().zoom() / 0.95
+					})
+					.clamp(0.6, 3.0)
+				);
+				glib::Propagation::Stop
+			} else {
+				glib::Propagation::Proceed
+			}
 		}
 	}
 }

@@ -8,5 +8,29 @@
         <signal name="scale-changed" handler="zoom_gesture_update" swapped="true" />
       </object>
     </child>
+    <child>
+      <object class="GtkGestureClick">
+        <signal name="pressed" handler="on_button_press" swapped="true" />
+        <signal name="released" handler="on_button_release" swapped="true" />
+      </object>
+    </child>
+    <child>
+      <object class="GtkEventControllerScroll" id="scroll_gesture">
+        <property name="flags">vertical|discrete</property>
+        <signal name="scroll" handler="on_scroll" swapped="true" />
+      </object>
+    </child>
+    <child>
+      <object class="GtkEventControllerKey">
+        <signal name="key-pressed" handler="on_key" swapped="true" />
+      </object>
+    </child>
+    <child>
+      <object class="GtkEventControllerMotion">
+        <signal name="enter" handler="restart_cursor_timer" swapped="true" />
+        <signal name="leave" handler="stop_cursor_timer" swapped="true" />
+        <signal name="motion" handler="restart_cursor_timer" swapped="true" />
+      </object>
+    </child>
   </template>
 </interface>

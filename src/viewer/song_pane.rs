@@ -27,30 +27,15 @@ impl SongPane {
 		self.imp().unload_song();
 	}
 
-	// #[cfg(test)]
-	// pub fn carousel(&self) -> adw::Carousel {
-	// 	self.imp().carousel.get()
-	// }
-
-	// #[cfg(test)]
-	// pub fn part_selection(&self) -> gtk::ComboBoxText {
-	// 	self.imp().part_selection.get()
-	// }
+	#[cfg(test)]
+	pub fn carousel(&self) -> crate::song_widget::SongWidget {
+		self.imp().carousel.get()
+	}
 
 	#[cfg(test)]
 	pub fn zoom_button(&self) -> gtk::MenuButton {
 		self.imp().zoom_button.get()
 	}
-
-	#[cfg(test)]
-	pub fn set_zoom_mode(&self, mode: &str) {
-		// self.imp().scale_mode_changed(mode.to_variant());
-	}
-
-	// #[cfg(test)]
-	// pub fn zoom_mode(&self) -> ScaleMode {
-	// 	self.imp().song.borrow().as_ref().unwrap().scale_mode
-	// }
 }
 
 mod imp {
@@ -73,14 +58,9 @@ mod imp {
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		pub song: RefCell<Option<Arc<collection::SongMeta>>>,
 
-		#[template_child]
-		scroll_gesture: TemplateChild<gtk::EventControllerScroll>,
-
 		last_interaction: Cell<std::time::Instant>,
 		/// Some when loading a song. After 90 seconds, we increment the load count and set to None
 		song_load_time: Cell<Option<std::time::Instant>>,
-
-		hide_cursor: RefCell<Option<glib::source::SourceId>>,
 	}
 
 	#[glib::object_subclass]
@@ -99,12 +79,8 @@ mod imp {
 				library: Default::default(),
 				song: Default::default(),
 
-				scroll_gesture: Default::default(),
-
 				last_interaction: std::time::Instant::now().into(),
 				song_load_time: Default::default(),
-
-				hide_cursor: Default::default(),
 			}
 		}
 
@@ -220,9 +196,9 @@ mod imp {
 			self.carousel.grab_focus();
 			self.carousel.load_song(
 				&song,
-				pages,
-				scale_mode
+				pages
 			);
+			self.carousel.set_scale_mode(scale_mode);
 
 			let parts: Vec<(collection::StaffIndex, String)> = song.parts();
 			let part_selection_model = self.part_selection.model().unwrap().downcast::<gtk::StringList>().unwrap();
@@ -236,9 +212,6 @@ mod imp {
 			self.part_selection.set_visible(relevant);
 			/* Scroll to the requested page */
 			self.part_selection.set_selected(start_at_part);
-
-			// self.sizing_mode_action.set_state(&scale_mode.action_string().to_variant());
-			// self.carousel.activate_action("song.sizing-mode", Some(&scale_mode.action_string().to_variant())).unwrap();
 
 			*self.song.borrow_mut() = Some(song);
 			obj.notify("song-name");
@@ -282,42 +255,6 @@ mod imp {
 			}
 		}
 
-		/// Key press on the drawingarea
-		#[template_callback]
-		fn carousel_key(&self, keyval: gdk::Key) -> glib::Propagation {
-			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left {
-				self.carousel.previous_page();
-				glib::Propagation::Stop
-			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right {
-				self.carousel.next_page();
-				glib::Propagation::Stop
-			} else {
-				glib::Propagation::Proceed
-			}
-		}
-
-		#[template_callback]
-		fn stop_cursor_timer(&self) {
-			self.obj().set_cursor(None);
-			if let Some(hide_cursor) = self.hide_cursor.borrow_mut().take() {
-				hide_cursor.remove();
-			}
-		}
-
-		#[template_callback]
-		fn restart_cursor_timer(&self) {
-			self.stop_cursor_timer();
-			let obj = self.obj().clone();
-			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
-				std::time::Duration::from_secs(4),
-				move || {
-					obj.imp().hide_cursor.borrow_mut().take();
-					obj.set_cursor_from_name(Some("none"));
-				},
-			));
-			self.on_activity();
-		}
-
 		/// Should be called on every user action. Update the time played statistic
 		fn on_activity(&self) {
 			let last_interaction = std::time::Instant::now();
@@ -356,44 +293,6 @@ mod imp {
 			library.save_in_background();
 
 			self.last_interaction.set(last_interaction);
-		}
-
-		/* Focus on click */
-		#[template_callback]
-		fn carousel_button_press(&self, _n_press: i32, _x: f64, _y: f64) {
-			self.carousel.grab_focus();
-		}
-
-		#[template_callback]
-		fn carousel_button_release(&self, _n_press: i32, x: f64, _y: f64) {
-			let x = x / self.carousel.width() as f64;
-			if (0.0..0.3).contains(&x) {
-				self.carousel.previous_page();
-			} else if (0.7..1.0).contains(&x) {
-				self.carousel.next_page();
-			}
-		}
-
-		/* Scroll events on the page, for zooming */
-		#[template_callback]
-		fn carousel_scroll(&self, _dx: f64, dy: f64) -> glib::Propagation {
-			if self
-				.scroll_gesture
-				.current_event_state()
-				.contains(gdk::ModifierType::CONTROL_MASK)
-			{
-				self.carousel.set_zoom(
-					(if dy > 0.0 {
-						self.carousel.zoom() * 0.95
-					} else {
-						self.carousel.zoom() / 0.95
-					})
-					.clamp(0.6, 3.0)
-				);
-				glib::Propagation::Stop
-			} else {
-				glib::Propagation::Proceed
-			}
 		}
 
 		fn load_annotations(&self) {
