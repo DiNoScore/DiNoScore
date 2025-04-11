@@ -15,12 +15,12 @@ impl SongPane {
 	pub fn load_song(
 		&self,
 		song: collection::SongMeta,
-		pages: TiVec<collection::PageIndex, PageImage>,
+		pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>) + Send + 'static,
 		scale_mode: ScaleMode,
 		start_at_part: u32,
 	) {
 		self.imp()
-			.load_song(song, Arc::new(pages), scale_mode, start_at_part);
+			.load_song(song, pages, scale_mode, start_at_part);
 	}
 
 	pub fn unload_song(&self) {
@@ -178,7 +178,7 @@ mod imp {
 		pub fn load_song(
 			&self,
 			song: collection::SongMeta,
-			pages: Arc<TiVec<collection::PageIndex, PageImage>>,
+			pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>) + Send + 'static,
 			scale_mode: ScaleMode,
 			start_at_part: u32,
 		) {
@@ -193,12 +193,34 @@ mod imp {
 			);
 			let song = Arc::new(song);
 
-			self.carousel.grab_focus();
-			self.carousel.load_song(
-				&song,
-				pages
-			);
-			self.carousel.set_scale_mode(scale_mode);
+			/* Pulse the spinner while things load in the background */
+			let finished_loading = Rc::new(Cell::new(false));
+			glib::MainContext::default().spawn_local(clone!(
+				#[strong(rename_to = song_progress)] self.song_progress,
+				#[strong] finished_loading,
+				async move {
+					while !finished_loading.get() {
+						glib::timeout_future(std::time::Duration::from_millis(10)).await;
+						song_progress.pulse();
+					}
+				}
+			));
+			/* Load in a background thread */
+			let carousel = fragile::Fragile::new(self.carousel.clone());
+			let finished_loading = fragile::Fragile::new(finished_loading);
+			std::thread::spawn(clone!(#[strong] song, move || {
+				let pages = pages().unwrap();
+				glib::MainContext::default().spawn(async move {
+					finished_loading.get().set(true);
+					let carousel = carousel.try_into_inner().unwrap();
+					carousel.grab_focus();
+					carousel.load_song(
+						&song,
+						Arc::new(pages)
+					);
+					carousel.set_scale_mode(scale_mode);
+				});
+			}));
 
 			let parts: Vec<(collection::StaffIndex, String)> = song.parts();
 			let part_selection_model = self.part_selection.model().unwrap().downcast::<gtk::StringList>().unwrap();
@@ -226,7 +248,6 @@ mod imp {
 		}
 
 		/// Unload the song
-		#[template_callback]
 		pub fn unload_song(&self) {
 			let song = self.song.take().unwrap();
 			std::mem::drop(song);

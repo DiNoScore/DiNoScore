@@ -145,6 +145,11 @@ mod imp {
 		}
 
 		#[template_callback]
+		fn go_back(&self) {
+			self.song.unload_song();
+		}
+
+		#[template_callback]
 		fn update_song_loaded(&self) {
 			let uuid = self.song.property::<Option<String>>("song-id");
 			let application = self.obj().application().unwrap();

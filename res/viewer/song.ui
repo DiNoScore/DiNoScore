@@ -6,25 +6,6 @@
         <!-- Hide the close buttons when in fullscreen -->
         <property name="show-start-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
         <property name="show-end-title-buttons" bind-source="fullscreen" bind-property="sensitive" bind-flags="sync-create"/>
-        <property name="show-back-button">False</property>
-        <child type="start">
-          <object class="GtkButton">
-            <property name="tooltip-text" translatable="yes">Go back</property>
-            <property name="icon-name">go-previous-symbolic</property>
-            <signal name="clicked" handler="unload_song" swapped="true" />
-            <child>
-              <object class="GtkShortcutController">
-                <property name="scope">managed</property>
-                <child>
-                  <object class="GtkShortcut">
-                    <property name="trigger">Escape</property>
-                    <property name="action">activate</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
         <child type="start">
           <object class="GtkDropDown" id="part_selection">
             <property name="model">
@@ -121,6 +102,7 @@
         </child>
         <child type="overlay">
           <object class="GtkProgressBar" id="song_progress">
+            <property name="pulse-step">0.01</property>
             <property name="can-target">False</property>
             <style>
               <class name="osd"/>

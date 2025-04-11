@@ -182,8 +182,7 @@ mod imp {
 			let song = library.songs.get_mut(&uuid).unwrap();
 
 			let index = song.index.clone();
-			// TODO load lazily
-			let sheets = song.load_sheets()().unwrap();
+			let sheets = song.load_sheets();
 			let scale_mode = library
 				.stats
 				.get_mut(&uuid)

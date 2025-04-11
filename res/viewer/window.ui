@@ -16,6 +16,7 @@
             <property name="vexpand">True</property>
             <property name="halign">fill</property>
             <property name="halign">fill</property>
+            <signal name="popped" handler="go_back" swapped="true" />
             <child>
               <object class="AdwNavigationPage">
                 <property name="title" translatable="yes">Library</property>

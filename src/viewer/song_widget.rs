@@ -67,6 +67,7 @@ impl SongWidget {
 			self.height() as f64
 		);
 		*self.imp().state.borrow_mut() = Some(state);
+		self.imp().restart_cursor_timer();
 	}
 
 	pub fn unload_song(&self) {
@@ -763,10 +764,10 @@ mod imp {
 
 		#[template_callback]
 		fn on_key(&self, keyval: gdk::Key) -> glib::Propagation {
-			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left {
+			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left || keyval == gdk::Key::Up || keyval == gdk::Key::KP_Up {
 				self.obj().previous_page();
 				glib::Propagation::Stop
-			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right {
+			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right || keyval == gdk::Key::Down || keyval == gdk::Key::KP_Down {
 				self.obj().next_page();
 				glib::Propagation::Stop
 			} else {
@@ -783,7 +784,7 @@ mod imp {
 		}
 
 		#[template_callback]
-		fn restart_cursor_timer(&self) {
+		pub(super) fn restart_cursor_timer(&self) {
 			self.stop_cursor_timer();
 			let obj = self.obj().clone();
 			*self.hide_cursor.borrow_mut() = Some(glib::source::timeout_add_local_once(
