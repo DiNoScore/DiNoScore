@@ -313,19 +313,7 @@ mod imp {
 					)
 					.unwrap()
 				});
-				// for i in 0..song.rendered_pages.len() {
-				// 	(*song.rendered_pages[collection::PageIndex(i)].borrow_mut()).1 =
-				// 		document.as_ref().map(|document| {
-				// 			document.page(i as i32).expect(
-				// 				"Annotation document must have as many pages as original PDF",
-				// 			)
-				// 		});
-				// }
-				let carousel = &self.carousel;
-				// for i in 0..carousel.n_pages() {
-				// 	carousel.nth_page(i).queue_draw();
-				// }
-				self.carousel.queue_draw();
+				self.carousel.load_annotations(document);
 			}
 		}
 
@@ -335,15 +323,16 @@ mod imp {
 			log::debug!("annotate!");
 			if let Some(song) = &self.song.borrow_mut().as_mut() {
 				let library = &mut self.library.get().unwrap().borrow_mut();
+				// TODO reimplement
 				// let page = song.song.staves[song.current_staves[0]].page;
-				// let song = library.songs.get_mut(&song.song.song_uuid).unwrap();
+				let song = library.songs.get_mut(&song.song_uuid).unwrap();
 
 				// TODO make async
 				// TODO error handling
-				// use anyhow::Context;
-				// crate::xournal::run_editor(song, *page + 1)
-				// 	.context("Failed to launch editor")
-				// 	.unwrap();
+				use anyhow::Context;
+				crate::xournal::run_editor(song, 0)
+					.context("Failed to launch editor")
+					.unwrap();
 			}
 			self.load_annotations();
 			self.carousel.grab_focus();

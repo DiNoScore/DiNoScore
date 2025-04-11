@@ -77,6 +77,22 @@ impl SongWidget {
 		*self.imp().state.borrow_mut() = None;
 	}
 
+	pub fn load_annotations(&self, annotations: Option<poppler::Document>) {
+		let mut state = self.imp().state.borrow_mut();
+		let Some(state) = state.as_mut() else { return; };
+
+		if let Some(annotations) = annotations {
+			assert_eq!(annotations.n_pages() as usize, state.rendered_pages.len(), "Annotation document must have as many pages as original PDF");
+
+			for i in 0..state.rendered_pages.len() {
+				(*state.rendered_pages[collection::PageIndex(i)].borrow_mut()).1 = annotations.page(i as i32);
+			}
+		} else {
+			state.rendered_pages.iter().for_each(|page| page.borrow_mut().1 = None);
+		}
+		self.queue_draw();
+	}
+
 	pub fn next_page(&self) {
 		if self.imp().get_action("next-page").is_enabled() {
 			self.imp().next_page();

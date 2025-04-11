@@ -23,7 +23,14 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 		let version: String = version
 			.lines()
 			.next()
-			.and_then(|line| line.strip_prefix("Xournal++ ").map(String::from))
+			/* Output is
+			 * xournalpp 1.2.4
+			 * └──libgtk: 3.24.43
+			 * or
+			 * Xournal++ 1.2.4
+			 * └──libgtk: 3.24.43
+			 */
+			.and_then(|line| line.strip_prefix("Xournal++ ").or(line.strip_prefix("xournalpp")).map(String::from))
 			.ok_or_else(|| anyhow::format_err!("`xournalpp --version` somehow gave weird input, expecting at least one line of text."))?;
 		let version = lenient_semver_parser::parse::<Version>(&version)
 			.map_err(|err| err.owned())?;
