@@ -50,7 +50,7 @@ pub fn load() -> anyhow::Result<(HashMap<Uuid, SongFile>, HashSet<String>)> {
 pub struct SongFile {
 	file: Arc<Mutex<zip::read::ZipArchive<std::fs::File>>>,
 	pub index: SongMeta,
-	thumbnail: Option<gdk_pixbuf::Pixbuf>,
+	thumbnail: Option<gdk::Texture>,
 }
 
 impl SongFile {
@@ -110,7 +110,7 @@ impl SongFile {
 				.map(|name| name.to_string_lossy().to_string());
 		}
 
-		let thumbnail: Option<gdk_pixbuf::Pixbuf> = song
+		let thumbnail: Option<gdk::Texture> = song
 			.by_name("thumbnail")
 			.map(Option::Some)
 			.or_else(|e| match e {
@@ -126,8 +126,7 @@ impl SongFile {
 				pipeline::pipe! {
 					bytes
 					=> &glib::Bytes::from_owned
-					=> &gio::MemoryInputStream::from_bytes
-					=> gdk_pixbuf::Pixbuf::from_stream(_, Option::<&gio::Cancellable>::None)
+					=> gdk::Texture::from_bytes(_)
 					=> _.map_err(Into::into)
 				}
 			})
@@ -235,7 +234,7 @@ impl SongFile {
 		self.index.title.as_deref()
 	}
 
-	pub fn thumbnail(&self) -> Option<&gdk_pixbuf::Pixbuf> {
+	pub fn thumbnail(&self) -> Option<&gdk::Texture> {
 		self.thumbnail.as_ref()
 	}
 
@@ -243,7 +242,7 @@ impl SongFile {
 		path: P,
 		metadata: SongMeta,
 		pages: impl IntoIterator<Item = &'a PageImage>,
-		thumbnail: Option<gdk_pixbuf::Pixbuf>,
+		thumbnail: Option<gdk::Texture>,
 		overwrite: bool,
 	) -> anyhow::Result<()> {
 		let pages = pages.into_iter();
@@ -277,7 +276,7 @@ impl SongFile {
 				log::info!("Saving thumbnail");
 				writer.start_file("thumbnail", zip::write::FileOptions::default())?;
 
-				let buffer = thumbnail.save_to_bufferv("png", &[])?;
+				let buffer = thumbnail.save_to_png_bytes();
 				use std::io::Write;
 				writer.write_all(&buffer)?;
 			}
@@ -301,7 +300,7 @@ impl SongFile {
 	pub fn generate_thumbnail<'a>(
 		song: &SongMeta,
 		pages: impl IntoIterator<Item = &'a PageImage>,
-	) -> cairo::Result<Option<gdk_pixbuf::Pixbuf>> {
+	) -> cairo::Result<Option<gdk::Texture>> {
 		let mut pages = pages.into_iter();
 		let staff = if let Some(staff) = song.staves.first() {
 			staff
@@ -314,7 +313,7 @@ impl SongFile {
 			return Ok(None);
 		};
 
-		let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100)?;
+		let mut surface = cairo::ImageSurface::create(cairo::Format::Rgb24, 400, 100)?;
 		let context = cairo::Context::new(&surface)?;
 
 		let scale = surface.width() as f64 / page.reference_width() / staff.width();
@@ -329,11 +328,22 @@ impl SongFile {
 		page.render_cairo(&context)?;
 
 		surface.flush();
+		std::mem::drop(context);
 
-		Ok(Some(
-			gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.width(), surface.height())
-				.unwrap(),
-		))
+		let bytes = glib::Bytes::from(&*surface.data().unwrap());
+		let texture = gdk::MemoryTexture::new(
+			surface.width(),
+			surface.height(),
+			if cfg!(target_endian = "big") {
+				gdk::MemoryFormat::X8r8g8b8
+			} else {
+				gdk::MemoryFormat::B8g8r8x8
+			},
+			&bytes,
+			surface.stride() as usize,
+		);
+
+		Ok(Some(texture.upcast()))
 	}
 }
 

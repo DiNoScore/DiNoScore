@@ -149,12 +149,12 @@ mod imp {
 			for (uuid, song) in library.songs.iter() {
 				if (*self.song_filter.borrow())(&song.index) {
 					/* Add an item with the name and UUID */
-					let thumbnail = song.thumbnail().map(gdk::Texture::for_pixbuf);
+					let thumbnail = song.thumbnail();
 					let title = song.title().unwrap_or("<no title>").to_owned();
 					let score = library.stats[uuid].usage_score(&self.reference_time);
 
 					self.store_songs.insert_sorted(
-						&crate::library_item::LibraryItem::new(uuid, title, &thumbnail, score),
+						&crate::library_item::LibraryItem::new(uuid, title, thumbnail, score),
 						SORT_FUN
 					);
 				}

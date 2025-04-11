@@ -290,7 +290,7 @@ mod imp {
 						let page: &PageImage = &sheets[staff.page];
 
 						/* Prepare surface and fill background */
-						let surface = cairo::ImageSurface::create(
+						let mut surface = cairo::ImageSurface::create(
 							cairo::Format::Rgb24,
 							400,
 							(400.0 * staff.aspect_ratio()) as i32,
@@ -307,23 +307,27 @@ mod imp {
 						context.scale(1.0 / page.reference_width(), 1.0 / page.reference_width());
 						page.render_cairo(&context).unwrap();
 						surface.flush();
+						std::mem::drop(context);
 
-						let pixbuf = gdk::pixbuf_get_from_surface(
-							&surface,
-							0,
-							0,
+						let bytes = glib::Bytes::from(&*surface.data().unwrap());
+						let pixbuf = gdk::MemoryTexture::new(
 							surface.width(),
 							surface.height(),
-						)
-						.unwrap();
-						let pixbuf = gdk::Texture::for_pixbuf(&pixbuf);
+							if cfg!(target_endian = "big") {
+								gdk::MemoryFormat::X8r8g8b8
+							} else {
+								gdk::MemoryFormat::B8g8r8x8
+							},
+							&bytes,
+							surface.stride() as usize,
+						);
 
 						/* Put them back into the carousel */
 						let obj = obj.clone();
 						glib::MainContext::default().spawn(async move {
 							obj.get()
 								.imp()
-								.update_preview_image(uuid, index as u32, pixbuf);
+								.update_preview_image(uuid, index as u32, pixbuf.upcast());
 						});
 					}
 				}
