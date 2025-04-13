@@ -29,12 +29,12 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-test-shell-dotcargo
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-test-shell-build-target
@@ -69,12 +69,12 @@ jobs:
           # Install build dependencies
           sudo apt install adwaita-icon-theme
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-test-dotcargo-${{ matrix.rust }}
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-test-build-target-${{ matrix.rust }}
@@ -105,12 +105,12 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-gnu
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: windows-dotcargo
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: windows-build-target
@@ -139,7 +139,7 @@ jobs:
           wget https://github.com/electron/rcedit/releases/download/v1.1.1/rcedit-x64.exe
           WINEPREFIX=/root/.wine wine rcedit-x64.exe "package/DiNoScore-viewer.exe" --set-icon "./res/de.piegames.dinoscore.ico"
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: DiNoScore-windows-${{ github.sha }}
           path: |
