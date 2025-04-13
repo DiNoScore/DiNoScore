@@ -115,15 +115,26 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.context("Failed to take screenshot")
 			.unwrap();
 
-		song.part_selection().last_child().unwrap().downcast::<gtk::Popover>().unwrap().popup();
+		song.part_selection()
+			.last_child()
+			.unwrap()
+			.downcast::<gtk::Popover>()
+			.unwrap()
+			.popup();
 		yield_now().await;
 		take_screenshot("gallery/03-parts.png")
 			.context("Failed to take screenshot")
 			.unwrap();
-		song.part_selection().last_child().unwrap().downcast::<gtk::Popover>().unwrap().popdown();
+		song.part_selection()
+			.last_child()
+			.unwrap()
+			.downcast::<gtk::Popover>()
+			.unwrap()
+			.popdown();
 		yield_now().await;
 
-		song.carousel().set_scale_mode(library::ScaleMode::FitStaves(3));
+		song.carousel()
+			.set_scale_mode(library::ScaleMode::FitStaves(3));
 		yield_now().await;
 		song.zoom_button().activate();
 		yield_now().await;

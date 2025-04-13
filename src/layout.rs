@@ -56,12 +56,16 @@ impl PageLayout {
 			self.pages[0.into()..page]
 				.iter()
 				.map(Vec::len)
-				.sum::<usize>() + self.pages[page].len() / 2,
+				.sum::<usize>()
+				+ self.pages[page].len() / 2,
 		)
 	}
 
 	/** Map a page to the staves it displays. Also useful to get the first and last staff of a page. */
-	pub fn get_staves_of_page(&self, page: PageIndex) -> impl DoubleEndedIterator<Item = StaffIndex> + '_ {
+	pub fn get_staves_of_page(
+		&self,
+		page: PageIndex,
+	) -> impl DoubleEndedIterator<Item = StaffIndex> + '_ {
 		self.pages[page].iter().map(|page| page.index)
 	}
 

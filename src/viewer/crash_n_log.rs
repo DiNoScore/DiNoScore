@@ -269,9 +269,8 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 	let main_loop = glib::MainLoop::new(None, false);
 
 	#[allow(unused_variables)]
-	dialog.choose(
-		None::<&gio::Cancellable>,
-		|response| match &*response.to_string() {
+	dialog.choose(None::<&gio::Cancellable>, |response| {
+		match &*response.to_string() {
 			"restart" => {
 				/* Separator to know which messages are from which application instance */
 				println!("------------------------------");
@@ -300,7 +299,7 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 				std::process::exit(110);
 			},
 		}
-	);
+	});
 
 	main_loop.run();
 

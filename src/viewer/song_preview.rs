@@ -89,8 +89,10 @@ mod imp {
 			glib::source::timeout_add_seconds_local(
 				10,
 				clone!(
-					#[weak] obj,
-					#[upgrade_or] glib::ControlFlow::Break,
+					#[weak]
+					obj,
+					#[upgrade_or]
+					glib::ControlFlow::Break,
 					move || {
 						obj.imp().on_timer();
 						glib::ControlFlow::Continue
@@ -325,9 +327,11 @@ mod imp {
 						/* Put them back into the carousel */
 						let obj = obj.clone();
 						glib::MainContext::default().spawn(async move {
-							obj.get()
-								.imp()
-								.update_preview_image(uuid, index as u32, pixbuf.upcast());
+							obj.get().imp().update_preview_image(
+								uuid,
+								index as u32,
+								pixbuf.upcast(),
+							);
 						});
 					}
 				}

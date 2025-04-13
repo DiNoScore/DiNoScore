@@ -101,17 +101,19 @@ mod imp {
 			let enter_fullscreen = gio::SimpleAction::new("enter-fullscreen", None);
 			obj.add_action(&enter_fullscreen);
 			enter_fullscreen.connect_activate(clone!(
-				#[weak] obj,
+				#[weak]
+				obj,
 				move |_a, _p| {
 					obj.fullscreen();
-				})
-			);
+				}
+			));
 
 			let leave_fullscreen = gio::SimpleAction::new("leave-fullscreen", None);
 			leave_fullscreen.set_enabled(false);
 			obj.add_action(&leave_fullscreen);
 			leave_fullscreen.connect_activate(clone!(
-				#[weak] obj,
+				#[weak]
+				obj,
 				move |_a, _p| {
 					obj.unfullscreen();
 				}
@@ -120,11 +122,12 @@ mod imp {
 			let toggle_fullscreen = gio::SimpleAction::new("toggle-fullscreen", None);
 			obj.add_action(&toggle_fullscreen);
 			toggle_fullscreen.connect_activate(clone!(
-				#[weak] obj,
+				#[weak]
+				obj,
 				move |_a, _p| {
 					obj.set_fullscreened(!obj.is_fullscreen());
-				})
-			);
+				}
+			));
 		}
 	}
 

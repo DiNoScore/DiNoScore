@@ -8,7 +8,12 @@ glib::wrapper! {
 }
 
 impl LibraryItem {
-	pub fn new(uuid: &uuid::Uuid, title: String, thumbnail: Option<&gdk::Texture>, score: f64) -> Self {
+	pub fn new(
+		uuid: &uuid::Uuid,
+		title: String,
+		thumbnail: Option<&gdk::Texture>,
+		score: f64,
+	) -> Self {
 		Object::builder()
 			.property("uuid", uuid.to_string())
 			.property("title", title)
@@ -46,6 +51,5 @@ mod imp {
 	}
 
 	#[glib::derived_properties]
-	impl ObjectImpl for LibraryItem {
-	}
+	impl ObjectImpl for LibraryItem {}
 }

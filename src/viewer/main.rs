@@ -18,15 +18,15 @@ use anyhow::Context;
 use dinoscore::{prelude::*, *};
 
 mod crash_n_log;
-mod library_pane;
 mod library_item;
+mod library_pane;
 #[cfg(target_family = "unix")]
 mod pedal;
 #[cfg(test)]
 mod screenshots;
-mod song_widget;
-mod song_preview;
 mod song_pane;
+mod song_preview;
+mod song_widget;
 #[cfg(test)]
 mod test;
 mod window;
@@ -98,8 +98,10 @@ fn main() -> anyhow::Result<()> {
 		log::info!("Application started");
 
 		/* Check hardware acceleration */
-		if window.surface()
-			.map_or_else(|| true, |surface| surface.create_gl_context().is_err()) {
+		if window
+			.surface()
+			.map_or_else(|| true, |surface| surface.create_gl_context().is_err())
+		{
 			window.show_no_gl_toast();
 		}
 	});

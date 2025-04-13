@@ -112,7 +112,8 @@ fn test_viewer_gui() -> anyhow::Result<()> {
 
 		/* Change the zoom level */
 		log::info!("Change zoom level");
-		song.carousel().set_scale_mode(library::ScaleMode::FitStaves(3));
+		song.carousel()
+			.set_scale_mode(library::ScaleMode::FitStaves(3));
 		yield_now().await;
 		glib::timeout_future(std::time::Duration::from_secs(10)).await;
 		yield_now().await;
@@ -132,7 +133,10 @@ fn test_viewer_gui() -> anyhow::Result<()> {
 		yield_now().await;
 
 		/* Check that the zoom level was saved (and also the position is correct) */
-		assert_eq!(song.carousel().get_scale_mode(), library::ScaleMode::FitStaves(3));
+		assert_eq!(
+			song.carousel().get_scale_mode(),
+			library::ScaleMode::FitStaves(3)
+		);
 		assert_eq!(song.carousel().part_index(), 1);
 
 		window.close();

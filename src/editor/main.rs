@@ -36,7 +36,8 @@ async fn yield_now() {
 }
 
 fn create_listmodel<T>(items: &[&T]) -> gio::ListStore
-where T: StaticType + IsA<glib::Object>
+where
+	T: StaticType + IsA<glib::Object>,
 {
 	let store = gio::ListStore::with_type(T::static_type());
 	for &item in items {
@@ -125,23 +126,38 @@ mod imp {
 			let application = obj.application().unwrap();
 
 			let new = gio::SimpleAction::new("new", None);
-			new.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
-				obj.imp().unload_and_clear();
-			}));
+			new.connect_activate(clone!(
+				#[weak]
+				obj,
+				#[upgrade_or_panic]
+				move |_, _| {
+					obj.imp().unload_and_clear();
+				}
+			));
 			application.add_action(&new);
 			application.set_accels_for_action("app.new", &["<Primary>N"]);
 
 			let open = gio::SimpleAction::new("open", None);
-			open.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
-				obj.imp().load_with_dialog();
-			}));
+			open.connect_activate(clone!(
+				#[weak]
+				obj,
+				#[upgrade_or_panic]
+				move |_, _| {
+					obj.imp().load_with_dialog();
+				}
+			));
 			application.add_action(&open);
 			application.set_accels_for_action("app.open", &["<Primary>O"]);
 
 			let save = gio::SimpleAction::new("save", None);
-			save.connect_activate(clone!(#[weak] obj, #[upgrade_or_panic] move |_, _| {
-				obj.imp().save_with_ui();
-			}));
+			save.connect_activate(clone!(
+				#[weak]
+				obj,
+				#[upgrade_or_panic]
+				move |_, _| {
+					obj.imp().save_with_ui();
+				}
+			));
 			application.add_action(&save);
 			application.set_accels_for_action("app.save", &["<Primary>S"]);
 
@@ -186,25 +202,39 @@ mod imp {
 			choose.open(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
-					let Ok(file) = response else { return; };
-					let path = file.path().unwrap();
-					let progress_dialog = dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
-					glib::MainContext::default().spawn_local_with_priority(
-						glib::source::Priority::DEFAULT_IDLE,
-						clone!(#[strong] obj, async move {
-							yield_now().await;
+				clone!(
+					#[weak]
+					obj,
+					#[upgrade_or_panic]
+					move |response| {
+						let Ok(file) = response else {
+							return;
+						};
+						let path = file.path().unwrap();
+						let progress_dialog =
+							dinoscore::create_progress_spinner_dialog("Loading pages …", &obj);
+						glib::MainContext::default().spawn_local_with_priority(
+							glib::source::Priority::DEFAULT_IDLE,
+							clone!(
+								#[strong]
+								obj,
+								async move {
+									yield_now().await;
 
-							let song = SongFile::new(path, &mut Default::default()).unwrap();
-							let load_sheets = song.load_sheets();
-							let sheets = blocking::unblock(move || load_sheets()).await.unwrap();
-							obj.imp().load(sheets, song.index);
+									let song =
+										SongFile::new(path, &mut Default::default()).unwrap();
+									let load_sheets = song.load_sheets();
+									let sheets =
+										blocking::unblock(move || load_sheets()).await.unwrap();
+									obj.imp().load(sheets, song.index);
 
-							yield_now().await;
-							progress_dialog.emit_close();
-						}),
-					);
-				}),
+									yield_now().await;
+									progress_dialog.emit_close();
+								}
+							),
+						);
+					}
+				),
 			);
 		}
 
@@ -261,10 +291,17 @@ mod imp {
 			choose.save(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
-					let Ok(file) = response else { return; };
-					obj.imp().file.borrow().save(file.path().unwrap()).unwrap();
-				}),
+				clone!(
+					#[weak]
+					obj,
+					#[upgrade_or_panic]
+					move |response| {
+						let Ok(file) = response else {
+							return;
+						};
+						obj.imp().file.borrow().save(file.path().unwrap()).unwrap();
+					}
+				),
 			);
 		}
 
@@ -314,19 +351,35 @@ mod imp {
 			choose.open_multiple(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
-					let Ok(files) = response else { return; };
-					glib::MainContext::default().spawn_local_with_priority(
-						glib::source::Priority::DEFAULT_IDLE,
-						clone!(#[strong] obj, async move {
-							obj.clone().imp().load_pages(
-								&obj,
-								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
-								false
-							).await;
-						}),
-					);
-				}),
+				clone!(
+					#[weak]
+					obj,
+					#[upgrade_or_panic]
+					move |response| {
+						let Ok(files) = response else {
+							return;
+						};
+						glib::MainContext::default().spawn_local_with_priority(
+							glib::source::Priority::DEFAULT_IDLE,
+							clone!(
+								#[strong]
+								obj,
+								async move {
+									obj.clone()
+										.imp()
+										.load_pages(
+											&obj,
+											files.into_iter().map(|file| {
+												file.unwrap().downcast::<gio::File>().unwrap()
+											}),
+											false,
+										)
+										.await;
+								}
+							),
+						);
+					}
+				),
 			);
 		}
 
@@ -352,19 +405,35 @@ mod imp {
 			choose.open_multiple(
 				Some(obj),
 				None::<&gio::Cancellable>,
-				clone!(#[weak] obj, #[upgrade_or_panic] move |response| {
-					let Ok(files) = response else { return; };
-					glib::MainContext::default().spawn_local_with_priority(
-						glib::source::Priority::DEFAULT_IDLE,
-						clone!(#[strong] obj, async move {
-							obj.clone().imp().load_pages(
-								&obj,
-								files.into_iter().map(|file| file.unwrap().downcast::<gio::File>().unwrap()),
-								true
-							).await;
-						}),
-					);
-				}),
+				clone!(
+					#[weak]
+					obj,
+					#[upgrade_or_panic]
+					move |response| {
+						let Ok(files) = response else {
+							return;
+						};
+						glib::MainContext::default().spawn_local_with_priority(
+							glib::source::Priority::DEFAULT_IDLE,
+							clone!(
+								#[strong]
+								obj,
+								async move {
+									obj.clone()
+										.imp()
+										.load_pages(
+											&obj,
+											files.into_iter().map(|file| {
+												file.unwrap().downcast::<gio::File>().unwrap()
+											}),
+											true,
+										)
+										.await;
+								}
+							),
+						);
+					}
+				),
 			);
 		}
 

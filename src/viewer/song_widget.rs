@@ -12,7 +12,13 @@ glib::wrapper! {
 
 impl SongWidget {
 	pub fn get_scale_mode(&self) -> ScaleMode {
-		let scale_mode = self.imp().get_action("sizing-mode").state().unwrap().get::<String>().unwrap();
+		let scale_mode = self
+			.imp()
+			.get_action("sizing-mode")
+			.state()
+			.unwrap()
+			.get::<String>()
+			.unwrap();
 		match &*scale_mode {
 			"fit-staves" => ScaleMode::FitStaves(3),
 			"fit-columns" => ScaleMode::FitPages(2),
@@ -50,21 +56,24 @@ impl SongWidget {
 				.collect(),
 		);
 
-		glib::MainContext::default().spawn_local(
-			clone!(#[weak(rename_to = obj)] self, #[upgrade_or_panic] async move {
+		glib::MainContext::default().spawn_local(clone!(
+			#[weak(rename_to = obj)]
+			self,
+			#[upgrade_or_panic]
+			async move {
 				use futures::StreamExt;
 				while let Some(update_page) = update_page.next().await {
 					obj.imp().update_page(update_page);
 				}
-			})
-		);
+			}
+		));
 
 		let state = SongState::new(
 			renderer,
 			song.clone(),
 			rendered_pages,
 			self.width() as f64,
-			self.height() as f64
+			self.height() as f64,
 		);
 		*self.imp().state.borrow_mut() = Some(state);
 		self.imp().restart_cursor_timer();
@@ -80,16 +89,26 @@ impl SongWidget {
 
 	pub fn load_annotations(&self, annotations: Option<poppler::Document>) {
 		let mut state = self.imp().state.borrow_mut();
-		let Some(state) = state.as_mut() else { return; };
+		let Some(state) = state.as_mut() else {
+			return;
+		};
 
 		if let Some(annotations) = annotations {
-			assert_eq!(annotations.n_pages() as usize, state.rendered_pages.len(), "Annotation document must have as many pages as original PDF");
+			assert_eq!(
+				annotations.n_pages() as usize,
+				state.rendered_pages.len(),
+				"Annotation document must have as many pages as original PDF"
+			);
 
 			for i in 0..state.rendered_pages.len() {
-				(*state.rendered_pages[collection::PageIndex(i)].borrow_mut()).1 = annotations.page(i as i32);
+				(*state.rendered_pages[collection::PageIndex(i)].borrow_mut()).1 =
+					annotations.page(i as i32);
 			}
 		} else {
-			state.rendered_pages.iter().for_each(|page| page.borrow_mut().1 = None);
+			state
+				.rendered_pages
+				.iter()
+				.for_each(|page| page.borrow_mut().1 = None);
 		}
 		self.queue_draw();
 	}
@@ -250,19 +269,19 @@ mod imp {
 			swipe_tracker.connect_begin_swipe(glib::clone!(
 				#[weak]
 				obj,
-				move |_| {
-					obj.imp().scroll_animation.get().unwrap().pause()
-				}
+				move |_| { obj.imp().scroll_animation.get().unwrap().pause() }
 			));
 			swipe_tracker.connect_update_swipe(glib::clone!(
 				#[weak]
 				obj,
 				move |_, position| {
 					let state = obj.imp().state.borrow();
-					let Some(state) = state.as_ref() else { return; };
-					obj.imp().offset.set(
-						position - *state.layout.get_page_of_staff(state.position).0 as f64
-					);
+					let Some(state) = state.as_ref() else {
+						return;
+					};
+					obj.imp()
+						.offset
+						.set(position - *state.layout.get_page_of_staff(state.position).0 as f64);
 					obj.queue_draw();
 				}
 			));
@@ -272,21 +291,29 @@ mod imp {
 				move |_, velocity, to| {
 					let this = obj.imp();
 					let mut state = this.state.borrow_mut();
-					let Some(state) = state.as_mut() else { return; };
-					let new_pos = state.layout.get_staves_of_page(layout::PageIndex(to.round() as usize)).next().unwrap();
+					let Some(state) = state.as_mut() else {
+						return;
+					};
+					let new_pos = state
+						.layout
+						.get_staves_of_page(layout::PageIndex(to.round() as usize))
+						.next()
+						.unwrap();
 					this.change_position(state, new_pos, this.offset.get(), velocity);
 				}
 			));
 			self.swipe_tracker.set(swipe_tracker).unwrap();
 
-			let target: libadwaita::CallbackAnimationTarget = adw::CallbackAnimationTarget::new(glib::clone!(
-				#[weak] obj,
-				#[upgrade_or_panic]
-				move |offset| {
-					obj.imp().offset.set(offset);
-					obj.queue_draw();
-				}
-			));
+			let target: libadwaita::CallbackAnimationTarget =
+				adw::CallbackAnimationTarget::new(glib::clone!(
+					#[weak]
+					obj,
+					#[upgrade_or_panic]
+					move |offset| {
+						obj.imp().offset.set(offset);
+						obj.queue_draw();
+					}
+				));
 
 			/* Same as in Loupe and AdwCarousel */
 			const SCROLL_DAMPING_RATIO: f64 = 1.0; /* Perfectly damped */
@@ -304,7 +331,8 @@ mod imp {
 				.build();
 
 			animation.connect_done(glib::clone!(
-				#[weak] obj,
+				#[weak]
+				obj,
 				#[upgrade_or_panic]
 				move |_| obj.queue_draw()
 			));
@@ -323,12 +351,16 @@ mod imp {
 			}
 
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 
 			/* We recalculate the layout on the fly during rendering if our size changed.
 			 * This means that we must keep everything else constant (not trigger any signals).
 			 */
-			if obj.width() != state.layout.width as i32 || obj.height() != state.layout.height as i32 {
+			if obj.width() != state.layout.width as i32
+				|| obj.height() != state.layout.height as i32
+			{
 				self.update_layout(state);
 			}
 
@@ -351,8 +383,7 @@ mod imp {
 				/* Staff */
 				snapshot.save();
 				let staff = &state.song.staves[staff_layout.index];
-				let (rendered_page, annotations) =
-					&*state.rendered_pages[staff.page].borrow();
+				let (rendered_page, annotations) = &*state.rendered_pages[staff.page].borrow();
 				match rendered_page.as_ref() {
 					Some(page) => {
 						/* Render the image */
@@ -410,12 +441,7 @@ mod imp {
 					context.scale(scale, scale);
 					context.translate(-staff.start.0, -staff.start.1);
 
-					context.rectangle(
-						staff.start.0,
-						staff.start.1,
-						staff.width(),
-						staff.height(),
-					);
+					context.rectangle(staff.start.0, staff.start.1, staff.width(), staff.height());
 					context.clip();
 
 					context.scale(1.0 / page.size().0, 1.0 / page.size().0);
@@ -429,16 +455,21 @@ mod imp {
 				/* Draw background */
 				snapshot.append_color(&gdk::RGBA::WHITE, &bounds);
 
-				let current_pos = *layout.get_page_of_staff(state.position).0 as f64 + self.offset.get();
+				let current_pos =
+					*layout.get_page_of_staff(state.position).0 as f64 + self.offset.get();
 				assert!((0.0..=layout.pages.len() as f64 - 1.0).contains(&current_pos));
 				/* This range will contain only one item if we are exactly on a page */
-				let pages = layout::PageIndex(current_pos.floor() as _)..=layout::PageIndex(current_pos.ceil() as _);
+				let pages = layout::PageIndex(current_pos.floor() as _)
+					..=layout::PageIndex(current_pos.ceil() as _);
 
 				let offset = current_pos.fract();
 				for (idx, page) in layout.pages[pages].iter().enumerate() {
 					snapshot.save();
 					/* Make sure we don't overdraw our pages, which might cause clipping */
-					snapshot.translate(&graphene::Point::new(0.0, (idx as f32 - offset as f32) * obj.height() as f32));
+					snapshot.translate(&graphene::Point::new(
+						0.0,
+						(idx as f32 - offset as f32) * obj.height() as f32,
+					));
 					snapshot.push_clip(&bounds);
 					page.iter()
 						.try_for_each(render_staff)
@@ -479,14 +510,18 @@ mod imp {
 
 		fn progress(&self) -> f64 {
 			let state = self.state.borrow();
-			let Some(state) = state.as_ref() else { return Default::default(); };
+			let Some(state) = state.as_ref() else {
+				return Default::default();
+			};
 
 			*state.layout.get_page_of_staff(state.position).0 as f64 + self.offset.get()
 		}
 
 		fn snap_points(&self) -> Vec<f64> {
 			let state = self.state.borrow();
-			let Some(state) = state.as_ref() else { return Default::default(); };
+			let Some(state) = state.as_ref() else {
+				return Default::default();
+			};
 
 			(0..state.layout.pages.len()).map(|i| i as f64).collect()
 		}
@@ -505,8 +540,7 @@ mod imp {
 	#[gtk::template_callbacks]
 	impl SongWidget {
 		fn get_part_index(&self) -> u32 {
-			self
-				.state
+			self.state
 				.borrow()
 				.as_ref()
 				.map(|state| state.current_piece_index() as u32)
@@ -515,24 +549,31 @@ mod imp {
 
 		fn set_part_index(&self, part: u32) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 			if part == gtk::INVALID_LIST_POSITION {
 				return;
 			}
 			self.change_position(
 				state,
-				*state.song.piece_starts.keys()
+				*state
+					.song
+					.piece_starts
+					.keys()
 					.nth(part as usize)
 					.expect("`part-index` out of bounds"),
 				0.0,
-				0.0
+				0.0,
 			);
 		}
 
 		/// The background thread has finished rendering some page
 		pub(super) fn update_page(&self, update_page: ScaledPage) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 
 			/* Check for stale data (probably wouldn't have to with the current design, but it may change in the future */
 			log::debug!("Received page");
@@ -541,7 +582,8 @@ mod imp {
 				return;
 			}
 
-			self.obj().emit_by_name::<()>("progress", &[&update_page.progress]);
+			self.obj()
+				.emit_by_name::<()>("progress", &[&update_page.progress]);
 
 			(*state.rendered_pages[update_page.index].borrow_mut()).0 = Some(update_page.image);
 			self.obj().queue_draw();
@@ -549,24 +591,35 @@ mod imp {
 
 		#[track_caller]
 		pub(super) fn get_action(&self, name: &str) -> gio::SimpleAction {
-			self.actions.lookup_action(name).expect("Action not found")
+			self.actions
+				.lookup_action(name)
+				.expect("Action not found")
 				.downcast::<gio::SimpleAction>()
 				.unwrap()
 		}
 
 		pub fn next_page(&self) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
-			self.change_page(state, state.layout.get_page_of_staff(state.position).0 + layout::PageIndex(1));
+			let Some(state) = state.as_mut() else {
+				return;
+			};
+			self.change_page(
+				state,
+				state.layout.get_page_of_staff(state.position).0 + layout::PageIndex(1),
+			);
 		}
 
 		pub fn previous_page(&self) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 			self.change_position(
 				state,
 				state.section_start().unwrap_or(
-					state.layout.pages[state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1)][0].index
+					state.layout.pages
+						[state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1)][0]
+						.index,
 				),
 				0.0,
 				0.0,
@@ -575,18 +628,27 @@ mod imp {
 
 		pub fn previous_page_strict(&self) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
-			self.change_page(state, state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1));
+			let Some(state) = state.as_mut() else {
+				return;
+			};
+			self.change_page(
+				state,
+				state.layout.get_page_of_staff(state.position).0 - layout::PageIndex(1),
+			);
 		}
 
 		/// Go to the beginning of the next piece
 		pub fn next_piece(&self) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 
 			self.change_position(
 				state,
-				state.next_piece().expect("This action should have been disabled"),
+				state
+					.next_piece()
+					.expect("This action should have been disabled"),
 				0.0,
 				0.0,
 			);
@@ -595,7 +657,9 @@ mod imp {
 		/// Go to beginning of the current or previous piece
 		pub fn previous_piece(&self) {
 			let mut state = self.state.borrow_mut();
-			let Some(state) = state.as_mut() else { return; };
+			let Some(state) = state.as_mut() else {
+				return;
+			};
 			self.change_position(state, state.previous_piece(), 0.0, 0.0);
 		}
 
@@ -629,9 +693,11 @@ mod imp {
 			animation.play();
 			state.position = position;
 
-			self.get_action("next-page").set_enabled(*page < state.layout.pages.len() - 1);
+			self.get_action("next-page")
+				.set_enabled(*page < state.layout.pages.len() - 1);
 			self.get_action("previous-page").set_enabled(*page > 0);
-			self.get_action("next-piece").set_enabled(state.next_piece().is_some());
+			self.get_action("next-piece")
+				.set_enabled(state.next_piece().is_some());
 			self.get_action("previous-piece").set_enabled(*page > 0);
 
 			if state.current_piece_index() != old_part {
@@ -643,7 +709,8 @@ mod imp {
 			}
 
 			/* Notify background renderer about potential changes */
-			state.renderer
+			state
+				.renderer
 				.send((
 					/* Convert current layout page to PDF page */
 					state.song.staves[position].page,
@@ -680,7 +747,11 @@ mod imp {
 		/* Widget size or scale mode changed */
 		fn update_layout(&self, state: &mut SongState) {
 			let obj = self.obj();
-			let zoom = state.change_size(obj.width() as f64, obj.height() as f64, obj.get_scale_mode());
+			let zoom = state.change_size(
+				obj.width() as f64,
+				obj.height() as f64,
+				obj.get_scale_mode(),
+			);
 
 			{
 				self.zoom.set(zoom);
@@ -699,7 +770,8 @@ mod imp {
 		/// One zoom in increment
 		fn zoom_in(&self) {
 			self.zoom.set((self.zoom.get() / 0.95).clamp(0.6, 3.0));
-			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			self.get_action("sizing-mode")
+				.set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
 			}
@@ -709,7 +781,8 @@ mod imp {
 		/// One zoom out increment
 		fn zoom_out(&self) {
 			self.zoom.set((self.zoom.get() * 0.95).clamp(0.6, 3.0));
-			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			self.get_action("sizing-mode")
+				.set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
 			}
@@ -719,7 +792,8 @@ mod imp {
 		/// Set zoom back to 100%
 		fn zoom_reset(&self) {
 			self.zoom.set(1.0);
-			self.get_action("sizing-mode").set_state(&"manual".to_variant());
+			self.get_action("sizing-mode")
+				.set_state(&"manual".to_variant());
 			if let Some(state) = self.state.borrow_mut().as_mut() {
 				self.update_layout(state);
 			}
@@ -745,29 +819,36 @@ mod imp {
 			self.obj().set_zoom(
 				self.zoom_before_gesture
 					.take()
-					.expect("Should always be Some within after gesture started")
+					.expect("Should always be Some within after gesture started"),
 			);
 		}
 
 		#[template_callback]
 		fn zoom_gesture_update(&self, scale: f64) {
 			self.obj().set_zoom(
-				(
-					scale
+				(scale
 					* self
 						.zoom_before_gesture
 						.get()
-						.expect("Should always be Some within after gesture started")
-				).clamp(0.6, 3.0)
+						.expect("Should always be Some within after gesture started"))
+				.clamp(0.6, 3.0),
 			);
 		}
 
 		#[template_callback]
 		fn on_key(&self, keyval: gdk::Key) -> glib::Propagation {
-			if keyval == gdk::Key::Left || keyval == gdk::Key::KP_Left || keyval == gdk::Key::Up || keyval == gdk::Key::KP_Up {
+			if keyval == gdk::Key::Left
+				|| keyval == gdk::Key::KP_Left
+				|| keyval == gdk::Key::Up
+				|| keyval == gdk::Key::KP_Up
+			{
 				self.obj().previous_page();
 				glib::Propagation::Stop
-			} else if keyval == gdk::Key::Right || keyval == gdk::Key::KP_Right || keyval == gdk::Key::Down || keyval == gdk::Key::KP_Down {
+			} else if keyval == gdk::Key::Right
+				|| keyval == gdk::Key::KP_Right
+				|| keyval == gdk::Key::Down
+				|| keyval == gdk::Key::KP_Down
+			{
 				self.obj().next_page();
 				glib::Propagation::Stop
 			} else {
@@ -826,7 +907,7 @@ mod imp {
 					} else {
 						self.obj().zoom() / 0.95
 					})
-					.clamp(0.6, 3.0)
+					.clamp(0.6, 3.0),
 				);
 				glib::Propagation::Stop
 			} else {
@@ -895,9 +976,7 @@ impl SongState {
 			},
 		};
 
-		self.layout = layout::layout_fixed_scale(
-			&self.song, width, height, zoom,
-		);
+		self.layout = layout::layout_fixed_scale(&self.song, width, height, zoom);
 
 		/* Calculate the maximum effective page width for this layout */
 		use noisy_float::prelude::*;
@@ -931,7 +1010,12 @@ impl SongState {
 	}
 
 	fn page_end(&self) -> collection::StaffIndex {
-		self.layout.get_page_of_staff(self.position).1.last().unwrap().index
+		self.layout
+			.get_page_of_staff(self.position)
+			.1
+			.last()
+			.unwrap()
+			.index
 	}
 
 	/* When we're at a given page and want to go back, should we jump to the start of the repetition?
@@ -942,7 +1026,8 @@ impl SongState {
 		 * Go back to the beginning of the first of them.
 		 */
 		let page_start = self.page_start();
-		self.song.section_starts
+		self.song
+			.section_starts
 			.range(..page_start)
 			.next_back()
 			.filter(|(_, meta)| meta.is_repetition)

@@ -8,16 +8,16 @@ glib::wrapper! {
 }
 
 impl LibraryPane {
-	pub fn init(
-		&self,
-		library: Rc<RefCell<library::Library>>,
-		song: crate::song_pane::SongPane,
-	) {
+	pub fn init(&self, library: Rc<RefCell<library::Library>>, song: crate::song_pane::SongPane) {
 		self.imp().library.set(library.clone()).unwrap();
 		self.imp().song.set(song).unwrap();
 		self.imp().reload_songs_filtered();
 		self.imp().side_bar.get().init(library, self.clone());
-		self.imp().library_grid.scroll_to(0, gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS, None);
+		self.imp().library_grid.scroll_to(
+			0,
+			gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS,
+			None,
+		);
 	}
 
 	/* Called when leaving a song to update the statistics */
@@ -31,7 +31,11 @@ impl LibraryPane {
 
 	#[cfg(test)]
 	pub fn select_first_entry(&self) {
-		self.imp().library_grid.scroll_to(0, gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS, None);
+		self.imp().library_grid.scroll_to(
+			0,
+			gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS,
+			None,
+		);
 		self.imp().on_item_selected();
 	}
 
@@ -55,14 +59,11 @@ impl LibraryPane {
 mod imp {
 	use super::*;
 
-	const SORT_FUN: fn(&glib::Object, &glib::Object) -> std::cmp::Ordering =
-		|l, r|
-		std::cmp::PartialOrd::partial_cmp(
-			&l.property::<f64>("score"),
-			&r.property::<f64>("score"),
-		)
-		.expect("score can't be inf or NaN")
-		.reverse();
+	const SORT_FUN: fn(&glib::Object, &glib::Object) -> std::cmp::Ordering = |l, r| {
+		std::cmp::PartialOrd::partial_cmp(&l.property::<f64>("score"), &r.property::<f64>("score"))
+			.expect("score can't be inf or NaN")
+			.reverse()
+	};
 
 	#[derive(CompositeTemplate)]
 	#[template(resource = "/de/piegames/dinoscore/viewer/library.ui")]
@@ -125,11 +126,13 @@ mod imp {
 			let obj = self.obj();
 
 			/* Deferring is required for some reason */
-			glib::MainContext::default().spawn_local(
-				clone!(#[weak] obj, async move {
+			glib::MainContext::default().spawn_local(clone!(
+				#[weak]
+				obj,
+				async move {
 					obj.imp().library_grid.grab_focus();
-				}),
-			);
+				}
+			));
 		}
 	}
 
@@ -152,7 +155,7 @@ mod imp {
 
 					self.store_songs.insert_sorted(
 						&crate::library_item::LibraryItem::new(uuid, title, thumbnail, score),
-						SORT_FUN
+						SORT_FUN,
 					);
 				}
 			}
@@ -166,12 +169,18 @@ mod imp {
 
 			/* Find our song in the UI and update its usage score. */
 			let store_songs = &*self.store_songs;
-			if let Some(item) = 
-				store_songs.find_with_equal_func(
-					|item| item.downcast_ref::<crate::library_item::LibraryItem>().unwrap().uuid() == uuid
-				)
-				.map(|idx| store_songs.item(idx).and_downcast::<crate::library_item::LibraryItem>().unwrap())
-			{
+			if let Some(item) = store_songs
+				.find_with_equal_func(|item| {
+					item.downcast_ref::<crate::library_item::LibraryItem>()
+						.unwrap()
+						.uuid() == uuid
+				})
+				.map(|idx| {
+					store_songs
+						.item(idx)
+						.and_downcast::<crate::library_item::LibraryItem>()
+						.unwrap()
+				}) {
 				item.set_score(&library.stats[&uuid].usage_score(&self.reference_time));
 				store_songs.sort(SORT_FUN);
 			}

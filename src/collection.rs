@@ -207,7 +207,9 @@ impl SongFile {
 	}
 
 	/* Returns a deferred that should be spawned on a background thread */
-	pub fn load_sheets(&self) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, PageImage>>) + Send + 'static {
+	pub fn load_sheets(
+		&self,
+	) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, PageImage>>) + Send + 'static {
 		let load_pages = self.load_pages(|index, file, data| {
 			let extension = file
 				.split('.')

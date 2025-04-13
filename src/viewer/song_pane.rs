@@ -15,12 +15,13 @@ impl SongPane {
 	pub fn load_song(
 		&self,
 		song: collection::SongMeta,
-		pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>) + Send + 'static,
+		pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>)
+			+ Send
+			+ 'static,
 		scale_mode: ScaleMode,
 		start_at_part: u32,
 	) {
-		self.imp()
-			.load_song(song, pages, scale_mode, start_at_part);
+		self.imp().load_song(song, pages, scale_mode, start_at_part);
 	}
 
 	pub fn unload_song(&self) {
@@ -141,10 +142,9 @@ mod imp {
 
 			obj.insert_action_group("song", Some(&self.carousel.imp().actions));
 
-			self.carousel.bind_property("zoom", &*self.zoom_button, "label")
-				.transform_to(|_, zoom: f64| {
-					Some(format!("{:.0}%", zoom * 100.0).to_value())
-				})
+			self.carousel
+				.bind_property("zoom", &*self.zoom_button, "label")
+				.transform_to(|_, zoom: f64| Some(format!("{:.0}%", zoom * 100.0).to_value()))
 				.sync_create()
 				.build();
 
@@ -183,7 +183,9 @@ mod imp {
 		pub fn load_song(
 			&self,
 			song: collection::SongMeta,
-			pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>) + Send + 'static,
+			pages: impl (FnOnce() -> anyhow::Result<TiVec<collection::PageIndex, PageImage>>)
+				+ Send
+				+ 'static,
 			scale_mode: ScaleMode,
 			start_at_part: u32,
 		) {
@@ -201,8 +203,10 @@ mod imp {
 			/* Pulse the spinner while things load in the background */
 			let finished_loading = Rc::new(Cell::new(false));
 			glib::MainContext::default().spawn_local(clone!(
-				#[strong(rename_to = song_progress)] self.song_progress,
-				#[strong] finished_loading,
+				#[strong(rename_to = song_progress)]
+				self.song_progress,
+				#[strong]
+				finished_loading,
 				async move {
 					while !finished_loading.get() {
 						glib::timeout_future(std::time::Duration::from_millis(10)).await;
@@ -213,26 +217,32 @@ mod imp {
 			/* Load in a background thread */
 			let carousel = fragile::Fragile::new(self.carousel.clone());
 			let finished_loading = fragile::Fragile::new(finished_loading);
-			std::thread::spawn(clone!(#[strong] song, move || {
-				let pages = pages().unwrap();
-				glib::MainContext::default().spawn(async move {
-					finished_loading.get().set(true);
-					let carousel = carousel.try_into_inner().unwrap();
-					carousel.grab_focus();
-					carousel.load_song(
-						&song,
-						Arc::new(pages)
-					);
-					carousel.set_scale_mode(scale_mode);
-				});
-			}));
+			std::thread::spawn(clone!(
+				#[strong]
+				song,
+				move || {
+					let pages = pages().unwrap();
+					glib::MainContext::default().spawn(async move {
+						finished_loading.get().set(true);
+						let carousel = carousel.try_into_inner().unwrap();
+						carousel.grab_focus();
+						carousel.load_song(&song, Arc::new(pages));
+						carousel.set_scale_mode(scale_mode);
+					});
+				}
+			));
 
 			let parts: Vec<(collection::StaffIndex, String)> = song.parts();
-			let part_selection_model = self.part_selection.model().unwrap().downcast::<gtk::StringList>().unwrap();
+			let part_selection_model = self
+				.part_selection
+				.model()
+				.unwrap()
+				.downcast::<gtk::StringList>()
+				.unwrap();
 			part_selection_model.splice(
 				0,
 				part_selection_model.n_items(),
-				&*parts.iter().map(|(_, name)| &**name).collect::<Vec<_>>()
+				&*parts.iter().map(|(_, name)| &**name).collect::<Vec<_>>(),
 			);
 			let relevant = parts.len() > 1;
 			self.part_selection.set_sensitive(relevant);
@@ -259,7 +269,12 @@ mod imp {
 
 			self.carousel.unload_song();
 			self.part_selection.set_sensitive(false);
-			let part_selection_model = self.part_selection.model().unwrap().downcast::<gtk::StringList>().unwrap();
+			let part_selection_model = self
+				.part_selection
+				.model()
+				.unwrap()
+				.downcast::<gtk::StringList>()
+				.unwrap();
 			part_selection_model.splice(0, part_selection_model.n_items(), &[]);
 			self.obj().notify("song-name");
 			self.obj().notify("song-id");
@@ -310,11 +325,7 @@ mod imp {
 				if last_interaction.duration_since(song_load_time).as_secs() > 90 {
 					log::debug!("Song now counts as \"played\"");
 					self.song_load_time.take();
-					library
-						.stats
-						.get_mut(&song.song_uuid)
-						.unwrap()
-						.on_load();
+					library.stats.get_mut(&song.song_uuid).unwrap().on_load();
 				}
 			}
 			library.save_in_background();
