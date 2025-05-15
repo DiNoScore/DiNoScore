@@ -269,7 +269,7 @@ mod imp {
 			swipe_tracker.connect_begin_swipe(glib::clone!(
 				#[weak]
 				obj,
-				move |_| { obj.imp().scroll_animation.get().unwrap().pause() }
+				move |_| obj.imp().scroll_animation.get().unwrap().pause()
 			));
 			swipe_tracker.connect_update_swipe(glib::clone!(
 				#[weak]

@@ -53,7 +53,7 @@ mkShell rec {
   ];
   shellHook = ''
     export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}''${LD_LIBRARY_PATH:+:''${LD_LIBRARY_PATH}}"
-    export LIBCLANG_PATH="${llvmPackages.libclang}/lib"
+    export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib"
     export GDK_DPI_SCALE=1.3
     export RUST_BACKTRACE=1
     export CARGO_TARGET_DIR=./target

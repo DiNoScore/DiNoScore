@@ -228,6 +228,7 @@ mod imp {
 						carousel.grab_focus();
 						carousel.load_song(&song, Arc::new(pages));
 						carousel.set_scale_mode(scale_mode);
+						carousel.set_part_index(start_at_part);
 					});
 				}
 			));

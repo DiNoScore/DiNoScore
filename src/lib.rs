@@ -56,6 +56,7 @@ pub mod unsafe_force;
 
 pub use image_util::PageImage;
 
+#[allow(deprecated)]
 pub fn create_progress_bar_dialog(
 	text: &str,
 	parent: &impl IsA<gtk::Window>,
@@ -78,6 +79,7 @@ pub fn create_progress_bar_dialog(
 	(progress, bar)
 }
 
+#[allow(deprecated)]
 pub fn create_progress_spinner_dialog(text: &str, parent: &impl IsA<gtk::Window>) -> gtk::Dialog {
 	let progress = gtk::Dialog::builder()
 		.modal(true)
