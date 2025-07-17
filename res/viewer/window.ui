@@ -19,7 +19,7 @@
             <signal name="popped" handler="go_back" swapped="true" />
             <child>
               <object class="AdwNavigationPage">
-                <property name="title" translatable="yes">Library</property>
+                <property name="title" translatable="yes">Library – DiNoScore</property>
                 <property name="tag">library</property>
                 <property name="child">
                   <object class="ViewerLibrary" id="library" />
@@ -28,7 +28,6 @@
             </child>
             <child>
               <object class="AdwNavigationPage">
-                <property name="title" translatable="yes">Song</property>
                 <property name="tag">song</property>
                 <property name="child">
                   <object class="ViewerSong" id="song">

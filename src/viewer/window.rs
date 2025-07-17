@@ -172,14 +172,20 @@ mod imp {
 		#[template_callback]
 		fn update_song_title(&self) {
 			let obj = self.obj();
+			let song = self.song.property::<Option<String>>("song-name");
 			obj.set_title(
-				self.song
-					.property::<Option<String>>("song-name")
+				song
 					.as_ref()
 					.map(|title| format!("{} – DiNoScore", title))
 					.as_deref()
 					.or(Some("DiNoScore")),
 			);
+			if let Some(song) = song.as_ref() {
+				self.deck
+					.find_page("song")
+					.unwrap()
+					.set_title(song);
+			}
 			self.library.update_side_panel();
 		}
 
