@@ -8,5 +8,6 @@
         <file compressed="true" preprocess="xml-stripblanks">library.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">library_item.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">song_preview.ui</file>
+        <file compressed="true">viewer.css</file>
     </gresource>
 </gresources>

@@ -38,6 +38,16 @@ fn gtk_init(_application: &gtk::Application) {
 	let _ = song_pane::SongPane::static_type();
 	let _ = song_widget::SongWidget::static_type();
 	adw::init().expect("Failed to initialize libadwaita");
+
+	/* Load CSS */
+	let css = gtk::CssProvider::new();
+	css.load_from_resource("/de/piegames/dinoscore/viewer/viewer.css");
+
+	gtk::style_context_add_provider_for_display(
+		&gdk::Display::default().expect("Could not connect to a display."),
+		&css,
+		gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+	);
 }
 
 fn main() -> anyhow::Result<()> {

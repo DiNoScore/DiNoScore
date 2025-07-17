@@ -72,6 +72,9 @@
                   </object>
                 </property>
                 <signal name="activate" handler="on_item_activated" swapped="true"/>
+                <style>
+                  <class name="library-grid"/>
+                </style>
               </object>
             </child>
           </object>

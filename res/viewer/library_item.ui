@@ -2,6 +2,7 @@
   <template class="GtkListItem">
     <property name="child">
       <object class="GtkBox">
+        <property name="halign">center</property>
         <property name="orientation">vertical</property>
         <child>
           <object class="GtkPicture">

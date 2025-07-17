@@ -1,0 +1,17 @@
+.library-grid {
+    background: none;
+    padding: 10px;
+}
+
+.library-grid > child {
+    margin: 5px;
+    background-color: white;
+    /*background: white;*/
+    border-radius: 10px;
+    box-shadow: 3px 3px 7px 1px rgba(0,0,0,0.2);
+}
+
+.library-grid > child:selected {
+    /* https://gitlab.gnome.org/GNOME/libadwaita/-/blob/7424559bc17c9e5ae4b2199efae1b275c65b99a3/src/stylesheet/_colors.scss#L90 */
+    background: alpha(var(--accent-bg-color), 0.25);
+}
