@@ -105,6 +105,12 @@
       </object>
     </child>
     <child>
+      <object class="GtkToggleButton" id="favorite">
+        <property name="label">Favorite</property>
+        <signal name="toggled" handler="on_favorite_toggled" swapped="true" />
+      </object>
+    </child>
+    <child>
       <object class="GtkSeparator">
         <property name="vexpand">True</property>
         <style>

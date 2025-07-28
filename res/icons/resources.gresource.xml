@@ -12,5 +12,6 @@
     <file compressed="true" preprocess="xml-stripblanks">actions/zoom-in-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/zoom-original-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">actions/zoom-out-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">status/starred-symbolic.svg</file>
   </gresource>
 </gresources>

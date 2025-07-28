@@ -31,6 +31,8 @@ pub struct LibrarySong {
 	 */
 	usage_score: SystemTime,
 	pub scale_options: Option<ScaleMode>,
+	#[serde(default)]
+	pub favorite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
@@ -71,6 +73,7 @@ impl LibrarySong {
 			last_played: None,
 			usage_score: SystemTime::now(),
 			scale_options: None,
+			favorite: false,
 		}
 	}
 

@@ -152,9 +152,10 @@ mod imp {
 					let thumbnail = song.thumbnail();
 					let title = song.title().unwrap_or("<no title>").to_owned();
 					let score = library.stats[uuid].usage_score(&self.reference_time);
+					let favorite = library.stats[uuid].favorite;
 
 					self.store_songs.insert_sorted(
-						&crate::library_item::LibraryItem::new(uuid, title, thumbnail, score),
+						&crate::library_item::LibraryItem::new(uuid, title, thumbnail, score, favorite),
 						SORT_FUN,
 					);
 				}
@@ -206,16 +207,15 @@ mod imp {
 
 		#[template_callback]
 		pub fn on_item_selected(&self) {
-			let song: Option<uuid::Uuid> = {
+			let song: Option<crate::library_item::LibraryItem> = {
 				self.library_grid
 					.model()
 					.and_downcast_ref::<gtk::SingleSelection>()
 					.and_then(gtk::SingleSelection::selected_item)
-					.and_downcast_ref::<crate::library_item::LibraryItem>()
-					.map(crate::library_item::LibraryItem::uuid)
+					.and_downcast::<crate::library_item::LibraryItem>()
 			};
 
-			if let Some(song) = song {
+			if let Some(song) = song.as_ref() {
 				self.side_bar.on_item_selected(song);
 			}
 

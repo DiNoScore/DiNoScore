@@ -22,7 +22,7 @@ impl SongPreview {
 			.unwrap();
 	}
 
-	pub fn on_item_selected(&self, song: uuid::Uuid) {
+	pub fn on_item_selected(&self, song: &crate::library_item::LibraryItem) {
 		self.imp().on_item_selected(song);
 	}
 }
@@ -45,6 +45,11 @@ mod imp {
 		part_name: TemplateChild<gtk::Label>,
 		#[template_child]
 		part_carousel_dots: TemplateChild<gtk::Widget>,
+
+		#[template_child]
+		favorite: TemplateChild<gtk::ToggleButton>,
+		favorite_binding: RefCell<Option<glib::Binding>>,
+
 		#[template_child]
 		stats_times_played: TemplateChild<gtk::Label>,
 		#[template_child]
@@ -108,7 +113,8 @@ mod imp {
 
 	#[gtk::template_callbacks]
 	impl SongPreview {
-		pub fn on_item_selected(&self, song_uuid: uuid::Uuid) {
+		pub fn on_item_selected(&self, item: &crate::library_item::LibraryItem) {
+			let song_uuid = item.uuid();
 			let library = self.library.get().unwrap().borrow();
 			let stats = library.stats.get(&song_uuid).unwrap();
 			let song = library.songs.get(&song_uuid).unwrap();
@@ -139,6 +145,18 @@ mod imp {
 				}
 
 				self.load_preview_background(song);
+
+				/* Favorite stuff */
+
+				let mut favorite_binding = self.favorite_binding.borrow_mut();
+				if let Some(favorite_binding) = favorite_binding.as_ref() {
+					favorite_binding.unbind();
+				}
+				*favorite_binding = Some(
+					self.favorite.bind_property("active", item,  "favorite").build()
+				);
+				/* Don't sync_create, because we sync into the other direction */
+				self.favorite.set_active(item.favorite());
 			}
 
 			/* Update stats */
@@ -165,6 +183,15 @@ mod imp {
 			std::mem::drop(library);
 			self.part_preview
 				.scroll_to(&self.part_preview.nth_page(0), false);
+		}
+
+		#[template_callback]
+		fn on_favorite_toggled(&self) {
+			/* Reentrancy hack, I'm sorry */
+			if let Ok(mut library) = self.library.get().unwrap().try_borrow_mut() {
+				library.stats.get_mut(&self.song_uuid.get()).unwrap().favorite = self.favorite.get().is_active();
+				library.save_in_background();
+			}
 		}
 
 		/* The part_name label of the part_preview carousel is a floating overlay.

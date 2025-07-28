@@ -13,12 +13,14 @@ impl LibraryItem {
 		title: String,
 		thumbnail: Option<&gdk::Texture>,
 		score: f64,
+		favorite: bool,
 	) -> Self {
 		Object::builder()
 			.property("uuid", uuid.to_string())
 			.property("title", title)
 			.property("thumbnail", thumbnail)
 			.property("score", score)
+			.property("favorite", favorite)
 			.build()
 	}
 
@@ -41,6 +43,8 @@ mod imp {
 		thumbnail: RefCell<Option<gdk::Texture>>,
 		#[property(get, set)]
 		score: RefCell<f64>,
+		#[property(get, set)]
+		favorite: RefCell<bool>,
 	}
 
 	#[glib::object_subclass]
