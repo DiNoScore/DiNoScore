@@ -1092,37 +1092,24 @@ fn spawn_song_renderer(
 
 	std::thread::spawn(move || {
 		use std::collections::VecDeque;
-		/* This used to create a simple list of all staves in order.
-		 * Except for the initial load, the order does not matter, since
-		 * the queue is reordered according to the currently visible page.
-		 * Here, we interleave the pages across different parts so that
-		 * the users gets a quick initial response, even when jumping directly
-		 * to one of the later sections of the song.
+		/* For the first rendering, group pages by part and interleave them.
+		 * This is to ensure that the initial render quickly yields visible results,
+		 * regardless of which part was selected.
+		 * For later renderings, the order will be based on the distance to the current viewer position
+		 * instead (an information we do not necessarily yet have as of the first rendering)
 		 */
-		let reset_work_queue = || {
-			let mut piece_starts: Vec<std::ops::Range<collection::PageIndex>> = piece_starts
-				.windows(2)
-				.map(|win| (win[0], win[1]))
-				.map(|(start, end)| start..end)
-				.chain(std::iter::once(
-					piece_starts[piece_starts.len() - 1]..collection::PageIndex(pages.len()),
-				))
-				.collect();
-			let mut work_queue = VecDeque::with_capacity(pages.len());
-			while !piece_starts.is_empty() {
-				for piece in &mut piece_starts {
-					work_queue.push_back(piece.start);
-					piece.start += collection::PageIndex(1);
-				}
-				piece_starts.retain(|r| !r.is_empty());
-			}
-			assert_eq!(work_queue.len(), pages.len());
-			work_queue
+		let initial_work_queue = || {
+			let mut pages = (0..pages.len()).into_iter().map(collection::PageIndex).collect::<Vec<_>>();
+			pages.sort_by_key(|index| {
+				/* Find the piece it is in and then sort by distance to its start */
+				*index - *piece_starts.iter().filter(|&val| val <= index).max().unwrap_or(&collection::PageIndex(0))
+			});
+			pages
 		};
 
 		/* For a start, render everything sequentially at minimum resolution. This should not take long */
 		let start = std::time::Instant::now();
-		for i in reset_work_queue() {
+		for i in initial_work_queue() {
 			let image = gdk::Texture::for_pixbuf(&pages[i].render_scaled(250));
 			if out_tx
 				.unbounded_send(ScaledPage {
@@ -1192,7 +1179,7 @@ fn spawn_song_renderer(
 								"Background thread rendering width changed: {actual_width}"
 							);
 							work_width = actual_width;
-							work_queue = reset_work_queue();
+							work_queue = (0..pages.len()).into_iter().map(collection::PageIndex).collect();
 							need_queue_shuffle = true;
 						}
 					}
