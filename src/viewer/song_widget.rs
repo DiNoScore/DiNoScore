@@ -1099,10 +1099,18 @@ fn spawn_song_renderer(
 		 * instead (an information we do not necessarily yet have as of the first rendering)
 		 */
 		let initial_work_queue = || {
-			let mut pages = (0..pages.len()).into_iter().map(collection::PageIndex).collect::<Vec<_>>();
+			let mut pages = (0..pages.len())
+				.into_iter()
+				.map(collection::PageIndex)
+				.collect::<Vec<_>>();
 			pages.sort_by_key(|index| {
 				/* Find the piece it is in and then sort by distance to its start */
-				*index - *piece_starts.iter().filter(|&val| val <= index).max().unwrap_or(&collection::PageIndex(0))
+				*index
+					- *piece_starts
+						.iter()
+						.filter(|&val| val <= index)
+						.max()
+						.unwrap_or(&collection::PageIndex(0))
 			});
 			pages
 		};
@@ -1179,7 +1187,10 @@ fn spawn_song_renderer(
 								"Background thread rendering width changed: {actual_width}"
 							);
 							work_width = actual_width;
-							work_queue = (0..pages.len()).into_iter().map(collection::PageIndex).collect();
+							work_queue = (0..pages.len())
+								.into_iter()
+								.map(collection::PageIndex)
+								.collect();
 							need_queue_shuffle = true;
 						}
 					}
