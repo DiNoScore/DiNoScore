@@ -33,12 +33,12 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-libadwaita = { version = "0.7", features = [ "v1_4" ] }
-gtk4 = { version = "0.9", features = [ "v4_14" ] }
-glib = { version = "0.20", features = ["log", "v2_74"] }
-gio = { version = "0.20", features = ["v2_74"] }
-cairo-rs = { version = "0.20", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.24", features = ["v20_9"] }
+libadwaita = { version = "0.8", features = [ "v1_7" ] }
+gtk4 = { version = "0.10", features = [ "v4_14" ] }
+glib = { version = "0.21", features = ["log", "v2_74"] }
+gio = { version = "0.21", features = ["v2_74"] }
+cairo-rs = { version = "0.21", features = ["png", "pdf", "svg", "v1_16"]}
+poppler-rs = { version = "0.25", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.4.0"
