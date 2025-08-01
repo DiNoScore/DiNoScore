@@ -242,14 +242,20 @@ mod imp {
 				Box::new(|_| true)
 			} else {
 				Box::new(move |song| {
-					song.title
-						.as_ref()
-						.map(|title| title.trim().to_lowercase().contains(&query))
-						.unwrap_or(false) || song
-						.composer
-						.as_ref()
-						.map(|composer| composer.trim().to_lowercase().contains(&query))
-						.unwrap_or(false)
+					query
+						.split(" ")
+						.map(|word| word.trim())
+						.filter(|word| !word.is_empty())
+						.all(|word| {
+							song.title
+								.as_ref()
+								.map(|title| title.trim().to_lowercase().contains(word))
+								.unwrap_or(false) || song
+								.composer
+								.as_ref()
+								.map(|composer| composer.trim().to_lowercase().contains(word))
+								.unwrap_or(false)
+						})
 				})
 			};
 			self.reload_songs_filtered();
