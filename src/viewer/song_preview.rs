@@ -53,11 +53,11 @@ mod imp {
 		tags: TemplateChild<adw::WrapBox>,
 
 		#[template_child]
-		stats_times_played: TemplateChild<gtk::Label>,
+		stats_times_played: TemplateChild<adw::ActionRow>,
 		#[template_child]
-		stats_time_played: TemplateChild<gtk::Label>,
+		stats_time_played: TemplateChild<adw::ActionRow>,
 		#[template_child]
-		stats_last_played: TemplateChild<gtk::Label>,
+		stats_last_played: TemplateChild<adw::ActionRow>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		pub library_widget: OnceCell<crate::library_pane::LibraryPane>,
@@ -178,10 +178,10 @@ mod imp {
 
 			/* Update stats */
 			self.stats_times_played
-				.set_label(&stats.times_played.to_string());
+				.set_subtitle(&stats.times_played.to_string());
 			self.stats_time_played
-				.set_label(&format!("{:.1}", stats.seconds_played as f64 / 3600.0));
-			self.stats_last_played.set_label(
+				.set_subtitle(&format!("{:.1}", stats.seconds_played as f64 / 3600.0));
+			self.stats_last_played.set_subtitle(
 				&stats
 					.last_played
 					.and_then(|last_played| {
