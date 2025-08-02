@@ -15,3 +15,20 @@
     /* https://gitlab.gnome.org/GNOME/libadwaita/-/blob/7424559bc17c9e5ae4b2199efae1b275c65b99a3/src/stylesheet/_colors.scss#L90 */
     background: alpha(var(--accent-bg-color), 0.25);
 }
+
+.tag {
+    border-radius: 9999px;
+    margin: 3px;
+    padding: 3px 10px;
+}
+
+/* Give some tags a color */
+.tag-composer {
+    color: var(--accent-purple);
+}
+.tag-form {
+    color: var(--accent-orange);
+}
+.tag-instrument {
+    color: var(--accent-teal);
+}

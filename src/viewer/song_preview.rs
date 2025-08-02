@@ -49,6 +49,8 @@ mod imp {
 		#[template_child]
 		favorite: TemplateChild<gtk::ToggleButton>,
 		favorite_binding: RefCell<Option<glib::Binding>>,
+		#[template_child]
+		tags: TemplateChild<adw::WrapBox>,
 
 		#[template_child]
 		stats_times_played: TemplateChild<gtk::Label>,
@@ -153,10 +155,25 @@ mod imp {
 					favorite_binding.unbind();
 				}
 				*favorite_binding = Some(
-					self.favorite.bind_property("active", item,  "favorite").build()
+					self.favorite
+						.bind_property("active", item, "favorite")
+						.build(),
 				);
 				/* Don't sync_create, because we sync into the other direction */
 				self.favorite.set_active(item.favorite());
+
+				/* Tags */
+				/* TODO use that function in Libadwaita 1.8 */
+				// self.tags.remove_all();
+				while let Some(child) = self.tags.first_child() {
+					self.tags.remove(&child);
+				}
+				for (kind, tag) in song.index.tags() {
+					self.tags.append(&crate::library_tag::LibraryTag::new(
+						kind.into(),
+						tag.into(),
+					));
+				}
 			}
 
 			/* Update stats */
@@ -189,7 +206,11 @@ mod imp {
 		fn on_favorite_toggled(&self) {
 			/* Reentrancy hack, I'm sorry */
 			if let Ok(mut library) = self.library.get().unwrap().try_borrow_mut() {
-				library.stats.get_mut(&self.song_uuid.get()).unwrap().favorite = self.favorite.get().is_active();
+				library
+					.stats
+					.get_mut(&self.song_uuid.get())
+					.unwrap()
+					.favorite = self.favorite.get().is_active();
 				library.save_in_background();
 			}
 		}

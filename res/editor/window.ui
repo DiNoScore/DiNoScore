@@ -108,9 +108,8 @@
           </object>
         </child>
         <child>
-          <object class="GtkBox">
+          <object class="GtkFlowBox">
             <property name="hexpand">True</property>
-            <property name="spacing">10</property>
             <property name="margin-top">10</property>
             <property name="margin-start">5</property>
             <property name="margin-end">5</property>
@@ -148,9 +147,35 @@
                 <signal name="notify::text" handler="update_song_composer" swapped="true"/>
               </object>
             </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Song form</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkEntry" id="song_form">
+                <property name="placeholder-text">Sonata, Piano Sonata</property>
+                <property name="tooltip-text">Comma separated list</property>
+                <property name="width-chars">25</property>
+                <signal name="notify::text" handler="update_song_form" swapped="true"/>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Instruments</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkEntry" id="song_instruments">
+                <property name="placeholder-text">Cello, Piano</property>
+                <property name="tooltip-text">Comma separated list</property>
+                <property name="width-chars">25</property>
+                <signal name="notify::text" handler="update_song_instruments" swapped="true"/>
+              </object>
+            </child>
           </object>
         </child>
-  </object>
+      </object>
     </child>
   </template>
 

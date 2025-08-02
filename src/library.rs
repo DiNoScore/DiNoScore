@@ -133,6 +133,28 @@ pub struct Library {
 }
 
 impl Library {
+	pub fn count_tags(
+		&self,
+		active_tags: &HashMap<String, std::collections::BTreeSet<String>>,
+	) -> HashMap<(String, String), u32> {
+		let mut counted_tags = HashMap::new();
+		for song in self.songs.values() {
+			for (kind, value) in song.index.tags() {
+				if active_tags.iter()
+					/* Exclude the tag's own kind from the active tags we compare against, because of a disjunction */
+					.filter(|(active_kind, _)| &**active_kind != kind)
+					.all(|(kind, tags)|
+						song.index.tags()
+							.find(|(song_kind, song_value)| kind == song_kind && tags.contains(&song_value.to_string())).is_some()
+					)
+				{
+					*counted_tags.entry((kind.to_string(), value.to_string())).or_default() += 1;
+				}
+			}
+		}
+		counted_tags
+	}
+
 	pub fn load() -> anyhow::Result<(Self, HashSet<String>)> {
 		// TODO don't hardcode here
 		let xdg = xdg::BaseDirectories::with_prefix("dinoscore");

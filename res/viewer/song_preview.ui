@@ -111,6 +111,10 @@
       </object>
     </child>
     <child>
+      <object class="AdwWrapBox" id="tags">
+      </object>
+    </child>
+    <child>
       <object class="GtkSeparator">
         <property name="vexpand">True</property>
         <style>

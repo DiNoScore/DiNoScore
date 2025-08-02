@@ -11,8 +11,27 @@ impl LibraryPane {
 	pub fn init(&self, library: Rc<RefCell<library::Library>>, song: crate::song_pane::SongPane) {
 		self.imp().library.set(library.clone()).unwrap();
 		self.imp().song.set(song).unwrap();
-		self.imp().reload_songs_filtered();
+		{
+			/* Tags */
+			let library = library.borrow();
+			let mut tags = std::collections::HashMap::<&str, std::collections::BTreeSet<_>>::new();
+			for (key, value) in library
+				.songs
+				.iter()
+				.flat_map(|(_uuid, song)| song.index.tags())
+			{
+				tags.entry(key).or_default().insert(value);
+			}
+			for (key, value) in tags.iter().flat_map(|(k, vs)| vs.iter().map(|v| (*k, v))) {
+				let tag = crate::library_tag::LibraryTag::new(key.into(), value.to_string());
+				tag.connect_toggled(clone_!(self.imp(), move |this, _| {
+					this.imp().reload_songs_filtered()
+				}));
+				self.imp().tags.append(&tag);
+			}
+		}
 		self.imp().side_bar.get().init(library, self.clone());
+		self.imp().reload_songs_filtered();
 		self.imp().library_grid.scroll_to(
 			0,
 			gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS,
@@ -77,6 +96,8 @@ mod imp {
 		/* Revealer (when clicked on song) */
 		#[template_child]
 		pub side_bar: TemplateChild<crate::song_preview::SongPreview>,
+		#[template_child]
+		pub tags: TemplateChild<adw::WrapBox>,
 
 		/**
 		 * Our scores decay over time, so we need to fix a point in time for the values to be comparable.
@@ -96,6 +117,7 @@ mod imp {
 				library_grid: Default::default(),
 				search_entry: Default::default(),
 				side_bar: Default::default(),
+				tags: Default::default(),
 				reference_time: std::time::SystemTime::now(),
 				library: Default::default(),
 				song: Default::default(),
@@ -146,8 +168,38 @@ mod imp {
 		pub fn reload_songs_filtered(&self) {
 			let library = &self.library.get().unwrap().borrow();
 			self.store_songs.remove_all();
+
+			/* Extract the activated tags to filter */
+			let mut activated_tags =
+				std::collections::HashMap::<String, std::collections::BTreeSet<String>>::new();
+			for (key, value) in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+				.filter(|tag| tag.is_active())
+				.map(|tag| (tag.kind().unwrap(), tag.value().unwrap()))
+			{
+				activated_tags.entry(key).or_default().insert(value);
+			}
+
+			/* Conjunctive normal form matching: For every tag kind that has a tag filter,
+			 * at least one tag of that kind must match
+			 */
+			let tag_filter = |song: &collection::SongMeta| {
+				activated_tags.iter().all(|(kind, tags)| {
+					song.tags()
+						.find(|(song_kind, song_value)| {
+							kind == song_kind && tags.contains(&song_value.to_string())
+						})
+						.is_some()
+				})
+			};
+
+			/* Go through the song list and filter it */
 			for (uuid, song) in library.songs.iter() {
-				if (*self.song_filter.borrow())(&song.index) {
+				if (*self.song_filter.borrow())(&song.index) && tag_filter(&song.index) {
 					/* Add an item with the name and UUID */
 					let thumbnail = song.thumbnail();
 					let title = song.title().unwrap_or("<no title>").to_owned();
@@ -155,11 +207,36 @@ mod imp {
 					let favorite = library.stats[uuid].favorite;
 
 					self.store_songs.insert_sorted(
-						&crate::library_item::LibraryItem::new(uuid, title, thumbnail, score, favorite),
+						&crate::library_item::LibraryItem::new(
+							uuid, title, thumbnail, score, favorite,
+						),
 						SORT_FUN,
 					);
 				}
 			}
+
+			/* Update the tags count based on how we filtered
+			 * This is tricky because when a tag is applied it restricts all neighboring tags of the same
+			 * kind, but actually we do want to count those.
+			 */
+			let tag_count = library.count_tags(&activated_tags);
+			for tag in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+			{
+				tag.set_count(
+					tag_count
+						.get(&(tag.kind().unwrap(), tag.value().unwrap()))
+						.copied()
+						.unwrap_or_default(),
+				);
+			}
+
+			/* Changing the filter also changes the selected item */
+			self.on_item_selected();
 		}
 
 		/// Play a song

@@ -23,6 +23,9 @@ pub struct EditorSongFile {
 	 * version_uuid: Uuid, */
 	pub song_name: String,
 	pub song_composer: String,
+	/* Comma separated, to be split on save */
+	pub song_form: String,
+	pub song_instruments: String,
 }
 
 impl Default for EditorSongFile {
@@ -39,6 +42,8 @@ impl EditorSongFile {
 			song_uuid: Uuid::new_v4(),
 			song_name: "".into(),
 			song_composer: "".into(),
+			song_form: "".into(),
+			song_instruments: "".into(),
 		}
 	}
 
@@ -307,6 +312,20 @@ impl EditorSongFile {
 			composer: Some(&self.song_composer)
 				.filter(|name| !name.is_empty())
 				.cloned(),
+			song_form: self
+				.song_form
+				.split(",")
+				.map(str::trim)
+				.filter(|s| !s.is_empty())
+				.map(str::to_string)
+				.collect(),
+			instruments: self
+				.song_instruments
+				.split(",")
+				.map(str::trim)
+				.filter(|s| !s.is_empty())
+				.map(str::to_string)
+				.collect(),
 		};
 		use std::ops::Deref;
 		let thumbnail = SongFile::generate_thumbnail(&song, self.pages.iter().map(Deref::deref))

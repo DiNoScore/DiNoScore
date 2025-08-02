@@ -20,6 +20,7 @@ use dinoscore::{prelude::*, *};
 mod crash_n_log;
 mod library_item;
 mod library_pane;
+mod library_tag;
 #[cfg(target_family = "unix")]
 mod pedal;
 #[cfg(test)]

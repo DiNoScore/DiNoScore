@@ -85,6 +85,10 @@ mod imp {
 		song_name: TemplateChild<gtk::Entry>,
 		#[template_child]
 		song_composer: TemplateChild<gtk::Entry>,
+		#[template_child]
+		song_form: TemplateChild<gtk::Entry>,
+		#[template_child]
+		song_instruments: TemplateChild<gtk::Entry>,
 
 		file: Rc<RefCell<EditorSongFile>>,
 	}
@@ -642,6 +646,16 @@ mod imp {
 		#[template_callback]
 		fn update_song_composer(&self) {
 			self.file.borrow_mut().song_composer = self.song_composer.text().to_string();
+		}
+
+		#[template_callback]
+		fn update_song_form(&self) {
+			self.file.borrow_mut().song_form = self.song_form.text().to_string();
+		}
+
+		#[template_callback]
+		fn update_song_instruments(&self) {
+			self.file.borrow_mut().song_instruments = self.song_instruments.text().to_string();
 		}
 	}
 }

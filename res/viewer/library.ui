@@ -54,29 +54,43 @@
     <child>
       <object class="GtkBox">
         <child>
-          <object class="GtkScrolledWindow">
-            <property name="hscrollbar_policy">never</property>
-            <property name="hexpand">True</property>
-            <property name="vexpand">True</property>
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
             <child>
-              <object class="GtkGridView" id="library_grid">
-                <property name="factory">
-                  <object class="GtkBuilderListItemFactory">
-                    <property name="resource">/de/piegames/dinoscore/viewer/library_item.ui</property>
-                  </object>
-                </property>
-                <property name="model">
-                  <object class="GtkSingleSelection">
-                    <property name="model">store_songs</property>
-                    <signal name="selection-changed" handler="on_item_selected" swapped="true"/>
-                  </object>
-                </property>
-                <signal name="activate" handler="on_item_activated" swapped="true"/>
-                <style>
-                  <class name="library-grid"/>
-                </style>
+              <object class="AdwWrapBox" id="tags">
               </object>
             </child>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar_policy">never</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <child>
+                  <object class="GtkGridView" id="library_grid">
+                    <property name="factory">
+                      <object class="GtkBuilderListItemFactory">
+                        <property name="resource">/de/piegames/dinoscore/viewer/library_item.ui</property>
+                      </object>
+                    </property>
+                    <property name="model">
+                      <object class="GtkSingleSelection">
+                        <property name="model">store_songs</property>
+                        <signal name="selection-changed" handler="on_item_selected" swapped="true"/>
+                      </object>
+                    </property>
+                    <signal name="activate" handler="on_item_activated" swapped="true"/>
+                    <style>
+                      <class name="library-grid"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="orientation">vertical</property>
           </object>
         </child>
         <child>

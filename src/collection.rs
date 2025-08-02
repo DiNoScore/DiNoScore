@@ -12,6 +12,7 @@ use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use gtk4 as gtk;
 use libadwaita as adw;
 
+use itertools::Itertools;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr};
 use std::{
@@ -454,6 +455,25 @@ impl SongMeta {
 
 		(page, page_staff.into())
 	}
+
+	pub fn tags(
+		&self,
+	) -> impl Iterator<Item = (&'static str, std::borrow::Cow<'_, str>)> + use<'_> {
+		self.composer
+			.iter()
+			.map(|composer| ("composer", composer.as_str().into()))
+			.chain(
+				self.song_form
+					.iter()
+					.map(|form| ("form", form.as_str().into())),
+			)
+			.chain(
+				/* Combine all instruments into a single tag (if there are any) */
+				(!self.instruments.is_empty())
+					.then(|| ("instrument", self.instruments.iter().join(", ").into()))
+					.into_iter(),
+			)
+	}
 }
 
 /* Check invariants after deserialization */
@@ -536,6 +556,17 @@ pub struct SongMetaV4 {
 	pub version_uuid: Uuid,
 	pub title: Option<String>,
 	pub composer: Option<String>,
+	/// Sonata, Etude, etc.
+	/// Known values (not exhaustive):
+	/// "Sonata", "Piano Sonata", "Violin Sonata", "Etude", "Waltz"
+	#[serde(default)]
+	pub song_form: Vec<String>,
+	/// All instruments in the song individually.
+	/// Known values (not exhaustive):
+	/// "Piano", "Voice", "Choir"
+	/// Exceptions: "Piano (four hands)", "Two pianos". Use these as singleton and do not add "Piano"
+	#[serde(default)]
+	pub instruments: std::collections::BTreeSet<String>,
 }
 
 // Remove once https://github.com/serde-rs/serde/issues/1183 is closed
@@ -626,6 +657,8 @@ impl SongMetaV3 {
 			version_uuid: self.version_uuid,
 			composer: self.composer,
 			title: self.title,
+			song_form: Default::default(),
+			instruments: Default::default(),
 		}
 	}
 }
