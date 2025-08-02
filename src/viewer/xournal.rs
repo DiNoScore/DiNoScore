@@ -6,7 +6,6 @@
 use super::*;
 use anyhow::Context;
 use gtk::glib;
-use lenient_version::Version;
 use std::{io::Write, process::Command};
 
 pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Result<()> {
@@ -14,32 +13,12 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 
 	catch!({
-		log::debug!("Checking Xournal++ availability and version");
-		let version = Command::new("xournalpp")
-			.arg("--version")
-			.output()?;
+		log::debug!("Checking Xournal++ availability");
+		let version = Command::new("xournalpp").arg("--version").output()?;
 		anyhow::ensure!(version.status.success());
-		let version = String::from_utf8(version.stdout)?;
-		let version: String = version
-			.lines()
-			.next()
-			/* Output is
-			 * xournalpp 1.2.4
-			 * └──libgtk: 3.24.43
-			 * or
-			 * Xournal++ 1.2.4
-			 * └──libgtk: 3.24.43
-			 */
-			.and_then(|line| line.strip_prefix("Xournal++ ").or(line.strip_prefix("xournalpp")).map(String::from))
-			.ok_or_else(|| anyhow::format_err!("`xournalpp --version` somehow gave weird input, expecting at least one line of text."))?;
-		let version = lenient_semver_parser::parse::<Version>(&version)
-			.map_err(|err| err.owned())?;
-
-		#[allow(non_snake_case)]
-		let MINIMUM_VERSION = lenient_semver_parser::parse::<Version>("1.1.0").unwrap();
-		anyhow::ensure!(version >= MINIMUM_VERSION, "A Xournal++ version >= 1.1.0 is required");
 		Ok(())
-	}).context("Failed to check Xournal++ version")?;
+	})
+	.context("Failed to check Xournal++ availability")?;
 
 	let annotations_file = xdg.place_data_file(format!("annotations/{}.xopp", song.uuid()))?;
 	let annotations_background_file = annotations_file.parent().unwrap().join({
