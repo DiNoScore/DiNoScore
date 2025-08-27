@@ -220,15 +220,19 @@ mod imp {
 			std::thread::spawn(clone!(
 				#[strong]
 				song,
+				#[strong(rename_to=obj)]
+				fragile::Fragile::new(obj.clone()),
 				move || {
 					let pages = pages().unwrap();
 					glib::MainContext::default().spawn(async move {
 						finished_loading.get().set(true);
 						let carousel = carousel.try_into_inner().unwrap();
+						let obj = obj.try_into_inner().unwrap();
 						carousel.grab_focus();
 						carousel.load_song(&song, Arc::new(pages));
 						carousel.set_scale_mode(scale_mode);
 						carousel.set_part_index(start_at_part);
+						obj.imp().load_annotations();
 					});
 				}
 			));
@@ -255,7 +259,6 @@ mod imp {
 			obj.notify("song-name");
 			obj.notify("song-id");
 
-			self.load_annotations();
 			self.song_progress.get().set_fraction(0.0);
 
 			let now = std::time::Instant::now();
