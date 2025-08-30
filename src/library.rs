@@ -27,7 +27,8 @@ pub struct LibrarySong {
 	 * The timestamp indicates the moment in time at which the score will reach exactly 1. Due
 	 * to the decay factor being constant, this is sufficient to uniquely determine the score at
 	 * any point in time.
-	 * New songs start with a score of 1, which means `now`.
+	 * New songs start with a score of 1, which means `now`. Higher scores are in the past, lower scores in the future.
+	 * Alternatively: A timestamp in the past means a low score.
 	 */
 	usage_score: SystemTime,
 	pub scale_options: Option<ScaleMode>,

@@ -14,7 +14,7 @@ impl LibraryPane {
 		{
 			/* Tags */
 			let library = library.borrow();
-			let mut tags = std::collections::HashMap::<&str, std::collections::BTreeSet<_>>::new();
+			let mut tags = std::collections::BTreeMap::<&str, std::collections::BTreeSet<_>>::new();
 			for (key, value) in library
 				.songs
 				.iter()

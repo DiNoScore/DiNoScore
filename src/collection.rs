@@ -467,12 +467,18 @@ impl SongMeta {
 					.iter()
 					.map(|form| ("form", form.as_str().into())),
 			)
+			// .chain(
+			// 	self.song_form.is_empty().then(|| ("form", std::borrow::Cow::Borrowed("Other"))),
+			// )
 			.chain(
 				/* Combine all instruments into a single tag (if there are any) */
 				(!self.instruments.is_empty())
 					.then(|| ("instrument", self.instruments.iter().join(", ").into()))
 					.into_iter(),
 			)
+		// .chain(
+		// 	self.instruments.is_empty().then(|| ("instrument", std::borrow::Cow::Borrowed("Other"))),
+		// )
 	}
 }
 
