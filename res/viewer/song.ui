@@ -76,7 +76,7 @@
           </object>
         </child>
         <child type="end">
-          <object class="GtkButton">
+          <object class="GtkButton" id="annotate_button">
             <property name="tooltip-text" translatable="yes">Make annotations</property>
             <property name="icon-name">document-edit-symbolic</property>
             <signal name="clicked" handler="annotate" swapped="true"/>

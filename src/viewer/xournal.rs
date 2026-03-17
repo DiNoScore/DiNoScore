@@ -8,7 +8,7 @@ use anyhow::Context;
 use gtk::glib;
 use std::{io::Write, process::Command};
 
-pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Result<()> {
+pub async fn run_editor(song: &collection::SongFile, page: usize) -> anyhow::Result<()> {
 	// TODO don't hardcode here
 	let xdg = xdg::BaseDirectories::with_prefix("dinoscore");
 
@@ -28,19 +28,19 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 	});
 	let annotations_export = xdg.place_data_file(format!("annotations/{}.pdf", song.uuid()))?;
 
-	let background_pdf: Vec<u8> = catch!({
+	let background_pdf: Vec<u8> = async {
 		log::debug!("Creating the PDF background for the file");
-		let background_pdf = pipeline::pipe!(
-			song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))))()
-				.context("Failed to load pages")?
-			=> Into::into
-			=> image_util::concat_files
-		)
+		let loader = song.load_pages(|_index, file, data| Ok((data, file.ends_with(".pdf"))));
+		let background_pdf = blocking::unblock(move || {
+			image_util::concat_files(loader().context("Failed to load pages")?.into())
+		})
+		.await
 		.context("Internal error")?;
 		std::fs::write(&annotations_background_file, &background_pdf)
 			.context("Failed to write file")?;
 		anyhow::Result::<_>::Ok(background_pdf)
-	})
+	}
+	.await
 	.context("Failed to create the background PDF for the Xournal document")?;
 
 	if !annotations_file.exists() {
@@ -94,33 +94,40 @@ pub fn run_editor(song: &mut collection::SongFile, page: usize) -> anyhow::Resul
 		annotations_file.display()
 	);
 
-	log::debug!("Launching Xournal++ editor (page {})", page);
-	let run = Command::new("xournalpp")
-		.args(&[
-			"--page".as_ref(),
-			page.to_string().as_ref(),
-			annotations_file.as_os_str(),
-		])
-		.status()?;
-	anyhow::ensure!(run.success());
+	blocking::unblock(move || {
+		log::debug!("Launching Xournal++ editor (page {})", page);
+		let run = Command::new("xournalpp")
+			.args(&[
+				"--page".as_ref(),
+				page.to_string().as_ref(),
+				annotations_file.as_os_str(),
+			])
+			.status()
+			.context("Failed to launch Xournal++")?;
+		anyhow::ensure!(run.success(), "Xournal++ exited with non-zero status");
 
-	log::debug!("Integrating back the annotations into DiNoScore");
-	let run = Command::new("xournalpp")
-		.args(&[
-			"--export-no-background".as_ref(),
-			"--create-pdf".as_ref(),
-			annotations_export.as_os_str(),
-			annotations_file.as_os_str(),
-		])
-		.status()
-		.context("Failed to launch Xournal")?;
-	anyhow::ensure!(run.success());
+		log::debug!("Integrating back the annotations into DiNoScore");
+		let run = Command::new("xournalpp")
+			.args(&[
+				"--export-no-background".as_ref(),
+				"--create-pdf".as_ref(),
+				annotations_export.as_os_str(),
+				annotations_file.as_os_str(),
+			])
+			.status()
+			.context("Failed to launch Xournal++ for export")?;
+		anyhow::ensure!(
+			run.success(),
+			"Xournal++ export exited with non-zero status"
+		);
 
-	catch!({
-		std::fs::remove_file(annotations_background_file)?;
-		anyhow::Result::<_>::Ok(())
+		catch!({
+			std::fs::remove_file(annotations_background_file)?;
+			anyhow::Result::<_>::Ok(())
+		})
+		.context("Post-editor cleanup failed")?;
+
+		Ok(())
 	})
-	.context("Post-editor cleanup failed")?;
-
-	Ok(())
+	.await
 }

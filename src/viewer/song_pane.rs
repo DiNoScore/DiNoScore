@@ -60,6 +60,8 @@ mod imp {
 		pub part_selection: TemplateChild<gtk::DropDown>,
 		#[template_child]
 		pub zoom_button: TemplateChild<gtk::MenuButton>,
+		#[template_child]
+		annotate_button: TemplateChild<gtk::Button>,
 
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		pub song: RefCell<Option<Arc<collection::SongMeta>>>,
@@ -82,6 +84,7 @@ mod imp {
 				song_progress: Default::default(),
 				part_selection: Default::default(),
 				zoom_button: Default::default(),
+				annotate_button: Default::default(),
 				library: Default::default(),
 				song: Default::default(),
 
@@ -362,21 +365,47 @@ mod imp {
 		#[template_callback]
 		fn annotate(&self) {
 			log::debug!("annotate!");
-			if let Some(song) = &self.song.borrow_mut().as_mut() {
-				let library = &mut self.library.get().unwrap().borrow_mut();
-				// TODO reimplement
-				// let page = song.song.staves[song.current_staves[0]].page;
-				let song = library.songs.get_mut(&song.song_uuid).unwrap();
 
-				// TODO make async
-				// TODO error handling
-				use anyhow::Context;
-				crate::xournal::run_editor(song, 0)
-					.context("Failed to launch editor")
-					.unwrap();
-			}
-			self.load_annotations();
-			self.carousel.grab_focus();
+			let song_uuid = match &self.song.borrow().as_ref() {
+				Some(song) => song.song_uuid,
+				None => return,
+			};
+
+			let obj = self.obj().clone();
+			let carousel = self.carousel.clone();
+			let library = self.library.get().unwrap().clone();
+
+			let dialog = adw::Dialog::builder().title("Xournal++").build();
+			let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+			let spinner = gtk::Spinner::new();
+			spinner.set_spinning(true);
+			content.append(&spinner);
+			content.append(&gtk::Label::new(Some("Xournal++ is running…")));
+			dialog.set_child(Some(&content));
+			dialog.present(Some(&obj));
+
+			glib::MainContext::default().spawn_local(async move {
+				let library = &mut library.borrow_mut();
+
+				let song = library.songs.get_mut(&song_uuid).unwrap();
+				let result = crate::xournal::run_editor(song, 0).await;
+				dialog.close();
+				if let Err(err) = result {
+					log::error!("Failed to launch editor: {:?}", err);
+					// Show an error dialog
+					let error_dialog = adw::AlertDialog::builder()
+						.heading("Annotation Error")
+						.body(format!("{:#}", err))
+						.build();
+					error_dialog.add_response("ok", "OK");
+					error_dialog.set_default_response(Some("ok"));
+					error_dialog.present(Some(&obj));
+				}
+
+				// Reload annotations and restore focus
+				obj.imp().load_annotations();
+				carousel.grab_focus();
+			});
 		}
 	}
 }
