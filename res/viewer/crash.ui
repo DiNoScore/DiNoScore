@@ -1,8 +1,8 @@
 <interface>
-  <object class="AdwMessageDialog" id="crash_dialog">
+  <object class="AdwAlertDialog" id="crash_dialog">
+    <property name="presentation-mode">BOTTOM_SHEET</property>
     <property name="heading" translatable="yes">DiNoScore crashed :(</property>
     <property name="body-use-markup">True</property>
-    <property name="modal">True</property>
     <property name="default-response">restart</property>
     <responses>
       <response id="close" translatable="yes">_Close</response>

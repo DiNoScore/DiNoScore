@@ -252,7 +252,7 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 	let logs_dir = xdg.get_state_file("logs").expect("No HOME found");
 
 	let dialog = gtk::Builder::from_string(include_str!("../../res/viewer/crash.ui"))
-		.object::<adw::MessageDialog>("crash_dialog")
+		.object::<adw::AlertDialog>("crash_dialog")
 		.unwrap();
 
 	dialog.set_body(&format!(
@@ -268,9 +268,13 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 
 	let main_loop = glib::MainLoop::new(None, false);
 
+	let window = gtk::Window::new();
+	window.set_title(Some("DiNoScore crash dialog"));
+	window.present();
+
 	#[allow(unused_variables)]
-	dialog.choose(None::<&gio::Cancellable>, |response| {
-		match &*response.to_string() {
+	dialog.choose(&window, None::<&gio::Cancellable>, move |response| {
+		match response.as_str() {
 			"restart" => {
 				/* Separator to know which messages are from which application instance */
 				println!("------------------------------");
@@ -286,7 +290,7 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 					}
 					#[cfg(windows)]
 					{
-						dialog.destroy();
+						dialog.force_close();
 						if let Ok(status) = Command::new(&exe).status() {
 							std::process::exit(status.code().unwrap_or_default());
 						}
