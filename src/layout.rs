@@ -1,28 +1,27 @@
 use super::{collection::*, *};
 use typed_index_collections::{TiSlice, TiVec};
 
-use derive_more::*;
 use noisy_float::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// As opposed to [`collection::PageIndex`] which is about physical pages in the scanned material
 #[derive(
 	Debug,
-	Display,
+	derive_more::Display,
 	Serialize,
 	Deserialize,
 	Clone,
 	Copy,
-	From,
-	FromStr,
-	Into,
-	AsRef,
-	AsMut,
-	Deref,
-	Add,
-	AddAssign,
-	Sub,
-	SubAssign,
+	derive_more::From,
+	derive_more::FromStr,
+	derive_more::Into,
+	derive_more::AsRef,
+	derive_more::AsMut,
+	derive_more::Deref,
+	derive_more::Add,
+	derive_more::AddAssign,
+	derive_more::Sub,
+	derive_more::SubAssign,
 	PartialEq,
 	Eq,
 	PartialOrd,

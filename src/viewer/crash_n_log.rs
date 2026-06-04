@@ -268,12 +268,8 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 
 	let main_loop = glib::MainLoop::new(None, false);
 
-	let window = gtk::Window::new();
-	window.set_title(Some("DiNoScore crash dialog"));
-	window.present();
-
 	#[allow(unused_variables)]
-	dialog.choose(&window, None::<&gio::Cancellable>, move |response| {
+	dialog.choose(None::<&gtk::Window>, None::<&gio::Cancellable>, move |response| {
 		match response.as_str() {
 			"restart" => {
 				/* Separator to know which messages are from which application instance */

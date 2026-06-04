@@ -4,7 +4,6 @@
  */
 use crate::*;
 use anyhow::Context;
-use derive_more::*;
 
 use adw::prelude::*;
 use gdk::{cairo, gdk_pixbuf};
@@ -201,7 +200,7 @@ impl SongFile {
 	pub fn load_pages<T>(
 		&self,
 		loader: impl Fn(usize, &str, Vec<u8>) -> anyhow::Result<T>,
-	) -> impl (FnOnce() -> anyhow::Result<TiVec<PageIndex, T>>) {
+	) -> impl FnOnce() -> anyhow::Result<TiVec<PageIndex, T>> {
 		let file = self.file.clone();
 		let n_pages = self.index.n_pages;
 		move || Self::load_pages_inner(&mut *file.lock().unwrap(), n_pages, loader)
@@ -262,14 +261,14 @@ impl SongFile {
 		file.write(|file| {
 			let mut writer = zip::ZipWriter::new(file);
 
-			writer.start_file("staves.json", zip::write::FileOptions::default())?;
+			writer.start_file("staves.json", zip::write::FileOptions::<()>::default())?;
 			serde_json::to_writer_pretty(&mut writer, &SongMetaVersioned::from(metadata))?;
 
 			log::info!("Saving sheets");
 			for (index, page) in pages.enumerate() {
 				writer.start_file(
 					format!("page_{}.{}", index, page.extension()),
-					zip::write::FileOptions::default(),
+					zip::write::FileOptions::<()>::default(),
 				)?;
 				use std::io::Write;
 				writer.write_all(page.raw())?;
@@ -277,7 +276,7 @@ impl SongFile {
 
 			if let Some(thumbnail) = thumbnail {
 				log::info!("Saving thumbnail");
-				writer.start_file("thumbnail", zip::write::FileOptions::default())?;
+				writer.start_file("thumbnail", zip::write::FileOptions::<()>::default())?;
 
 				let buffer = thumbnail.save_to_png_bytes();
 				use std::io::Write;
@@ -358,19 +357,19 @@ pub struct SectionMeta {
 
 #[derive(
 	Debug,
-	Display,
+	derive_more::Display,
 	Serialize,
 	Deserialize,
 	Clone,
 	Copy,
-	From,
-	FromStr,
-	Into,
-	AsRef,
-	AsMut,
-	Deref,
-	Add,
-	Sub,
+	derive_more::From,
+	derive_more::FromStr,
+	derive_more::Into,
+	derive_more::AsRef,
+	derive_more::AsMut,
+	derive_more::Deref,
+	derive_more::Add,
+	derive_more::Sub,
 	PartialEq,
 	Eq,
 	PartialOrd,
@@ -380,21 +379,21 @@ pub struct StaffIndex(pub usize);
 
 #[derive(
 	Debug,
-	Display,
+	derive_more::Display,
 	Serialize,
 	Deserialize,
 	Clone,
 	Copy,
-	From,
-	FromStr,
-	Into,
-	AsRef,
-	AsMut,
-	Deref,
-	Add,
-	AddAssign,
-	Sub,
-	SubAssign,
+	derive_more::From,
+	derive_more::FromStr,
+	derive_more::Into,
+	derive_more::AsRef,
+	derive_more::AsMut,
+	derive_more::Deref,
+	derive_more::Add,
+	derive_more::AddAssign,
+	derive_more::Sub,
+	derive_more::SubAssign,
 	PartialEq,
 	Eq,
 	PartialOrd,

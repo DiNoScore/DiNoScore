@@ -12,7 +12,7 @@ mkShell rec {
     npins
 
     # Compiler
-    # rustc
+    rustc
     pkg-config
     llvmPackages.clang
     llvmPackages.libclang

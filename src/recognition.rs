@@ -40,7 +40,7 @@ fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaf
 		image.width(),
 		image.height(),
 		image::ColorType::L8,
-		image::ImageOutputFormat::Png,
+		image::ImageFormat::Png,
 	)?;
 	let response: serde_json::Value = attohttpc:://post("https://inference.piegames.de/dinoscore/upload")
 			post("http://localhost:8000/upload")
@@ -228,7 +228,7 @@ fn post_process(
 					image.view(staff_a.left.min(staff_b.left), staff_a.top, window_width, window_height)
 					=> _.to_image()
 					=> imageproc::filter::box_filter(&_, 2, 2)
-					=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 250); img })
+					=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 250, imageproc::contrast::ThresholdType::Binary); img })
 					=> imageproc::region_labelling::connected_components(&_, imageproc::region_labelling::Connectivity::Eight, [255].into())
 				);
 
@@ -267,7 +267,7 @@ fn post_process(
 
 		let connected_image = pipeline::pipe!(
 			imageproc::filter::box_filter(&image, 2, 2)
-			=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 220); img })
+			=> (|mut img| { imageproc::contrast::threshold_mut(&mut img, 220, imageproc::contrast::ThresholdType::Binary); img })
 			=> imageproc::region_labelling::connected_components(&_, imageproc::region_labelling::Connectivity::Eight, [255].into())
 		);
 

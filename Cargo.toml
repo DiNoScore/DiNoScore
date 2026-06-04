@@ -33,12 +33,12 @@ lto = true
 [dependencies]
 
 # GTK dependencies
-libadwaita = { version = "0.8", features = [ "v1_7" ] }
-gtk4 = { version = "0.10", features = [ "v4_14" ] }
-glib = { version = "0.21", features = ["log", "v2_74"] }
-gio = { version = "0.21", features = ["v2_74"] }
-cairo-rs = { version = "0.21", features = ["png", "pdf", "svg", "v1_16"]}
-poppler-rs = { version = "0.25", features = ["v20_9"] }
+libadwaita = { version = "0.9", features = [ "v1_7" ] }
+gtk4 = { version = "0.11", features = [ "v4_14" ] }
+glib = { version = "0.22", features = ["log", "v2_74"] }
+gio = { version = "0.22", features = ["v2_74"] }
+cairo-rs = { version = "0.22", features = ["png", "pdf", "svg", "v1_16"]}
+poppler-rs = { version = "0.26", features = ["v20_9"] }
 
 # Utility
 atomicwrites = "0.4.0"
@@ -57,8 +57,8 @@ fragile = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.0"
-derive_more = "0.99.9"
-zip = "0.6"
+derive_more = { version = "2", features = [ "full" ] }
+zip = "8"
 xdg = { git = "https://github.com/piegamesde/rust-xdg", branch = "windows" }
 uuid = { version = "1.4", features = [ "v4", "serde" ] }
 walkdir = "2"
@@ -81,17 +81,17 @@ anyhow = "1.0.40"
 backtrace = "0.3.60"
 
 # Resource compilation
-gvdb = { version = "0.8", features = [ "gresource" ] }
+gvdb = { version = "0.10", features = [ "gresource" ] }
 gvdb-macros = "0.1.4"
 
 # Editor dependencies
 blocking = { version = "1.0", optional = true }
-image = { version = "0.24.1", features = ["png"], default-features = false, optional = true }
-imageproc = { version = "0.23.0", optional = true }
+image = { version = "0.25", features = ["png"], default-features = false, optional = true }
+imageproc = { version = "0.27.0", optional = true }
 attohttpc = { version = "0.29", features = ["multipart-form", "json"], optional = true }
 
 # CLI dependencies
-clap = { version = "3.2", features = ["cargo", "derive", "wrap_help"], optional = true }
+clap = { version = "3", features = ["cargo", "derive", "wrap_help"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # Midi
@@ -99,7 +99,7 @@ midi-event = "0.2.0"
 portmidi = "0.3"
 
 [build-dependencies]
-glib-build-tools = "0.20"
+glib-build-tools = "0.22"
 xdg = { git = "https://github.com/piegamesde/rust-xdg", branch = "windows" }
 
 [dev-dependencies]
