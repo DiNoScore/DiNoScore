@@ -114,63 +114,103 @@
             <property name="margin-start">5</property>
             <property name="margin-end">5</property>
             <property name="margin-bottom">5</property>
+            <property name="selection-mode">none</property>
+            <property name="column-spacing">12</property>
+            <property name="row-spacing">6</property>
             <child>
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Song name</property>
+              <object class="GtkFlowBoxChild">
+                <property name="focusable">False</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel" id="label_song_name">
+                        <property name="label" translatable="yes">Song name</property>
+                        <property name="mnemonic-widget">song_name</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="song_name">
+                        <property name="placeholder-text">Waltzes, Op.64</property>
+                        <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
+                        <property name="width-chars">35</property>
+                        <signal name="notify::text" handler="update_song_name" swapped="true"/>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
             <child>
-              <object class="GtkEntry" id="song_name">
-                <property name="placeholder-text">Waltzes, Op.64</property>
-                <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
-                <property name="width-chars">35</property>
-                <signal name="notify::text" handler="update_song_name" swapped="true"/>
+              <object class="GtkFlowBoxChild">
+                <property name="focusable">False</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel" id="label_song_composer">
+                        <property name="label" translatable="yes">Song composer</property>
+                        <property name="mnemonic-widget">song_composer</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="song_composer">
+                        <property name="placeholder-text">Chopin, Frédéric</property>
+                        <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
+                        <property name="width-chars">25</property>
+                        <signal name="notify::text" handler="update_song_composer" swapped="true"/>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
             <child>
-              <object class="GtkSeparator">
-                <style>
-                  <class name="spacer"/>
-                </style>
+              <object class="GtkFlowBoxChild">
+                <property name="focusable">False</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel" id="label_song_form">
+                        <property name="label" translatable="yes">Song form</property>
+                        <property name="mnemonic-widget">song_form</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="song_form">
+                        <property name="placeholder-text">Sonata, Piano Sonata</property>
+                        <property name="tooltip-text">Comma separated list</property>
+                        <property name="width-chars">25</property>
+                        <signal name="notify::text" handler="update_song_form" swapped="true"/>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
             <child>
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Song composer</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkEntry" id="song_composer">
-                <property name="placeholder-text">Chopin, Frédéric</property>
-                <property name="tooltip-text">If in doubt, look up the song on IMSLP.org</property>
-                <property name="width-chars">25</property>
-                <signal name="notify::text" handler="update_song_composer" swapped="true"/>
-              </object>
-            </child>
-            <child>
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Song form</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkEntry" id="song_form">
-                <property name="placeholder-text">Sonata, Piano Sonata</property>
-                <property name="tooltip-text">Comma separated list</property>
-                <property name="width-chars">25</property>
-                <signal name="notify::text" handler="update_song_form" swapped="true"/>
-              </object>
-            </child>
-            <child>
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Instruments</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkEntry" id="song_instruments">
-                <property name="placeholder-text">Cello, Piano</property>
-                <property name="tooltip-text">Comma separated list</property>
-                <property name="width-chars">25</property>
-                <signal name="notify::text" handler="update_song_instruments" swapped="true"/>
+              <object class="GtkFlowBoxChild">
+                <property name="focusable">False</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel" id="label_song_instruments">
+                        <property name="label" translatable="yes">Instruments</property>
+                        <property name="mnemonic-widget">song_instruments</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="song_instruments">
+                        <property name="placeholder-text">Cello, Piano</property>
+                        <property name="tooltip-text">Comma separated list</property>
+                        <property name="width-chars">25</property>
+                        <signal name="notify::text" handler="update_song_instruments" swapped="true"/>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
           </object>

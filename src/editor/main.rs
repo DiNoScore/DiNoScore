@@ -176,6 +176,8 @@ mod imp {
 			*self.file.borrow_mut() = EditorSongFile::new();
 			self.song_name.set_text("");
 			self.song_composer.set_text("");
+			self.song_form.set_text("");
+			self.song_instruments.set_text("");
 			self.add_button
 				.style_context()
 				.add_class("suggested-action");
@@ -616,15 +618,31 @@ mod imp {
 
 						// TODO already convert pixbuf to bytes here, then remove the unsafe
 						let data = unsafe { unsafe_force::Send::new(data) };
-						let (page, bars_inner) = blocking::unblock(move || {
-							log::info!("Autodetecting {} ({}/{})", page, i, total_work);
-							let page = PageIndex(page);
-							let bars_inner: Vec<Staff> =
-								recognition::recognize_staves(&unsafe { data.unwrap() }, page);
-							log::debug!("Found {} staves", bars_inner.len());
-							(page, bars_inner)
-						})
-						.await;
+						let (page, bars_inner) = match
+							blocking::unblock(move || -> anyhow::Result<_> {
+								log::info!("Autodetecting {} ({}/{})", page, i, total_work);
+								let page = PageIndex(page);
+								let bars_inner: Vec<Staff> =
+									recognition::recognize_staves(&unsafe { data.unwrap() }, page)?;
+								log::debug!("Found {} staves", bars_inner.len());
+								Ok((page, bars_inner))
+							})
+							.await
+						{
+							Err(err) => {
+								log::error!("Autodetect failed: {:?}", err);
+								progress_dialog.emit_close();
+								let error_dialog = adw::AlertDialog::builder()
+									.heading(format!("Error while detecting page {page}"))
+									.body(format!("{:#}", err))
+									.build();
+								error_dialog.add_response("ok", "OK");
+								error_dialog.set_default_response(Some("ok"));
+								error_dialog.present(Some(&obj));
+								return;
+							},
+							Ok(val) => val
+						};
 						progress.set_fraction((i + 1) as f64 / total_work as f64);
 
 						obj.imp().add_staves(page, bars_inner);

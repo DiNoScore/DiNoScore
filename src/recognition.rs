@@ -2,6 +2,7 @@ use super::*;
 use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
 use itertools::Itertools;
 use typed_index_collections::TiVec;
+use anyhow::Context;
 
 #[derive(serde::Deserialize, Debug, Clone)]
 struct Response {
@@ -43,7 +44,7 @@ fn online_inference(image: &image::GrayImage) -> anyhow::Result<Vec<AbsoluteStaf
 		image::ImageFormat::Png,
 	)?;
 	let response: serde_json::Value = attohttpc:://post("https://inference.piegames.de/dinoscore/upload")
-			post("http://localhost:8000/upload")
+		post("http://localhost:8000/upload")
 	.body(
 		attohttpc::MultipartBuilder::new()
 			.with_file(attohttpc::MultipartFile::new("file", &png).with_filename("file"))
@@ -424,7 +425,7 @@ fn post_process(
 pub fn recognize_staves(
 	image: &gdk_pixbuf::Pixbuf,
 	page: collection::PageIndex,
-) -> Vec<collection::Staff> {
+) -> anyhow::Result<Vec<collection::Staff>> {
 	let png = image.save_to_bufferv("png", &[]).unwrap();
 	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
 
@@ -444,10 +445,10 @@ pub fn recognize_staves(
 		.nth(*page)
 		.unwrap()
 	} else {
-		online_inference(&image).unwrap()
+		online_inference(&image).context("Failed to run staff detection")?
 	};
 
-	post_process(raw_staves, &image, page)
+	Ok(post_process(raw_staves, &image, page))
 }
 
 #[cfg(test)]
