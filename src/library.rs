@@ -139,18 +139,40 @@ impl Library {
 		active_tags: &HashMap<String, std::collections::BTreeSet<String>>,
 	) -> HashMap<(String, String), u32> {
 		let mut counted_tags = HashMap::new();
-		for song in self.songs.values() {
+		for (uuid, song) in self.songs.iter() {
+			let is_favorite = self.stats[uuid].favorite;
+
+			/* Helper to check if a song matches all active tags except the given kind */
+			let matches_other_tags = |exclude_kind: &str| {
+				active_tags
+					.iter()
+					.filter(|(active_kind, _)| *active_kind != exclude_kind)
+					.all(|(kind, tags)| {
+						if kind == "favorite" {
+							is_favorite
+						} else {
+							song.index
+								.tags()
+								.find(|(song_kind, song_value)| {
+									kind == song_kind && tags.contains(&song_value.to_string())
+								})
+								.is_some()
+						}
+					})
+			};
+
 			for (kind, value) in song.index.tags() {
-				if active_tags.iter()
-					/* Exclude the tag's own kind from the active tags we compare against, because of a disjunction */
-					.filter(|(active_kind, _)| &**active_kind != kind)
-					.all(|(kind, tags)|
-						song.index.tags()
-							.find(|(song_kind, song_value)| kind == song_kind && tags.contains(&song_value.to_string())).is_some()
-					)
-				{
-					*counted_tags.entry((kind.to_string(), value.to_string())).or_default() += 1;
+				if matches_other_tags(kind) {
+					*counted_tags
+						.entry((kind.to_string(), value.to_string()))
+						.or_default() += 1;
 				}
+			}
+
+			if is_favorite && matches_other_tags("favorite") {
+				*counted_tags
+					.entry(("favorite".to_string(), "Favorite".to_string()))
+					.or_default() += 1;
 			}
 		}
 		counted_tags

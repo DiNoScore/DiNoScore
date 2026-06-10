@@ -22,12 +22,30 @@ impl LibraryPane {
 			{
 				tags.entry(key).or_default().insert(value);
 			}
-			for (key, value) in tags.iter().flat_map(|(k, vs)| vs.iter().map(|v| (*k, v))) {
-				let tag = crate::library_tag::LibraryTag::new(key.into(), value.to_string());
-				tag.connect_toggled(clone_!(self.imp(), move |this, _| {
-					this.imp().reload_songs_filtered()
-				}));
-				self.imp().tags.append(&tag);
+			/* Add "favorite" as a synthetic tag if any song is favorited */
+			if library.stats.values().any(|s| s.favorite) {
+				tags.entry("favorite")
+					.or_default()
+					.insert(std::borrow::Cow::Borrowed("Favorite"));
+			}
+			/* Define explicit tag ordering. When adding new tag types, add them here too! */
+			const TAG_ORDER: &[&str] = &["instrument", "composer", "form", "favorite"];
+			for kind in tags.keys() {
+				assert!(
+					TAG_ORDER.contains(kind),
+					"Tag kind '{kind}' is not in TAG_ORDER, please add it"
+				);
+			}
+			for key in TAG_ORDER {
+				if let Some(values) = tags.get(key) {
+					for value in values {
+						let tag = crate::library_tag::LibraryTag::new((*key).into(), value.to_string());
+						tag.connect_toggled(clone_!(self.imp(), move |this, _| {
+							this.imp().reload_songs_filtered()
+						}));
+						self.imp().tags.append(&tag);
+					}
+				}
 			}
 		}
 		self.imp().side_bar.get().init(library, self.clone());
@@ -39,9 +57,24 @@ impl LibraryPane {
 		);
 	}
 
-	/* Called when leaving a song to update the statistics */
 	pub fn update_side_panel(&self) {
 		self.imp().on_item_selected();
+	}
+
+	pub fn reload_songs_filtered(&self) {
+		self.imp().reload_songs_filtered();
+	}
+
+	pub fn get_tag_counts(&self) -> std::collections::HashMap<(String, String), u32> {
+		self.imp().get_tag_counts()
+	}
+
+	pub fn toggle_tag(&self, kind: &str, value: &str) -> bool {
+		self.imp().toggle_tag(kind, value)
+	}
+
+	pub fn is_tag_active(&self, kind: &str, value: &str) -> bool {
+		self.imp().is_tag_active(kind, value)
 	}
 
 	pub fn load_song(&self, song: uuid::Uuid, start_at_part: u32) {
@@ -166,60 +199,94 @@ mod imp {
 	impl LibraryPane {
 		/// Update the songs list according to our library and the set filter
 		pub fn reload_songs_filtered(&self) {
-			let library = &self.library.get().unwrap().borrow();
+			/* Save currently selected song to restore after rebuilding */
+			let previously_selected: Option<uuid::Uuid> = self
+				.library_grid
+				.model()
+				.and_downcast_ref::<gtk::SingleSelection>()
+				.and_then(gtk::SingleSelection::selected_item)
+				.and_downcast::<crate::library_item::LibraryItem>()
+				.map(|item| item.uuid());
+
 			self.store_songs.remove_all();
 
 			/* Extract the activated tags to filter */
-			let mut activated_tags =
-				std::collections::HashMap::<String, std::collections::BTreeSet<String>>::new();
-			for (key, value) in self
-				.tags
-				.observe_children()
-				.into_iter()
-				.map(Result::unwrap)
-				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
-				.filter(|tag| tag.is_active())
-				.map(|tag| (tag.kind().unwrap(), tag.value().unwrap()))
+			let activated_tags = self.get_activated_tags();
+
 			{
-				activated_tags.entry(key).or_default().insert(value);
+				let library = self.library.get().unwrap().borrow();
+
+				/* Conjunctive normal form matching: For every tag kind that has a tag filter,
+				 * at least one tag of that kind must match
+				 */
+				let tag_filter = |song: &collection::SongMeta, is_favorite: bool| {
+					activated_tags.iter().all(|(kind, tags)| {
+						if kind == "favorite" {
+							/* Special case: favorite is a synthetic tag from library stats */
+							is_favorite
+						} else {
+							song.tags()
+								.find(|(song_kind, song_value)| {
+									kind == song_kind && tags.contains(&song_value.to_string())
+								})
+								.is_some()
+						}
+					})
+				};
+
+				/* Go through the song list and filter it */
+				for (uuid, song) in library.songs.iter() {
+					let is_favorite = library.stats[uuid].favorite;
+					if (*self.song_filter.borrow())(&song.index) && tag_filter(&song.index, is_favorite)
+					{
+						/* Add an item with the name and UUID */
+						let thumbnail = song.thumbnail();
+						let title = song.title().unwrap_or("<no title>").to_owned();
+						let score = library.stats[uuid].usage_score(&self.reference_time);
+						let favorite = library.stats[uuid].favorite;
+
+						self.store_songs.insert_sorted(
+							&crate::library_item::LibraryItem::new(
+								uuid, title, thumbnail, score, favorite,
+							),
+							SORT_FUN,
+						);
+					}
+				}
+
+				self.update_tag_counts_with_filter(&activated_tags, &library);
 			}
+			/* Library borrow is now dropped */
 
-			/* Conjunctive normal form matching: For every tag kind that has a tag filter,
-			 * at least one tag of that kind must match
-			 */
-			let tag_filter = |song: &collection::SongMeta| {
-				activated_tags.iter().all(|(kind, tags)| {
-					song.tags()
-						.find(|(song_kind, song_value)| {
-							kind == song_kind && tags.contains(&song_value.to_string())
-						})
-						.is_some()
-				})
-			};
-
-			/* Go through the song list and filter it */
-			for (uuid, song) in library.songs.iter() {
-				if (*self.song_filter.borrow())(&song.index) && tag_filter(&song.index) {
-					/* Add an item with the name and UUID */
-					let thumbnail = song.thumbnail();
-					let title = song.title().unwrap_or("<no title>").to_owned();
-					let score = library.stats[uuid].usage_score(&self.reference_time);
-					let favorite = library.stats[uuid].favorite;
-
-					self.store_songs.insert_sorted(
-						&crate::library_item::LibraryItem::new(
-							uuid, title, thumbnail, score, favorite,
-						),
-						SORT_FUN,
-					);
+			/* Restore selection if the previously selected song is still in the filtered list */
+			if let Some(uuid) = previously_selected {
+				if let Some(idx) = self.store_songs.find_with_equal_func(|item| {
+					item.downcast_ref::<crate::library_item::LibraryItem>()
+						.unwrap()
+						.uuid() == uuid
+				}) {
+					self.library_grid
+						.model()
+						.and_downcast_ref::<gtk::SingleSelection>()
+						.unwrap()
+						.set_selected(idx);
 				}
 			}
 
+			/* Update the side panel for the (possibly changed) selection */
+			self.on_item_selected();
+		}
+
+		fn update_tag_counts_with_filter(
+			&self,
+			activated_tags: &std::collections::HashMap<String, std::collections::BTreeSet<String>>,
+			library: &library::Library,
+		) {
 			/* Update the tags count based on how we filtered
 			 * This is tricky because when a tag is applied it restricts all neighboring tags of the same
 			 * kind, but actually we do want to count those.
 			 */
-			let tag_count = library.count_tags(&activated_tags);
+			let tag_count = library.count_tags(activated_tags);
 			for tag in self
 				.tags
 				.observe_children()
@@ -234,9 +301,64 @@ mod imp {
 						.unwrap_or_default(),
 				);
 			}
+		}
 
-			/* Changing the filter also changes the selected item */
-			self.on_item_selected();
+		/// Get the current tag counts (with no filters applied)
+		pub fn get_tag_counts(&self) -> std::collections::HashMap<(String, String), u32> {
+			let library = &self.library.get().unwrap().borrow();
+			let activated_tags = self.get_activated_tags();
+			library.count_tags(&activated_tags)
+		}
+
+		/// Toggle a tag filter by kind and value
+		pub fn toggle_tag(&self, kind: &str, value: &str) -> bool {
+			for tag in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+			{
+				if tag.kind().as_deref() == Some(kind) && tag.value().as_deref() == Some(value) {
+					let new_state = !tag.is_active();
+					tag.set_active(new_state);
+					return new_state;
+				}
+			}
+			false
+		}
+
+		/// Check if a tag is currently active
+		pub fn is_tag_active(&self, kind: &str, value: &str) -> bool {
+			for tag in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+			{
+				if tag.kind().as_deref() == Some(kind) && tag.value().as_deref() == Some(value) {
+					return tag.is_active();
+				}
+			}
+			false
+		}
+
+		fn get_activated_tags(&self) -> std::collections::HashMap<String, std::collections::BTreeSet<String>> {
+			let mut activated_tags: std::collections::HashMap<String, std::collections::BTreeSet<String>> =
+				std::collections::HashMap::new();
+			for (key, value) in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+				.filter(|tag| tag.is_active())
+				.map(|tag| (tag.kind().unwrap(), tag.value().unwrap()))
+			{
+				activated_tags.entry(key).or_default().insert(value);
+			}
+			activated_tags
 		}
 
 		/// Play a song

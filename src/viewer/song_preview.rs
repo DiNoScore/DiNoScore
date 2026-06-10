@@ -168,13 +168,28 @@ mod imp {
 				while let Some(child) = self.tags.first_child() {
 					self.tags.remove(&child);
 				}
-				for (kind, tag) in song.index.tags() {
-					self.tags.append(&crate::library_tag::LibraryTag::new(
-						kind.into(),
-						tag.into(),
+				let library_widget = self.library_widget.get().unwrap();
+				for (kind, value) in song.index.tags() {
+					let tag = crate::library_tag::LibraryTag::new(kind.into(), value.to_string());
+					/* Connect click handler to toggle the filter bar tag */
+					let kind_owned = kind.to_string();
+					let value_owned = value.to_string();
+					tag.connect_toggled(clone!(
+						#[weak]
+						library_widget,
+						move |tag| {
+							let tag_active = tag.is_active();
+							let filter_active = library_widget.is_tag_active(&kind_owned, &value_owned);
+							if tag_active != filter_active {
+								library_widget.toggle_tag(&kind_owned, &value_owned);
+							}
+						}
 					));
+					self.tags.append(&tag);
 				}
 			}
+
+			self.sync_preview_tags();
 
 			/* Update stats */
 			self.stats_times_played
@@ -212,6 +227,32 @@ mod imp {
 					.unwrap()
 					.favorite = self.favorite.get().is_active();
 				library.save_in_background();
+				std::mem::drop(library);
+				self.library_widget.get().unwrap().reload_songs_filtered();
+			}
+		}
+
+		/// Sync preview tag counts and active states with the filter bar
+		fn sync_preview_tags(&self) {
+			let library_widget = self.library_widget.get().unwrap();
+			let tag_counts = library_widget.get_tag_counts();
+
+			for child in self
+				.tags
+				.observe_children()
+				.into_iter()
+				.map(Result::unwrap)
+				.map(|obj| obj.downcast::<crate::library_tag::LibraryTag>().unwrap())
+			{
+				if let (Some(kind), Some(value)) = (child.kind(), child.value()) {
+					child.set_count(
+						tag_counts
+							.get(&(kind.clone(), value.clone()))
+							.copied()
+							.unwrap_or_default(),
+					);
+					child.set_active(library_widget.is_tag_active(&kind, &value));
+				}
 			}
 		}
 

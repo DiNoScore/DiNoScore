@@ -32,3 +32,6 @@
 .tag-instrument {
     color: var(--accent-teal);
 }
+.tag-favorite {
+    color: var(--accent-yellow);
+}
