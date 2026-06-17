@@ -99,11 +99,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		yield_now().await;
 
 		/* Select the first staff */
-		window
-			.imp()
-			.pages_preview
-			.get()
-			.select_path(&gtk::TreePath::new_first());
+		window.imp().pages_selection.select_item(0, true);
 		window.imp().editor.get().select_staff(0);
 		yield_now().await;
 
@@ -120,12 +116,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.unwrap();
 
 		/* One more example */
-		window.imp().pages_preview.get().unselect_all();
-		window.imp().pages_preview.get().select_path(&{
-			let mut p = gtk::TreePath::new_first();
-			p.next();
-			p
-		});
+		window.imp().pages_selection.select_item(1, true);
 		window.imp().editor.get().select_staff(2);
 		yield_now().await;
 

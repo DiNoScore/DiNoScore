@@ -73,10 +73,13 @@ mod imp {
 		add_button: TemplateChild<adw::SplitButton>,
 
 		#[template_child]
-		pub pages_preview: TemplateChild<gtk::IconView>,
-		/* Pixbufs preview cache */
-		#[template_child(id = "store_pages")]
-		pages_preview_data: TemplateChild<gtk::ListStore>,
+		pub pages_preview: TemplateChild<gtk::ListView>,
+		/// Texture thumbnail cache
+		#[template_child(id = "pages_store")]
+		pub pages_preview_data: TemplateChild<gio::ListStore>,
+		/// Selection model for pages_preview
+		#[template_child]
+		pub pages_selection: TemplateChild<gtk::MultiSelection>,
 		#[template_child]
 		autodetect: TemplateChild<gtk::Button>,
 		#[template_child]
@@ -113,6 +116,38 @@ mod imp {
 		fn constructed(&self) {
 			self.parent_constructed();
 			self.editor.init(self.file.clone());
+
+			// Set up the factory for list items
+			let factory = gtk::SignalListItemFactory::new();
+			factory.connect_setup(|_, list_item| {
+				let picture = gtk::Picture::builder()
+					.width_request(64)
+					.content_fit(gtk::ContentFit::Contain)
+					.can_shrink(false)
+					.build();
+				list_item
+					.downcast_ref::<gtk::ListItem>()
+					.unwrap()
+					.set_child(Some(&picture));
+			});
+			factory.connect_bind(|_, list_item| {
+				let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+				let texture = list_item.item().and_downcast::<gdk::Texture>().unwrap();
+				let picture = list_item.child().and_downcast::<gtk::Picture>().unwrap();
+				picture.set_paintable(Some(&texture));
+			});
+			self.pages_preview.set_factory(Some(&factory));
+
+			// Connect selection changed signal
+			self.pages_selection.connect_selection_changed(
+				clone!(
+					#[weak(rename_to = this)]
+					self,
+					move |_, _, _| {
+						this.page_changed();
+					}
+				),
+			);
 		}
 	}
 
@@ -172,7 +207,7 @@ mod imp {
 		}
 
 		fn unload_and_clear(&self) {
-			self.pages_preview_data.clear();
+			self.pages_preview_data.remove_all();
 			*self.file.borrow_mut() = EditorSongFile::new();
 			self.song_name.set_text("");
 			self.song_composer.set_text("");
@@ -314,25 +349,21 @@ mod imp {
 		#[template_callback]
 		fn on_key(&self, keyval: gdk::Key) {
 			if keyval == gdk::Key::Delete || keyval == gdk::Key::KP_Delete {
-				let selected_items = self.pages_preview.selected_items();
-				selected_items
-					.iter()
-					.map(|selected| selected.indices()[0] as usize)
-					.for_each(|i| {
-						self.remove_page(PageIndex(i));
-					});
+				// Collect selected indices in reverse order to remove from end first
+				let mut selected: Vec<usize> = (0..self.pages_preview_data.n_items())
+					.filter(|&i| self.pages_selection.is_selected(i))
+					.map(|i| i as usize)
+					.collect();
+				selected.sort_by(|a, b| b.cmp(a)); // Reverse order
+				for i in selected {
+					self.remove_page(PageIndex(i));
+				}
 			}
 		}
 
 		fn remove_page(&self, page: PageIndex) {
 			self.file.borrow_mut().remove_page(page);
-
-			self.pages_preview_data.remove(
-				&self
-					.pages_preview_data
-					.iter(&gtk::TreePath::from_indices(&[*page as i32]))
-					.unwrap(),
-			);
+			self.pages_preview_data.remove(*page as u32);
 		}
 
 		/// Show a dialog to load some images, then load them
@@ -561,22 +592,22 @@ mod imp {
 			}
 
 			self.file.borrow_mut().add_page(page);
-
-			self.pages_preview_data
-				.set(&self.pages_preview_data.append(), &[(0, &gdk::pixbuf_get_from_texture(&thumbnail))]);
+			self.pages_preview_data.append(&thumbnail);
 		}
 
-		/// Callback from the icon view
-		#[template_callback]
+		/// Callback from the list view selection
 		pub fn page_changed(&self) {
-			let selected_items = self.pages_preview.selected_items();
-			log::debug!("Selection changed: {} items", selected_items.len());
-			let selected_page = match selected_items.len() {
-				0 => None,
-				1 => Some(PageIndex(selected_items[0].indices()[0] as usize)),
-				_ => None,
+			let n_selected = self.pages_selection.selection().size();
+			log::debug!("Selection changed: {} items", n_selected);
+			let selected_page = if n_selected == 1 {
+				// Find the single selected item
+				(0..self.pages_preview_data.n_items())
+					.find(|&i| self.pages_selection.is_selected(i))
+					.map(|i| PageIndex(i as usize))
+			} else {
+				None
 			};
-			self.autodetect.set_sensitive(!selected_items.is_empty());
+			self.autodetect.set_sensitive(n_selected > 0);
 			self.editor.load_page(selected_page);
 		}
 
@@ -591,12 +622,10 @@ mod imp {
 				.style_context()
 				.remove_class("suggested-action");
 
-			let selected_items = self
-				.pages_preview
-				.selected_items()
-				.into_iter()
-				.map(|selected| selected.indices()[0] as usize)
-				.collect::<std::collections::BTreeSet<_>>();
+			let selected_items: std::collections::BTreeSet<usize> = (0..self.pages_preview_data.n_items())
+				.filter(|&i| self.pages_selection.is_selected(i))
+				.map(|i| i as usize)
+				.collect();
 
 			let obj = self.obj().clone();
 
@@ -610,13 +639,12 @@ mod imp {
 					yield_now().await;
 
 					for (i, page) in selected_items.into_iter().enumerate() {
-						let data: gdk::Texture = obj.imp().pages_preview_data.get().get(
-							&obj.imp()
-								.pages_preview_data
-								.iter_nth_child(None, page as i32)
-								.unwrap(),
-							0,
-						);
+						let data: gdk::Texture = obj
+							.imp()
+							.pages_preview_data
+							.item(page as u32)
+							.and_downcast()
+							.unwrap();
 
 						// TODO already convert pixbuf to bytes here, then remove the unsafe
 						let data = unsafe { unsafe_force::Send::new(data) };
@@ -764,7 +792,7 @@ fn main() -> anyhow::Result<()> {
 
 					/* Auto-auto-detect */
 					let imp = window.imp();
-					imp.pages_preview.select_all();
+					imp.pages_selection.select_all();
 					imp.autodetect();
 				},
 			);
