@@ -107,7 +107,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		window.imp().editor.get().select_staff(0);
 		yield_now().await;
 
-		take_screenshot("gallery/06-editor.png")
+		take_screenshot("gallery/07-editor.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
@@ -115,7 +115,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		window.imp().editor.get().select_staff(4);
 		yield_now().await;
 
-		take_screenshot("gallery/07-editor-repetition.png")
+		take_screenshot("gallery/08-editor-repetition.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
@@ -129,7 +129,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		window.imp().editor.get().select_staff(2);
 		yield_now().await;
 
-		take_screenshot("gallery/08-editor-repetition.png")
+		take_screenshot("gallery/09-editor-repetition.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 

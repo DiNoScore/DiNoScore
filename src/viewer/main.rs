@@ -21,6 +21,7 @@ mod crash_n_log;
 mod library_item;
 mod library_pane;
 mod library_tag;
+mod part_preview_row;
 #[cfg(target_family = "unix")]
 mod pedal;
 #[cfg(test)]
@@ -36,6 +37,7 @@ mod xournal;
 fn gtk_init(_application: &gtk::Application) {
 	/* This is required so that builder can find this type. See gobject_sys::g_type_ensure */
 	let _ = library_pane::LibraryPane::static_type();
+	let _ = part_preview_row::PartPreviewRow::static_type();
 	let _ = song_pane::SongPane::static_type();
 	let _ = song_widget::SongWidget::static_type();
 	adw::init().expect("Failed to initialize libadwaita");

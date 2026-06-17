@@ -325,7 +325,7 @@ mod imp {
 					return new_state;
 				}
 			}
-			false
+			panic!("Uknown tag provided");
 		}
 
 		/// Check if a tag is currently active

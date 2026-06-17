@@ -38,13 +38,7 @@ mod imp {
 		#[template_child]
 		song_composer: TemplateChild<gtk::Label>,
 		#[template_child]
-		part_preview: TemplateChild<adw::Carousel>,
-		#[template_child]
-		part_overlay: TemplateChild<gtk::Box>,
-		#[template_child]
-		part_name: TemplateChild<gtk::Label>,
-		#[template_child]
-		part_carousel_dots: TemplateChild<gtk::Widget>,
+		part_list: TemplateChild<gtk::ListBox>,
 
 		#[template_child]
 		favorite: TemplateChild<gtk::ToggleButton>,
@@ -62,7 +56,6 @@ mod imp {
 		pub library: OnceCell<Rc<RefCell<library::Library>>>,
 		pub library_widget: OnceCell<crate::library_pane::LibraryPane>,
 		song_uuid: Cell<uuid::Uuid>,
-		inhibit_autoscroll: Cell<bool>,
 		pub background_renderer: OnceCell<
 			Sender<(
 				uuid::Uuid,
@@ -88,26 +81,7 @@ mod imp {
 		}
 	}
 
-	impl ObjectImpl for SongPreview {
-		fn constructed(&self) {
-			self.parent_constructed();
-			let obj = self.obj();
-
-			glib::source::timeout_add_seconds_local(
-				10,
-				clone!(
-					#[weak]
-					obj,
-					#[upgrade_or]
-					glib::ControlFlow::Break,
-					move || {
-						obj.imp().on_timer();
-						glib::ControlFlow::Continue
-					}
-				),
-			);
-		}
-	}
+	impl ObjectImpl for SongPreview {}
 
 	impl WidgetImpl for SongPreview {}
 
@@ -130,20 +104,19 @@ mod imp {
 			if song_uuid != self.song_uuid.get() {
 				self.song_uuid.set(song_uuid);
 
-				/* Update preview carousel */
-				let carousel = &self.part_preview.get();
-				for page in (0..carousel.n_pages()).rev() {
-					carousel.remove(&carousel.nth_page(page as u32));
+				/* Update part list */
+				let list = &self.part_list.get();
+				while let Some(child) = list.first_child() {
+					list.remove(&child);
 				}
 
 				for name in song.index.piece_starts.values() {
-					let picture = gtk::Picture::builder()
-						.paintable(&gdk::Paintable::new_empty(400, 100))
-						.alternative_text(name)
-						.content_fit(gtk::ContentFit::Contain)
-						.can_shrink(false)
-						.build();
-					carousel.append(&picture);
+					list.append(&crate::part_preview_row::PartPreviewRow::new(name));
+				}
+
+				/* Select first part by default */
+				if let Some(first_row) = list.row_at_index(0) {
+					list.select_row(Some(&first_row));
 				}
 
 				self.load_preview_background(song);
@@ -210,11 +183,6 @@ mod imp {
 					.and_then(|last_played| last_played.format("%_x").ok())
 					.unwrap_or_else(|| "never".into()),
 			);
-
-			/* Reset the page and trigger an update */
-			std::mem::drop(library);
-			self.part_preview
-				.scroll_to(&self.part_preview.nth_page(0), false);
 		}
 
 		#[template_callback]
@@ -256,72 +224,30 @@ mod imp {
 			}
 		}
 
-		/* The part_name label of the part_preview carousel is a floating overlay.
-		 * Every time the page changes we need to update its text.
-		 * We also update a few other related widgets here.
-		 */
-		#[template_callback]
-		fn preview_page_changed(&self) {
-			let library = self.library.get().unwrap().borrow();
-			let song = library.songs.get(&self.song_uuid.get()).unwrap();
-
-			let part_name = song
-				.index
-				.piece_starts
-				.values()
-				.nth(self.part_preview.position() as usize)
-				.unwrap();
-			self.part_name.set_label(part_name);
-			self.part_overlay
-				.set_visible(!part_name.is_empty() && self.part_preview.n_pages() > 1);
-			/* We don't want a dozen dots when there are a lot of songs */
-			self.part_carousel_dots
-				.set_visible(self.part_preview.n_pages() < 6);
-		}
-
 		/* That's the big blue "play" button */
 		#[template_callback]
 		fn on_play_button_pressed(&self) {
-			log::debug!("Activated (A)");
+			let start_at_part = self
+				.part_list
+				.selected_row()
+				.map(|row| row.index() as u32)
+				.unwrap_or(0);
+			log::debug!("Play from part {}", start_at_part);
 			self.library_widget
 				.get()
 				.unwrap()
-				.load_song(self.song_uuid.get(), 0);
+				.load_song(self.song_uuid.get(), start_at_part);
 		}
 
-		/* That's the small "▶" button next to the part_name */
+		/* Double-click on a part row to play from that part */
 		#[template_callback]
-		fn on_quick_play_button_pressed(&self) {
-			log::debug!("Activated (B)");
+		fn on_part_activated(&self, row: &gtk::ListBoxRow) {
+			let start_at_part = row.index() as u32;
+			log::debug!("Part activated: {}", start_at_part);
 			self.library_widget
 				.get()
 				.unwrap()
-				.load_song(self.song_uuid.get(), self.part_preview.position() as u32);
-		}
-
-		/** Called every 20 seconds
-		 * Flip the page of the preview carousel, slide show style.
-		 * Don't do that when the user has the mouse near it to not
-		 * disrupt them.
-		 */
-		fn on_timer(&self) {
-			let pages = self.part_preview.n_pages();
-			if pages <= 1 || self.inhibit_autoscroll.get() {
-				return;
-			}
-			let next_page = (self.part_preview.position() as u32 + 1) % pages;
-			self.part_preview
-				.scroll_to(&self.part_preview.nth_page(next_page), true);
-		}
-
-		#[template_callback]
-		fn on_carousel_mouse_enter(&self) {
-			self.inhibit_autoscroll.set(true);
-		}
-
-		#[template_callback]
-		fn on_carousel_mouse_leave(&self) {
-			self.inhibit_autoscroll.set(false);
+				.load_song(self.song_uuid.get(), start_at_part);
 		}
 
 		/** Load the preview images of the parts on a background thread */
@@ -413,7 +339,7 @@ mod imp {
 							surface.stride() as usize,
 						);
 
-						/* Put them back into the carousel */
+						/* Put them back into the preview cards */
 						let obj = obj.clone();
 						glib::MainContext::default().spawn(async move {
 							obj.get().imp().update_preview_image(
@@ -435,12 +361,13 @@ mod imp {
 
 		fn update_preview_image(&self, song: uuid::Uuid, index: u32, image: gdk::Texture) {
 			if song == self.song_uuid.get() {
-				let picture = self
-					.part_preview
-					.nth_page(index)
-					.downcast::<gtk::Picture>()
-					.unwrap();
-				picture.set_paintable(Some(&image));
+				if let Some(row) = self
+					.part_list
+					.row_at_index(index as i32)
+					.and_downcast::<crate::part_preview_row::PartPreviewRow>()
+				{
+					row.set_paintable(Some(image.upcast::<gdk::Paintable>()));
+				}
 			}
 		}
 	}

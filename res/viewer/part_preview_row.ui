@@ -1,0 +1,25 @@
+<interface>
+  <template class="PartPreviewRow" parent="GtkListBoxRow">
+    <style>
+      <class name="part-preview-row"/>
+    </style>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkPicture" id="picture">
+            <property name="content-fit">contain</property>
+            <property name="can-shrink">False</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="label">
+            <property name="halign">center</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <signal name="notify::name" handler="on_name_changed" swapped="true"/>
+    <signal name="notify::paintable" handler="on_paintable_changed" swapped="true"/>
+  </template>
+</interface>

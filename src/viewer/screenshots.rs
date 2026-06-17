@@ -106,12 +106,21 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.context("Failed to take screenshot")
 			.unwrap();
 
+		assert!(library.toggle_tag("composer", "Chopin, Frédéric"));
+		library.reload_songs_filtered();
+		/* Wait for the preview image to load */
+		glib::timeout_future(std::time::Duration::from_secs(1)).await;
+		yield_now().await;
+		take_screenshot("gallery/02-tags.png")
+			.context("Failed to take screenshot")
+			.unwrap();
+
 		library.activate_selected_entry(0);
 		yield_now().await;
 		/* Wait for the full resolution to load in background */
 		glib::timeout_future(std::time::Duration::from_secs(10)).await;
 		yield_now().await;
-		take_screenshot("gallery/02-song.png")
+		take_screenshot("gallery/03-song.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 
@@ -122,7 +131,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 			.unwrap()
 			.popup();
 		yield_now().await;
-		take_screenshot("gallery/03-parts.png")
+		take_screenshot("gallery/04-parts.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 		song.part_selection()
@@ -138,7 +147,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 		yield_now().await;
 		song.zoom_button().activate();
 		yield_now().await;
-		take_screenshot("gallery/04-zoom.png")
+		take_screenshot("gallery/05-zoom.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 		song.zoom_button().activate();
@@ -146,7 +155,7 @@ fn create_screenshots() -> anyhow::Result<()> {
 
 		theme.set_color_scheme(adw::ColorScheme::ForceDark);
 		yield_now().await;
-		take_screenshot("gallery/05-dark.png")
+		take_screenshot("gallery/06-dark.png")
 			.context("Failed to take screenshot")
 			.unwrap();
 

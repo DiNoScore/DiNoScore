@@ -16,6 +16,33 @@
     background: alpha(var(--accent-bg-color), 0.25);
 }
 
+.library-grid picture {
+    border-radius: 4px;
+    margin: 3px;
+}
+
+/* Copy the library-grid styles (CSS gimme mixins please) */
+.part-list {
+    background: none;
+    /*padding: 10px;*/
+}
+
+.part-preview-row {
+    margin: 5px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 3px 3px 7px 1px rgba(0,0,0,0.2);
+}
+
+.part-preview-row picture {
+    border-radius: 4px;
+    margin: 3px;
+}
+
+.part-preview-row:selected {
+    background: alpha(var(--accent-bg-color), 0.25);
+}
+
 .tag {
     border-radius: 9999px;
     margin: 3px;
