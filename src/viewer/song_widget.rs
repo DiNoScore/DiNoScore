@@ -1118,7 +1118,7 @@ fn spawn_song_renderer(
 		/* For a start, render everything sequentially at minimum resolution. This should not take long */
 		let start = std::time::Instant::now();
 		for i in initial_work_queue() {
-			let image = gdk::Texture::for_pixbuf(&pages[i].render_scaled(250));
+			let image = pages[i].render_scaled(250);
 			if out_tx
 				.unbounded_send(ScaledPage {
 					index: i,
@@ -1215,7 +1215,7 @@ fn spawn_song_renderer(
 
 			if let Some(page) = work_queue.pop_front() {
 				/* Now we can finally do some work */
-				let image = gdk::Texture::for_pixbuf(&pages[page].render_scaled(work_width));
+				let image = pages[page].render_scaled(work_width);
 
 				/* Send it off */
 				if out_tx

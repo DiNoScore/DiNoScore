@@ -46,7 +46,7 @@ impl PageImage {
 	}
 
 	pub fn from_image(raw: Vec<u8>, extension: String) -> anyhow::Result<Self> {
-		let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(raw.clone()))
+		let pixbuf = gdk::Texture::from_bytes(&glib::Bytes::from(&raw))
 			.context("Failed to load image")?;
 		Ok(Self {
 			raw,
@@ -83,12 +83,12 @@ impl PageImage {
 		(!self.is_pdf()).then(|| self.width)
 	}
 
-	/// Load and render this image to a pixbuf.
+	/// Load and render this image to a texture.
 	///
 	/// The result will have at most the requested width and be scaled with
 	/// preserved aspect ratio. If the source is a raster image, it will never
 	/// be scaled up.
-	pub fn render_scaled(&self, width: i32) -> gdk_pixbuf::Pixbuf {
+	pub fn render_scaled(&self, width: i32) -> gdk::Texture {
 		/* We can panic on error here because we are just double-checking a previously-enforced invariant */
 
 		if self.is_pdf() {
@@ -96,11 +96,12 @@ impl PageImage {
 				.expect("Failed to load PDF");
 			assert!(pdf.n_pages() == 1, "PDF file must have exactly one page");
 			let page = pdf.page(0).unwrap();
-			pdf_to_pixbuf(&page, width).expect("Failed to render PDF")
+			pdf_to_texture(&page, width).expect("Failed to render PDF")
 		} else {
+			// gdk::Texture::from_bytes(&glib::Bytes::from(&self.raw))
 			let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(self.raw.clone()))
 				.expect("Failed to load image");
-			if width as f64 >= self.width {
+			let pixbuf = if width as f64 >= self.width {
 				pixbuf
 			} else {
 				pixbuf
@@ -110,7 +111,8 @@ impl PageImage {
 						gdk_pixbuf::InterpType::Bilinear,
 					)
 					.expect("Failed to scale image")
-			}
+			};
+			gdk::Texture::for_pixbuf(&pixbuf)
 		}
 	}
 
@@ -126,9 +128,9 @@ impl PageImage {
 			page.render(&context);
 			context.status()
 		} else {
-			let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(self.raw.clone()))
+			let texture = gdk::Texture::from_bytes(&glib::Bytes::from(&self.raw))
 				.expect("Failed to load image");
-			context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+			context.set_source_surface(&texture_to_surface(&texture), 0.0, 0.0)?;
 			context.paint()
 		}
 	}
@@ -300,12 +302,9 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 				if is_pdf {
 					Ok(file)
 				} else {
-					let image = gdk_pixbuf::Pixbuf::from_stream(
-						&gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(file)),
-						Option::<&gio::Cancellable>::None,
-					)
-					.unwrap();
-					pixbuf_to_pdf_raw(&image).context("Failed to embed the image in a PDF")
+					let image = gdk::Texture::from_bytes(&glib::Bytes::from(&file))
+						.expect("Failed to load image");
+					image_to_pdf_raw(&image).context("Failed to embed the image in a PDF")
 				}
 			})
 			.collect::<anyhow::Result<_>>()?,
@@ -313,7 +312,7 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 }
 
 /// Create a PDF Document with a single page that wraps a raster image
-pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
+pub fn image_to_pdf_raw(image: &gdk::Texture) -> cairo::Result<Vec<u8>> {
 	/* We want our PDF page to have a rather sane page size, and using the pixel size of the image
 	 * may not be sane depending on its resolution. So instead, we norm it to the area of a DIN A4
 	 * page (≈1/16 m²), while keeping the aspect ratio.
@@ -334,7 +333,7 @@ pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
 
 	let context = cairo::Context::new(&surface)?;
 	context.scale(scale, scale);
-	context.set_source_pixbuf(image, 0.0, 0.0);
+	context.set_source_surface(texture_to_surface(image), 0.0, 0.0)?;
 	context.paint()?;
 
 	surface.flush();
@@ -347,9 +346,9 @@ pub fn pixbuf_to_pdf_raw(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<Vec<u8>> {
 }
 
 /// Create a PDF Document with a single page that wraps a raster image
-pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<poppler::Document> {
+pub fn image_to_pdf(image: &gdk::Texture) -> cairo::Result<poppler::Document> {
 	pipeline::pipe! {
-		pixbuf_to_pdf_raw(image)?
+		image_to_pdf_raw(image)?
 		=> glib::Bytes::from_owned
 		=> poppler::Document::from_bytes(&_, None).unwrap()
 		=> cairo::Result::Ok
@@ -357,8 +356,8 @@ pub fn pixbuf_to_pdf(image: &gdk_pixbuf::Pixbuf) -> cairo::Result<poppler::Docum
 }
 
 /// Render a PDF page to a preview image with fixed width
-pub fn pdf_to_pixbuf(page: &poppler::Page, width: i32) -> cairo::Result<gdk_pixbuf::Pixbuf> {
-	let surface = cairo::ImageSurface::create(
+pub fn pdf_to_texture(page: &poppler::Page, width: i32) -> cairo::Result<gdk::Texture> {
+	let mut surface = cairo::ImageSurface::create(
 		cairo::Format::Rgb24,
 		width,
 		(width as f64 * page.size().1 / page.size().0) as i32,
@@ -372,6 +371,66 @@ pub fn pdf_to_pixbuf(page: &poppler::Page, width: i32) -> cairo::Result<gdk_pixb
 	context.paint()?;
 	page.render(&context);
 	surface.flush();
+	std::mem::drop(context);
 
-	Ok(gdk::pixbuf_get_from_surface(&surface, 0, 0, surface.width(), surface.height()).unwrap())
+	let bytes = glib::Bytes::from(&*surface.data().unwrap());
+	let texture = gdk::MemoryTexture::new(
+		surface.width(),
+		surface.height(),
+		if cfg!(target_endian = "big") {
+			gdk::MemoryFormat::X8r8g8b8
+		} else {
+			gdk::MemoryFormat::B8g8r8x8
+		},
+		&bytes,
+		surface.stride() as usize,
+	);
+	Ok(texture.upcast())
+}
+
+/// Convert a GDK Texture to a Cairo ImageSurface
+pub fn texture_to_surface(texture: &gdk::Texture) -> cairo::ImageSurface {
+	let mut surface = cairo::ImageSurface::create(
+		cairo::Format::ARgb32,
+		texture.width(),
+		texture.height(),
+	)
+	.unwrap();
+	let stride = surface.stride() as usize;
+	{
+		let mut data = surface.data().unwrap();
+		texture.download(&mut data, stride);
+	}
+	surface
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_render_pdf_thumbnail() {
+		let raw = std::fs::read("./test/image_util/pdf_page.pdf").unwrap();
+		let page = PageImage::from_pdf(raw).unwrap();
+		let thumbnail = page.render_scaled(400);
+
+		// thumbnail.save_to_png("./test/image_util/pdf_page_thumbnail.png").unwrap();
+
+		let expected = std::fs::read("./test/image_util/pdf_page_thumbnail.png").unwrap();
+		let actual = thumbnail.save_to_png_bytes();
+		assert_eq!(&*actual, &expected, "PDF thumbnail does not match golden master");
+	}
+
+	#[test]
+	fn test_render_raster_thumbnail() {
+		let raw = std::fs::read("./test/image_util/raster_page.tif").unwrap();
+		let page = PageImage::from_image(raw, "tif".into()).unwrap();
+		let thumbnail = page.render_scaled(400);
+
+		// thumbnail.save_to_png("./test/image_util/raster_page_thumbnail.png").unwrap();
+
+		let expected = std::fs::read("./test/image_util/raster_page_thumbnail.png").unwrap();
+		let actual = thumbnail.save_to_png_bytes();
+		assert_eq!(&*actual, &expected, "Raster thumbnail does not match golden master");
+	}
 }

@@ -543,12 +543,14 @@ mod imp {
 
 		/// Append a single loaded image to the end
 		fn add_page(&self, page: PageImage) {
-			let pixbuf = page.render_scaled(400);
-			self.add_page_manual(page, pixbuf);
+			log::debug!("Adding page {}×{}", page.reference_width(), page.reference_height());
+			let thumbnail = page.render_scaled(400);
+			self.add_page_manual(page, thumbnail);
 		}
 
 		/// Append a single loaded image to the end
-		fn add_page_manual(&self, page: PageImage, thumbnail: gdk_pixbuf::Pixbuf) {
+		fn add_page_manual(&self, page: PageImage, thumbnail: gdk::Texture) {
+			log::debug!("Adding page (manual) {}×{}", thumbnail.width(), thumbnail.height());
 			self.add_button
 				.style_context()
 				.remove_class("suggested-action");
@@ -561,7 +563,7 @@ mod imp {
 			self.file.borrow_mut().add_page(page);
 
 			self.pages_preview_data
-				.set(&self.pages_preview_data.append(), &[(0, &thumbnail)]);
+				.set(&self.pages_preview_data.append(), &[(0, &gdk::pixbuf_get_from_texture(&thumbnail))]);
 		}
 
 		/// Callback from the icon view
@@ -608,7 +610,7 @@ mod imp {
 					yield_now().await;
 
 					for (i, page) in selected_items.into_iter().enumerate() {
-						let data: gdk_pixbuf::Pixbuf = obj.imp().pages_preview_data.get().get(
+						let data: gdk::Texture = obj.imp().pages_preview_data.get().get(
 							&obj.imp()
 								.pages_preview_data
 								.iter_nth_child(None, page as i32)

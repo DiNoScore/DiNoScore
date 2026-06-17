@@ -633,7 +633,7 @@ mod imp {
 				let scale = editor.height() as f64 / image.height() as f64;
 				context.save()?;
 				context.scale(scale, scale);
-				context.set_source_pixbuf(&gdk::pixbuf_get_from_texture(image).unwrap(), 0.0, 0.0);
+				context.set_source_surface(&image_util::texture_to_surface(image), 0.0, 0.0)?;
 				context.paint()?;
 				context.restore()?;
 
@@ -1042,7 +1042,7 @@ fn spawn_song_renderer(
 	std::thread::spawn(move || {
 		/* For a start, render at minimum resolution. This should not take long */
 		let mut last_width = 250;
-		let image = gdk::Texture::for_pixbuf(&page.render_scaled(250));
+		let image = page.render_scaled(250);
 		if out_tx.unbounded_send((image, index)).is_err() {
 			return;
 		}
@@ -1080,7 +1080,7 @@ fn spawn_song_renderer(
 						last_width = actual_width;
 						log::debug!("Background thread rendering width changed: {actual_width}");
 
-						let image = gdk::Texture::for_pixbuf(&page.render_scaled(actual_width));
+						let image = page.render_scaled(actual_width);
 
 						/* Send it off */
 						if out_tx.unbounded_send((image, index)).is_err() {

@@ -423,10 +423,10 @@ fn post_process(
 
 #[cfg(feature = "editor")]
 pub fn recognize_staves(
-	image: &gdk_pixbuf::Pixbuf,
+	image: &gdk::Texture,
 	page: collection::PageIndex,
 ) -> anyhow::Result<Vec<collection::Staff>> {
-	let png = image.save_to_bufferv("png", &[]).unwrap();
+	let png = image.save_to_png_bytes();
 	let image: image::GrayImage = image::load_from_memory(&png).unwrap().into_luma8();
 
 	/* For manual debugging only: replace inference with local results to avoid doing it over and over again */
@@ -497,7 +497,7 @@ mod test {
 					=> image_util::PageImage::from_pdf
 					=> Result::unwrap
 					=> _.render_scaled(400)
-					=> _.save_to_bufferv("png", &[]).unwrap()
+					=> _.save_to_png_bytes()
 					=> image::load_from_memory(&_).unwrap().into_luma8()
 				);
 
@@ -524,7 +524,7 @@ mod test {
 			std::fs::read(format!("test/recognition/edges.tif")).unwrap()
 			=> image_util::PageImage::from_image(_, "tif".into()).unwrap()
 			=> _.render_scaled(400)
-			=> _.save_to_bufferv("png", &[]).unwrap()
+			=> _.save_to_png_bytes()
 			=> image::load_from_memory(&_).unwrap().into_luma8()
 		);
 
