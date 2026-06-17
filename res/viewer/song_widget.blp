@@ -1,0 +1,30 @@
+using Gtk 4.0;
+
+template $ViewerSongWidget: Widget {
+  GestureZoom zoom_gesture {
+    begin => $zoom_gesture_start() swapped;
+    end => $zoom_gesture_end() swapped;
+    cancel => $zoom_gesture_cancel() swapped;
+    scale-changed => $zoom_gesture_update() swapped;
+  }
+
+  GestureClick {
+    pressed => $on_button_press() swapped;
+    released => $on_button_release() swapped;
+  }
+
+  EventControllerScroll scroll_gesture {
+    flags: vertical | discrete;
+    scroll => $on_scroll() swapped;
+  }
+
+  EventControllerKey {
+    key-pressed => $on_key() swapped;
+  }
+
+  EventControllerMotion {
+    enter => $restart_cursor_timer() swapped;
+    leave => $stop_cursor_timer() swapped;
+    motion => $restart_cursor_timer() swapped;
+  }
+}

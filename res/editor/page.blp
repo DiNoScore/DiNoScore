@@ -1,0 +1,106 @@
+using Gtk 4.0;
+
+template $EditorPage: Box {
+  orientation: horizontal;
+  hexpand: true;
+
+  DrawingArea editor {
+    hexpand: true;
+    focusable: true;
+    focus-on-click: true;
+    resize => $on_resize() swapped;
+
+    GestureClick {
+      pressed => $on_click() swapped;
+    }
+
+    GestureDrag drag_gesture {
+      drag-begin => $on_drag_start() swapped;
+      drag-end => $on_drag_end() swapped;
+      drag-update => $on_drag_update() swapped;
+    }
+
+    EventControllerKey {
+      key-released => $on_key() swapped;
+    }
+
+    EventControllerMotion {
+      leave => $on_leave() swapped;
+      motion => $on_motion() swapped;
+    }
+  }
+
+  Box {
+    margin-start: 5;
+    margin-end: 5;
+    margin-top: 5;
+    orientation: vertical;
+    spacing: 10;
+
+    Frame {
+      child: Box {
+        margin-start: 5;
+        margin-end: 5;
+        margin-top: 5;
+        margin-bottom: 5;
+        spacing: 10;
+
+        CheckButton piece_start {
+          label: "Start piece";
+          sensitive: false;
+          tooltip-text: "This staff marks the start of a new piece/movement/variation/…";
+          toggled => $update_part_start() swapped;
+        }
+
+        Entry piece_name {
+          sensitive: false;
+          tooltip-text: "Give that piece a name";
+          placeholder-text: "I. Presto";
+          notify::text => $update_part_name() swapped;
+        }
+      };
+
+      [label]
+      Label {
+        label: _("Pieces");
+      }
+    }
+
+    Frame {
+      child: Box {
+        orientation: vertical;
+        margin-start: 5;
+        margin-end: 5;
+        margin-top: 5;
+        margin-bottom: 5;
+
+        CheckButton section_start {
+          label: "Start section";
+          tooltip-text: "This staff contains the start of a new section";
+          sensitive: false;
+          toggled => $update_section_start() swapped;
+        }
+
+        CheckButton section_end {
+          label: "Previous section ends here";
+          sensitive: false;
+          tooltip-text: "Check this if the old section ends and the new sections starts in the same staff";
+          toggled => $update_section_end() swapped;
+        }
+
+        CheckButton section_repetition {
+          label: "Section is repetition";
+          sensitive: false;
+          focusable: true;
+          tooltip-text: "This section is a repetition";
+          toggled => $update_section_repetition() swapped;
+        }
+      };
+
+      [label]
+      Label {
+        label: _("Sections");
+      }
+    }
+  }
+}

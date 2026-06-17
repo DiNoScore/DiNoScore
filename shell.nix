@@ -22,6 +22,7 @@ mkShell rec {
 
     # Build dependencies
     adwaita-icon-theme
+    blueprint-compiler
 
     # Test dependencies
     sway

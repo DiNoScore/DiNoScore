@@ -1,0 +1,26 @@
+using Gtk 4.0;
+
+template ListItem {
+  child: Box {
+    halign: center;
+    orientation: vertical;
+
+    Picture picture {
+      paintable: bind template.item as <$ViewerLibraryItem>.thumbnail;
+      can-shrink: false;
+    }
+
+    Box {
+      halign: center;
+
+      Image {
+        icon-name: "starred-symbolic";
+        visible: bind template.item as <$ViewerLibraryItem>.favorite;
+      }
+
+      Label {
+        label: bind template.item as <$ViewerLibraryItem>.title;
+      }
+    }
+  };
+}

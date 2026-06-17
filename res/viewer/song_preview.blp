@@ -1,0 +1,132 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $SongPreview: Box {
+  spacing: 10;
+  orientation: vertical;
+
+  Label song_composer {
+    halign: end;
+    margin-start: 12;
+    margin-end: 12;
+    selectable: true;
+    wrap: true;
+
+    styles [
+      "title-4",
+    ]
+  }
+
+  Label song_title {
+    margin-start: 12;
+    margin-end: 12;
+    selectable: true;
+    wrap: true;
+
+    styles [
+      "title-2",
+    ]
+  }
+
+  Separator {
+    styles [
+      "spacer",
+    ]
+  }
+
+  ScrolledWindow {
+    // Workaround for https://gitlab.gnome.org/GNOME/gtk/-/work_items/6384
+    vscrollbar-policy: always;
+    hscrollbar-policy: never;
+    propagate-natural-height: true;
+    propagate-natural-width: true;
+    min-content-height: 120;
+    overlay-scrolling: true;
+
+    ListBox part_list {
+      selection-mode: single;
+      activate-on-single-click: false;
+      row-activated => $on_part_activated() swapped;
+
+      styles [
+        "part-list",
+      ]
+    }
+  }
+
+  Button {
+    // sensitive: bind sidebar_revealer.reveal-child;
+    clicked => $on_play_button_pressed() swapped;
+    margin-start: 12;
+    margin-end: 12;
+
+    styles [
+      "pill",
+      "suggested-action",
+    ]
+
+    Adw.ButtonContent {
+      icon-name: "media-playback-start-symbolic";
+      label: _("Play");
+      halign: center;
+    }
+  }
+
+  ToggleButton favorite {
+    label: "Favorite";
+    toggled => $on_favorite_toggled() swapped;
+  }
+
+  Separator {
+    vexpand: true;
+
+    styles [
+      "spacer",
+    ]
+  }
+
+  ListBox {
+    selection-mode: none;
+
+    styles [
+      "boxed-list",
+    ]
+
+    Adw.ActionRow stats_times_played {
+      title: "Times played";
+      subtitle-selectable: true;
+
+      styles [
+        "property",
+      ]
+    }
+
+    Adw.ActionRow stats_time_played {
+      title: "Hours played";
+      subtitle-selectable: true;
+
+      styles [
+        "property",
+      ]
+    }
+
+    Adw.ActionRow stats_last_played {
+      title: "Last played";
+      subtitle-selectable: true;
+
+      styles [
+        "property",
+      ]
+    }
+
+    Adw.ActionRow {
+      title: "Tags";
+
+      Adw.WrapBox tags {}
+
+      styles [
+        "property",
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $ViewerWindow: Adw.ApplicationWindow {
+  focusable: false;
+  default-width: 650;
+  default-height: 400;
+  title: _("DiNoScore");
+  notify::fullscreened => $fullscreen_changed() swapped;
+
+  Adw.ToastOverlay toasts {
+    Adw.NavigationView deck {
+      hexpand: true;
+      vexpand: true;
+      halign: fill;
+      popped => $go_back() swapped;
+
+      Adw.NavigationPage {
+        title: _("Library – DiNoScore");
+        tag: "library";
+
+        child: $ViewerLibrary library {};
+      }
+
+      Adw.NavigationPage {
+        tag: "song";
+
+        child: $ViewerSong song {
+          notify::song-id => $update_song_loaded() swapped;
+          notify::song-name => $update_song_title() swapped;
+        };
+      }
+    }
+  }
+}

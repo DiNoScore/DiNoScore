@@ -1,0 +1,206 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $ViewerSong: Box {
+  orientation: vertical;
+
+  Adw.HeaderBar header {
+    // Hide the close buttons when in fullscreen
+    show-start-title-buttons: bind fullscreen.sensitive;
+    show-end-title-buttons: bind fullscreen.sensitive;
+
+    [start]
+    DropDown part_selection {
+      model: StringList {};
+
+      selected: bind carousel.part-index no-sync-create bidirectional;
+    }
+
+    [start]
+    Button {
+      tooltip-text: _("Previous piece");
+      action-name: "song.previous-piece";
+      icon-name: "go-first-symbolic";
+    }
+
+    [start]
+    Button {
+      tooltip-text: _("Next piece");
+      action-name: "song.next-piece";
+      icon-name: "go-last-symbolic";
+    }
+
+    [end]
+    // Bind self.visible to self.enabled (which is bound to action.enabled)
+    Button fullscreen {
+      visible: bind fullscreen.sensitive;
+      action-name: "win.enter-fullscreen";
+      tooltip-text: _("Fullscreen");
+      icon-name: "view-fullscreen-symbolic";
+    }
+
+    [end]
+    // Bind self.visible to self.enabled (which is bound to action.enabled)
+    Button restore {
+      visible: bind restore.sensitive;
+      action-name: "win.leave-fullscreen";
+      tooltip-text: _("Restore");
+      icon-name: "view-restore-symbolic";
+    }
+
+    /* [end] this opens the "…" menu once we have one
+    MenuButton {
+      focusable: true;
+      receives-default: true;
+      popover: view_menu_widget;
+
+      Image {
+        visible: true;
+        focusable: false;
+        icon-name: "open-menu-symbolic";
+        icon-size: normal;
+      }
+    }
+    */
+
+    [end]
+    MenuButton zoom_button {
+      receives-default: true;
+      label: "100%";
+      menu-model: zoom_menu;
+    }
+
+    [end]
+    Button annotate_button {
+      tooltip-text: _("Make annotations");
+      icon-name: "document-edit-symbolic";
+      clicked => $annotate() swapped;
+    }
+  }
+
+  // Wrap the carousel in an overlay to add the progress bar
+  Overlay {
+    vexpand: true;
+    hexpand: true;
+
+    [overlay]
+    $ViewerSongWidget carousel {
+      focusable: "True";
+      overflow: "hidden";
+      progress => $page_load_progress() swapped;
+      activity => $on_activity() swapped;
+    }
+
+    [overlay]
+    ProgressBar song_progress {
+      pulse-step: 0.01;
+      can-target: false;
+
+      styles [
+        "osd",
+      ]
+    }
+  }
+
+  ShortcutController {
+    scope: managed;
+
+    Shortcut {
+      trigger: "<Control>plus";
+      action: "action(song.zoom-in)";
+    }
+
+    Shortcut {
+      trigger: "<Control>minus";
+      action: "action(song.zoom-out)";
+    }
+
+    Shortcut {
+      trigger: "<Control>0";
+      action: "action(song.zoom-original)";
+    }
+
+    Shortcut {
+      trigger: "<Control>N";
+      action: "action(song.next-page)";
+    }
+
+    Shortcut {
+      trigger: "<Alt>N";
+      action: "action(song.next-page)";
+    }
+
+    Shortcut {
+      trigger: "Right";
+      action: "action(song.next-page)";
+    }
+
+    Shortcut {
+      trigger: "<Control>P";
+      action: "action(song.previous-page)";
+    }
+
+    Shortcut {
+      trigger: "<Alt>P";
+      action: "action(song.previous-page)";
+    }
+
+    Shortcut {
+      trigger: "Left";
+      action: "action(song.previous-page)";
+    }
+  }
+}
+
+Popover view_menu_widget {
+  focusable: false;
+  // relative-to: header_bar;
+  position: bottom;
+
+  Box {
+    width-request: 160;
+    visible: true;
+    focusable: false;
+    // border-width: 9;
+    orientation: vertical;
+    spacing: 3;
+  }
+}
+
+menu zoom_menu {
+  section {
+    display-hint: "horizontal-buttons";
+
+    item {
+      label: "Zoom out";
+      action: "song.zoom-out";
+      verb-icon: "zoom-out-symbolic";
+    }
+
+    item {
+      label: "Reset zoom";
+      action: "song.zoom-original";
+      verb-icon: "zoom-original-symbolic";
+    }
+
+    item {
+      label: "Zoom in";
+      action: "song.zoom-in";
+      verb-icon: "zoom-in-symbolic";
+    }
+  }
+
+  section {
+    item {
+      label: _("Three staves");
+      action: "song.sizing-mode";
+      target: "fit-staves";
+    }
+
+    item {
+      label: _("Two columns");
+      action: "song.sizing-mode";
+      target: "fit-columns";
+    }
+  }
+}

@@ -1,0 +1,23 @@
+using Gtk 4.0;
+
+template $PartPreviewRow: ListBoxRow {
+  styles [
+    "part-preview-row",
+  ]
+
+  Box {
+    orientation: vertical;
+
+    Picture picture {
+      content-fit: contain;
+      can-shrink: false;
+    }
+
+    Label label {
+      halign: center;
+    }
+  }
+
+  notify::name => $on_name_changed() swapped;
+  notify::paintable => $on_paintable_changed() swapped;
+}

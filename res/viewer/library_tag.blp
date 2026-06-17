@@ -1,0 +1,14 @@
+using Gtk 4.0;
+
+template $ViewerLibraryTag: ToggleButton {
+  halign: center;
+
+  styles [
+    "tag",
+    "body",
+  ]
+
+  notify::kind => $on_kind_changed() swapped;
+  notify::value => $update_content() swapped;
+  notify::count => $update_content() swapped;
+}
