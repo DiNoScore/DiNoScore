@@ -1,0 +1,223 @@
+using Gtk 4.0;
+using Adw 1;
+using Gio 2.0;
+
+Gio.ListStore pages_store {
+  item-type: typeof<$GdkTexture>;
+}
+
+MultiSelection pages_selection {
+  model: pages_store;
+}
+
+menu menubar {
+  item {
+    label: _("New");
+    action: "app.new";
+  }
+
+  item {
+    label: _("Open");
+    action: "app.open";
+  }
+
+  item {
+    label: _("Save");
+    action: "app.save";
+  }
+}
+
+template $EditorWindow: Adw.ApplicationWindow {
+  title: _("DiNoScore Editor");
+  default-width: 800;
+  default-height: 600;
+
+  Box pages {
+    orientation: vertical;
+    spacing: 10;
+
+    Adw.HeaderBar header {
+      [start]
+      MenuButton {
+        focusable: true;
+        receives-default: true;
+        menu-model: menubar;
+        icon-name: "open-menu-symbolic";
+      }
+    }
+
+    Box {
+      margin-start: 6;
+      margin-end: 6;
+      spacing: 6;
+
+      [end]
+      Adw.SplitButton add_button {
+        label: _("Import score");
+        popover: add_menu;
+        tooltip-text: "Depending on the quality of your source material, there are different options. By default, images must be already processed (= dewarped, black-white). You may add PDFs, but they must embed exactly one image per page.";
+        clicked => $add_pages2() swapped;
+      }
+
+      Button autodetect {
+        clicked => $autodetect() swapped;
+        label: "Autodetect";
+        sensitive: false;
+        tooltip-text: "Run automatic detection of all staff boundaries on the selected pages. You can select all pages with Ctrl+A.";
+      }
+    }
+
+    Paned {
+      vexpand: true;
+      resize-start-child: false;
+      resize-end-child: true;
+      position: 450;
+
+      ScrolledWindow {
+        child: ListView pages_preview {
+          hexpand: false;
+          margin-start: 6;
+          margin-end: 6;
+          margin-top: 6;
+          margin-bottom: 6;
+          single-click-activate: false;
+          model: pages_selection;
+
+          EventControllerKey {
+            key-released => $on_key() swapped;
+          }
+        };
+      }
+
+      $EditorPage editor {}
+    }
+
+    FlowBox {
+      hexpand: true;
+      margin-top: 10;
+      margin-start: 5;
+      margin-end: 5;
+      margin-bottom: 5;
+      selection-mode: none;
+      column-spacing: 12;
+      row-spacing: 6;
+
+      FlowBoxChild {
+        focusable: false;
+
+        child: Box {
+          spacing: 6;
+
+          Label label_song_name {
+            label: _("Song name");
+            mnemonic-widget: song_name;
+          }
+
+          Entry song_name {
+            placeholder-text: "Waltzes, Op.64";
+            tooltip-text: "If in doubt, look up the song on IMSLP.org";
+            width-chars: 35;
+            notify::text => $update_song_name() swapped;
+          }
+        };
+      }
+
+      FlowBoxChild {
+        focusable: false;
+
+        child: Box {
+          spacing: 6;
+
+          Label label_song_composer {
+            label: _("Song composer");
+            mnemonic-widget: song_composer;
+          }
+
+          Entry song_composer {
+            placeholder-text: "Chopin, Frédéric";
+            tooltip-text: "If in doubt, look up the song on IMSLP.org";
+            width-chars: 25;
+            notify::text => $update_song_composer() swapped;
+          }
+        };
+      }
+
+      FlowBoxChild {
+        focusable: false;
+
+        child: Box {
+          spacing: 6;
+
+          Label label_song_form {
+            label: _("Song form");
+            mnemonic-widget: song_form;
+          }
+
+          Entry song_form {
+            placeholder-text: "Sonata, Piano Sonata";
+            tooltip-text: "Comma separated list";
+            width-chars: 25;
+            notify::text => $update_song_form() swapped;
+          }
+        };
+      }
+
+      FlowBoxChild {
+        focusable: false;
+
+        child: Box {
+          spacing: 6;
+
+          Label label_song_instruments {
+            label: _("Instruments");
+            mnemonic-widget: song_instruments;
+          }
+
+          Entry song_instruments {
+            placeholder-text: "Cello, Piano";
+            tooltip-text: "Comma separated list";
+            width-chars: 25;
+            notify::text => $update_song_instruments() swapped;
+          }
+        };
+      }
+    }
+  }
+}
+
+Popover add_menu {
+  focusable: false;
+  position: bottom;
+
+  styles [
+    "menu",
+  ]
+
+  Box {
+    width-request: 160;
+    visible: true;
+    focusable: false;
+    orientation: vertical;
+    spacing: 3;
+
+    Button {
+      label: "Import raw PDF files…";
+      tooltip-text: "Use this for high quality vector PDF files or as fallback when the default image extraction fails.";
+      clicked => $add_pages() swapped;
+
+      styles [
+        "flat",
+      ]
+    }
+
+    Button add_pages3 {
+      sensitive: false;
+      label: "Unprocessed photos and scans…";
+      tooltip-text: "Add pages from images that need more processing.";
+
+      styles [
+        "flat",
+      ]
+    }
+  }
+}
