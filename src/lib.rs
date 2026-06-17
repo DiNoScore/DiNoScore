@@ -56,45 +56,56 @@ pub mod unsafe_force;
 
 pub use image_util::PageImage;
 
-#[allow(deprecated)]
 pub fn create_progress_bar_dialog(
 	text: &str,
-	parent: &impl IsA<gtk::Window>,
-) -> (gtk::Dialog, gtk::ProgressBar) {
-	let progress = gtk::Dialog::builder()
-		.modal(true)
-		.destroy_with_parent(true)
-		.transient_for(parent)
+	parent: &impl IsA<gtk::Widget>,
+) -> (adw::Dialog, gtk::ProgressBar) {
+	let dialog = adw::Dialog::builder()
 		.title("Loading…")
-		.deletable(false)
+		.build();
+
+	let content = gtk::Box::builder()
+		.orientation(gtk::Orientation::Vertical)
+		.spacing(12)
+		.margin_top(24)
+		.margin_bottom(24)
+		.margin_start(24)
+		.margin_end(24)
 		.build();
 
 	let bar = gtk::ProgressBar::new();
 	bar.set_show_text(true);
 	bar.set_text(Some(text));
-	progress.content_area().append(&bar);
+	content.append(&bar);
+	dialog.set_child(Some(&content));
 
-	progress.show();
+	dialog.present(Some(parent));
 	bar.set_fraction(0.0);
-	(progress, bar)
+	(dialog, bar)
 }
 
-#[allow(deprecated)]
-pub fn create_progress_spinner_dialog(text: &str, parent: &impl IsA<gtk::Window>) -> gtk::Dialog {
-	let progress = gtk::Dialog::builder()
-		.modal(true)
-		.destroy_with_parent(true)
-		.transient_for(parent)
+pub fn create_progress_spinner_dialog(text: &str, parent: &impl IsA<gtk::Widget>) -> adw::Dialog {
+	let dialog = adw::Dialog::builder()
 		.title("Loading…")
-		.deletable(false)
+		.build();
+
+	let content = gtk::Box::builder()
+		.orientation(gtk::Orientation::Vertical)
+		.spacing(12)
+		.margin_top(24)
+		.margin_bottom(24)
+		.margin_start(24)
+		.margin_end(24)
 		.build();
 
 	let spinner = gtk::Spinner::new();
-	progress.content_area().append(&spinner);
-	spinner.start();
+	spinner.set_spinning(true);
+	content.append(&spinner);
+	content.append(&gtk::Label::new(Some(text)));
+	dialog.set_child(Some(&content));
 
-	progress.show();
-	progress
+	dialog.present(Some(parent));
+	dialog
 }
 
 /// Commonly used imports

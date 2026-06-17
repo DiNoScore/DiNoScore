@@ -213,12 +213,8 @@ mod imp {
 			self.song_composer.set_text("");
 			self.song_form.set_text("");
 			self.song_instruments.set_text("");
-			self.add_button
-				.style_context()
-				.add_class("suggested-action");
-			self.autodetect
-				.style_context()
-				.remove_class("suggested-action");
+			self.add_button.add_css_class("suggested-action");
+			self.autodetect.remove_css_class("suggested-action");
 		}
 
 		fn load_with_dialog(&self) {
@@ -270,7 +266,7 @@ mod imp {
 									obj.imp().load(sheets, song.index);
 
 									yield_now().await;
-									progress_dialog.emit_close();
+									progress_dialog.close();
 								}
 							),
 						);
@@ -300,16 +296,13 @@ mod imp {
 			let obj = &*self.obj();
 
 			if self.file.borrow().get_staves().len() == 0 {
-				let dialog = gtk::MessageDialog::new(
-					Some(obj),
-					gtk::DialogFlags::MODAL,
-					gtk::MessageType::Error,
-					gtk::ButtonsType::Ok,
-					"You need to add least one staff annotation before saving",
-				);
-				dialog.set_default_response(gtk::ResponseType::Ok);
-				dialog.connect_response(|dialog, _response| dialog.close());
-				dialog.present();
+				let dialog = adw::AlertDialog::builder()
+					.heading("Error")
+					.body("You need to add least one staff annotation before saving")
+					.build();
+				dialog.add_response("ok", "OK");
+				dialog.set_default_response(Some("ok"));
+				dialog.present(Some(obj));
 				return;
 			}
 
@@ -556,19 +549,16 @@ mod imp {
 				yield_now().await;
 			}
 			yield_now().await;
-			progress_dialog.emit_close();
+			progress_dialog.close();
 
 			if warn_pages {
-				let dialog = gtk::MessageDialog::new(
-					Some(obj),
-					gtk::DialogFlags::MODAL,
-					gtk::MessageType::Warning,
-					gtk::ButtonsType::Ok,
-					"Extracting PDF images did not yield exactly one image per page, so be prepared for weird results. If they are not satisfying, try importing the PDF as vector graphic, or extract the images with an external tool first.",
-				);
-				dialog.set_default_response(gtk::ResponseType::Ok);
-				dialog.connect_response(|dialog, _response| dialog.close());
-				dialog.present();
+				let dialog = adw::AlertDialog::builder()
+					.heading("Warning")
+					.body("Extracting PDF images did not yield exactly one image per page, so be prepared for weird results. If they are not satisfying, try importing the PDF as vector graphic, or extract the images with an external tool first.")
+					.build();
+				dialog.add_response("ok", "OK");
+				dialog.set_default_response(Some("ok"));
+				dialog.present(Some(obj));
 			}
 		}
 
@@ -582,13 +572,9 @@ mod imp {
 		/// Append a single loaded image to the end
 		fn add_page_manual(&self, page: PageImage, thumbnail: gdk::Texture) {
 			log::debug!("Adding page (manual) {}×{}", thumbnail.width(), thumbnail.height());
-			self.add_button
-				.style_context()
-				.remove_class("suggested-action");
+			self.add_button.remove_css_class("suggested-action");
 			if self.file.borrow().get_pages().is_empty() {
-				self.autodetect
-					.style_context()
-					.add_class("suggested-action");
+				self.autodetect.add_css_class("suggested-action");
 			}
 
 			self.file.borrow_mut().add_page(page);
@@ -618,9 +604,7 @@ mod imp {
 
 		#[template_callback]
 		pub fn autodetect(&self) {
-			self.autodetect
-				.style_context()
-				.remove_class("suggested-action");
+			self.autodetect.remove_css_class("suggested-action");
 
 			let selected_items: std::collections::BTreeSet<usize> = (0..self.pages_preview_data.n_items())
 				.filter(|&i| self.pages_selection.is_selected(i))
@@ -661,7 +645,7 @@ mod imp {
 						{
 							Err(err) => {
 								log::error!("Autodetect failed: {:?}", err);
-								progress_dialog.emit_close();
+								progress_dialog.close();
 								let error_dialog = adw::AlertDialog::builder()
 									.heading(format!("Error while detecting page {page}"))
 									.body(format!("{:#}", err))
@@ -679,7 +663,7 @@ mod imp {
 					}
 
 					// tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-					progress_dialog.emit_close();
+					progress_dialog.close();
 					yield_now().await;
 					log::info!("Autodetected");
 				},
