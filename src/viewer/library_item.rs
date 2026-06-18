@@ -43,8 +43,33 @@ mod imp {
 		thumbnail: RefCell<Option<gdk::Texture>>,
 		#[property(get, set)]
 		score: RefCell<f64>,
-		#[property(get, set)]
+		#[property(
+			get,
+			set = |obj: &&LibraryItem, val: bool| obj.set_favorite(val),
+			explicit_notify,
+		)]
 		favorite: RefCell<bool>,
+		#[property(get = |obj: &&LibraryItem| obj.get_style_classes())]
+		style_classes: std::marker::PhantomData<Vec<String>>,
+	}
+
+	impl LibraryItem {
+		fn set_favorite(&self, value: bool) {
+			if *self.favorite.borrow() == value {
+				return;
+			}
+			*self.favorite.borrow_mut() = value;
+			self.obj().notify_favorite();
+			self.obj().notify_style_classes();
+		}
+
+		fn get_style_classes(&self) -> Vec<String> {
+			if *self.favorite.borrow() {
+				vec!["library-item".into(), "library-item-favorite".into()]
+			} else {
+				vec!["library-item".into()]
+			}
+		}
 	}
 
 	#[glib::object_subclass]

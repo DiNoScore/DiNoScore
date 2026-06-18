@@ -2,16 +2,23 @@ using Gtk 4.0;
 
 template ListItem {
   child: Box {
-    halign: center;
+    halign: fill;
+    valign: fill;
     orientation: vertical;
+    css-classes: bind template.item as <$ViewerLibraryItem>.style-classes;
 
     Picture picture {
+      halign: center;
       paintable: bind template.item as <$ViewerLibraryItem>.thumbnail;
       can-shrink: false;
     }
 
     Box {
       halign: center;
+
+      styles [
+        "library-item-labels",
+      ]
 
       Image {
         icon-name: "starred-symbolic";

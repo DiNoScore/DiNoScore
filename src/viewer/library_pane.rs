@@ -270,6 +270,7 @@ mod imp {
 						.and_downcast_ref::<gtk::SingleSelection>()
 						.unwrap()
 						.set_selected(idx);
+					self.library_grid.scroll_to(idx, gtk::ListScrollFlags::SELECT, None);
 				}
 			}
 

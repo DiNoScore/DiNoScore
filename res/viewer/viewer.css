@@ -3,22 +3,50 @@
     padding: 10px;
 }
 
+/* CSS structure: grid > "child" (wrappper) > "item" (our class)
+ We make the wrapper the same size as the item by removing the padding.
+ All of this is required because the "selected" property is only accessible from the grid child level
+ */
 .library-grid > child {
     margin: 5px;
-    background-color: white;
-    /*background: white;*/
-    border-radius: 10px;
+    padding: 0px;
     box-shadow: 3px 3px 7px 1px rgba(0,0,0,0.2);
 }
 
-.library-grid > child:selected {
-    /* https://gitlab.gnome.org/GNOME/libadwaita/-/blob/7424559bc17c9e5ae4b2199efae1b275c65b99a3/src/stylesheet/_colors.scss#L90 */
+.library-item {
+    background-color: white;
+    /* Make the shapes match */
+    border-radius: inherit;
+}
+
+/* Paint our item blue when it is selected (selection check happens on the intermediate level) */
+.library-grid > child:selected .library-item {
     background: alpha(var(--accent-bg-color), 0.25);
 }
 
-.library-grid picture {
+/* Favorites are yellow by default, but the blue selection above overrides this (i.e. yellow unless selected */
+.library-item-favorite {
+    background-color: alpha(var(--accent-yellow), 0.25);
+}
+
+/* Give the preview thumbnail rounded corners and some room to breathe. This is mostly invisible, unless
+  a) selected *and* b) the layout is tight (small window)
+ */
+.library-item picture {
     border-radius: 4px;
-    margin: 3px;
+    margin: 4px;
+}
+
+/* Because the selected item becomes blue, hiding the yellow, we at least keep some yellow around the label */
+.library-grid > child:selected .library-item-favorite .library-item-labels {
+    background-color: alpha(var(--accent-yellow), 0.25);
+}
+
+/* Give the text some room to breathe and rounded corners. This is invisible unless favorited and selected as per above */
+.library-item-labels {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background-color: transparent;
 }
 
 /* Copy the library-grid styles (CSS gimme mixins please) */
