@@ -139,15 +139,13 @@ mod imp {
 			self.pages_preview.set_factory(Some(&factory));
 
 			// Connect selection changed signal
-			self.pages_selection.connect_selection_changed(
-				clone!(
-					#[weak(rename_to = this)]
-					self,
-					move |_, _, _| {
-						this.page_changed();
-					}
-				),
-			);
+			self.pages_selection.connect_selection_changed(clone!(
+				#[weak(rename_to = this)]
+				self,
+				move |_, _, _| {
+					this.page_changed();
+				}
+			));
 		}
 	}
 
@@ -564,14 +562,22 @@ mod imp {
 
 		/// Append a single loaded image to the end
 		fn add_page(&self, page: PageImage) {
-			log::debug!("Adding page {}×{}", page.reference_width(), page.reference_height());
+			log::debug!(
+				"Adding page {}×{}",
+				page.reference_width(),
+				page.reference_height()
+			);
 			let thumbnail = page.render_scaled(400);
 			self.add_page_manual(page, thumbnail);
 		}
 
 		/// Append a single loaded image to the end
 		fn add_page_manual(&self, page: PageImage, thumbnail: gdk::Texture) {
-			log::debug!("Adding page (manual) {}×{}", thumbnail.width(), thumbnail.height());
+			log::debug!(
+				"Adding page (manual) {}×{}",
+				thumbnail.width(),
+				thumbnail.height()
+			);
 			self.add_button.remove_css_class("suggested-action");
 			if self.file.borrow().get_pages().is_empty() {
 				self.autodetect.add_css_class("suggested-action");
@@ -606,10 +612,11 @@ mod imp {
 		pub fn autodetect(&self) {
 			self.autodetect.remove_css_class("suggested-action");
 
-			let selected_items: std::collections::BTreeSet<usize> = (0..self.pages_preview_data.n_items())
-				.filter(|&i| self.pages_selection.is_selected(i))
-				.map(|i| i as usize)
-				.collect();
+			let selected_items: std::collections::BTreeSet<usize> =
+				(0..self.pages_preview_data.n_items())
+					.filter(|&i| self.pages_selection.is_selected(i))
+					.map(|i| i as usize)
+					.collect();
 
 			let obj = self.obj().clone();
 
@@ -632,8 +639,8 @@ mod imp {
 
 						// TODO already convert pixbuf to bytes here, then remove the unsafe
 						let data = unsafe { unsafe_force::Send::new(data) };
-						let (page, bars_inner) = match
-							blocking::unblock(move || -> anyhow::Result<_> {
+						let (page, bars_inner) =
+							match blocking::unblock(move || -> anyhow::Result<_> {
 								log::info!("Autodetecting {} ({}/{})", page, i, total_work);
 								let page = PageIndex(page);
 								let bars_inner: Vec<Staff> =
@@ -642,21 +649,21 @@ mod imp {
 								Ok((page, bars_inner))
 							})
 							.await
-						{
-							Err(err) => {
-								log::error!("Autodetect failed: {:?}", err);
-								progress_dialog.close();
-								let error_dialog = adw::AlertDialog::builder()
-									.heading(format!("Error while detecting page {page}"))
-									.body(format!("{:#}", err))
-									.build();
-								error_dialog.add_response("ok", "OK");
-								error_dialog.set_default_response(Some("ok"));
-								error_dialog.present(Some(&obj));
-								return;
-							},
-							Ok(val) => val
-						};
+							{
+								Err(err) => {
+									log::error!("Autodetect failed: {:?}", err);
+									progress_dialog.close();
+									let error_dialog = adw::AlertDialog::builder()
+										.heading(format!("Error while detecting page {page}"))
+										.body(format!("{:#}", err))
+										.build();
+									error_dialog.add_response("ok", "OK");
+									error_dialog.set_default_response(Some("ok"));
+									error_dialog.present(Some(&obj));
+									return;
+								},
+								Ok(val) => val,
+							};
 						progress.set_fraction((i + 1) as f64 / total_work as f64);
 
 						obj.imp().add_staves(page, bars_inner);

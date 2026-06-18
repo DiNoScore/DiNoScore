@@ -60,9 +60,7 @@ pub fn create_progress_bar_dialog(
 	text: &str,
 	parent: &impl IsA<gtk::Widget>,
 ) -> (adw::Dialog, gtk::ProgressBar) {
-	let dialog = adw::Dialog::builder()
-		.title("Loading…")
-		.build();
+	let dialog = adw::Dialog::builder().title("Loading…").build();
 
 	let content = gtk::Box::builder()
 		.orientation(gtk::Orientation::Vertical)
@@ -85,9 +83,7 @@ pub fn create_progress_bar_dialog(
 }
 
 pub fn create_progress_spinner_dialog(text: &str, parent: &impl IsA<gtk::Widget>) -> adw::Dialog {
-	let dialog = adw::Dialog::builder()
-		.title("Loading…")
-		.build();
+	let dialog = adw::Dialog::builder().title("Loading…").build();
 
 	let content = gtk::Box::builder()
 		.orientation(gtk::Orientation::Vertical)

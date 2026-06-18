@@ -1,8 +1,8 @@
 use super::*;
+use anyhow::Context;
 use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
 use itertools::Itertools;
 use typed_index_collections::TiVec;
-use anyhow::Context;
 
 #[derive(serde::Deserialize, Debug, Clone)]
 struct Response {

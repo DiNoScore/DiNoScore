@@ -269,37 +269,41 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 	let main_loop = glib::MainLoop::new(None, false);
 
 	#[allow(unused_variables)]
-	dialog.choose(None::<&gtk::Window>, None::<&gio::Cancellable>, move |response| {
-		match response.as_str() {
-			"restart" => {
-				/* Separator to know which messages are from which application instance */
-				println!("------------------------------");
+	dialog.choose(
+		None::<&gtk::Window>,
+		None::<&gio::Cancellable>,
+		move |response| {
+			match response.as_str() {
+				"restart" => {
+					/* Separator to know which messages are from which application instance */
+					println!("------------------------------");
 
-				/* Exec back into new DiNoScore process */
-				if let Ok(exe) = std::env::current_exe() {
-					use std::process::Command;
+					/* Exec back into new DiNoScore process */
+					if let Ok(exe) = std::env::current_exe() {
+						use std::process::Command;
 
-					#[cfg(unix)]
-					{
-						use std::os::unix::process::CommandExt;
-						let _ = Command::new(&exe).exec();
-					}
-					#[cfg(windows)]
-					{
-						dialog.force_close();
-						if let Ok(status) = Command::new(&exe).status() {
-							std::process::exit(status.code().unwrap_or_default());
+						#[cfg(unix)]
+						{
+							use std::os::unix::process::CommandExt;
+							let _ = Command::new(&exe).exec();
+						}
+						#[cfg(windows)]
+						{
+							dialog.force_close();
+							if let Ok(status) = Command::new(&exe).status() {
+								std::process::exit(status.code().unwrap_or_default());
+							}
 						}
 					}
-				}
-				/* If everything went well, this won't be reached. */
-				std::process::exit(110);
-			},
-			_ => {
-				std::process::exit(110);
-			},
-		}
-	});
+					/* If everything went well, this won't be reached. */
+					std::process::exit(110);
+				},
+				_ => {
+					std::process::exit(110);
+				},
+			}
+		},
+	);
 
 	main_loop.run();
 

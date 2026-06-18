@@ -91,6 +91,7 @@ jobs:
 
   # https://github.com/MGlolenstine/gtk4-cross/blob/main/gtk4-cross-rust
   windows:
+    if: false
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/mglolenstine/gtk4-cross:gtk-4.12

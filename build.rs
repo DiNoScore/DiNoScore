@@ -22,10 +22,7 @@ fn compile_blueprints(dir: &str) {
 			.expect("Failed to run blueprint-compiler");
 
 		if !status.success() {
-			panic!(
-				"blueprint-compiler failed for {}",
-				blp_path.display()
-			);
+			panic!("blueprint-compiler failed for {}", blp_path.display());
 		}
 	}
 }

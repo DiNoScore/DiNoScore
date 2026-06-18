@@ -200,7 +200,8 @@ fn main() -> anyhow::Result<()> {
 					log::info!("Detecting page {page}");
 					let image = sheet.render_scaled(400);
 					let detected_staves: Vec<collection::Staff> =
-						recognition::recognize_staves(&image, page).context("Staff recognition failed")?;
+						recognition::recognize_staves(&image, page)
+							.context("Staff recognition failed")?;
 
 					let staves = meta
 						.staves

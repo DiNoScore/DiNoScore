@@ -152,7 +152,8 @@ mod imp {
 						library_widget,
 						move |tag| {
 							let tag_active = tag.is_active();
-							let filter_active = library_widget.is_tag_active(&kind_owned, &value_owned);
+							let filter_active =
+								library_widget.is_tag_active(&kind_owned, &value_owned);
 							if tag_active != filter_active {
 								library_widget.toggle_tag(&kind_owned, &value_owned);
 							}

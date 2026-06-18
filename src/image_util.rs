@@ -46,8 +46,8 @@ impl PageImage {
 	}
 
 	pub fn from_image(raw: Vec<u8>, extension: String) -> anyhow::Result<Self> {
-		let pixbuf = gdk::Texture::from_bytes(&glib::Bytes::from(&raw))
-			.context("Failed to load image")?;
+		let pixbuf =
+			gdk::Texture::from_bytes(&glib::Bytes::from(&raw)).context("Failed to load image")?;
 		Ok(Self {
 			raw,
 			extension,
@@ -390,12 +390,9 @@ pub fn pdf_to_texture(page: &poppler::Page, width: i32) -> cairo::Result<gdk::Te
 
 /// Convert a GDK Texture to a Cairo ImageSurface
 pub fn texture_to_surface(texture: &gdk::Texture) -> cairo::ImageSurface {
-	let mut surface = cairo::ImageSurface::create(
-		cairo::Format::ARgb32,
-		texture.width(),
-		texture.height(),
-	)
-	.unwrap();
+	let mut surface =
+		cairo::ImageSurface::create(cairo::Format::ARgb32, texture.width(), texture.height())
+			.unwrap();
 	let stride = surface.stride() as usize;
 	{
 		let mut data = surface.data().unwrap();
@@ -418,7 +415,10 @@ mod test {
 
 		let expected = std::fs::read("./test/image_util/pdf_page_thumbnail.png").unwrap();
 		let actual = thumbnail.save_to_png_bytes();
-		assert_eq!(&*actual, &expected, "PDF thumbnail does not match golden master");
+		assert_eq!(
+			&*actual, &expected,
+			"PDF thumbnail does not match golden master"
+		);
 	}
 
 	#[test]
@@ -431,6 +431,9 @@ mod test {
 
 		let expected = std::fs::read("./test/image_util/raster_page_thumbnail.png").unwrap();
 		let actual = thumbnail.save_to_png_bytes();
-		assert_eq!(&*actual, &expected, "Raster thumbnail does not match golden master");
+		assert_eq!(
+			&*actual, &expected,
+			"Raster thumbnail does not match golden master"
+		);
 	}
 }

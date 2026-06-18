@@ -39,7 +39,8 @@ impl LibraryPane {
 			for key in TAG_ORDER {
 				if let Some(values) = tags.get(key) {
 					for value in values {
-						let tag = crate::library_tag::LibraryTag::new((*key).into(), value.to_string());
+						let tag =
+							crate::library_tag::LibraryTag::new((*key).into(), value.to_string());
 						tag.connect_toggled(clone_!(self.imp(), move |this, _| {
 							this.imp().reload_songs_filtered()
 						}));
@@ -237,7 +238,8 @@ mod imp {
 				/* Go through the song list and filter it */
 				for (uuid, song) in library.songs.iter() {
 					let is_favorite = library.stats[uuid].favorite;
-					if (*self.song_filter.borrow())(&song.index) && tag_filter(&song.index, is_favorite)
+					if (*self.song_filter.borrow())(&song.index)
+						&& tag_filter(&song.index, is_favorite)
 					{
 						/* Add an item with the name and UUID */
 						let thumbnail = song.thumbnail();
@@ -270,7 +272,8 @@ mod imp {
 						.and_downcast_ref::<gtk::SingleSelection>()
 						.unwrap()
 						.set_selected(idx);
-					self.library_grid.scroll_to(idx, gtk::ListScrollFlags::SELECT, None);
+					self.library_grid
+						.scroll_to(idx, gtk::ListScrollFlags::SELECT, None);
 				}
 			}
 
@@ -345,9 +348,13 @@ mod imp {
 			false
 		}
 
-		fn get_activated_tags(&self) -> std::collections::HashMap<String, std::collections::BTreeSet<String>> {
-			let mut activated_tags: std::collections::HashMap<String, std::collections::BTreeSet<String>> =
-				std::collections::HashMap::new();
+		fn get_activated_tags(
+			&self,
+		) -> std::collections::HashMap<String, std::collections::BTreeSet<String>> {
+			let mut activated_tags: std::collections::HashMap<
+				String,
+				std::collections::BTreeSet<String>,
+			> = std::collections::HashMap::new();
 			for (key, value) in self
 				.tags
 				.observe_children()
