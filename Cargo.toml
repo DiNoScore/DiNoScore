@@ -39,6 +39,8 @@ glib = { version = "0.22", features = ["log", "v2_74"] }
 gio = { version = "0.22", features = ["v2_74"] }
 cairo-rs = { version = "0.22", features = ["png", "pdf", "svg", "v1_16"]}
 poppler-rs = { version = "0.26", features = ["v20_9"] }
+glycin = { version = "3", features = ["gdk4"] }
+fast_image_resize = "5"
 
 # Utility
 atomicwrites = "0.4.0"

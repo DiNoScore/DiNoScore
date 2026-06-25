@@ -6,7 +6,7 @@ use crate::*;
 use anyhow::Context;
 
 use adw::prelude::*;
-use gdk::{cairo, gdk_pixbuf};
+use gdk::cairo;
 use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use gtk4 as gtk;
 use libadwaita as adw;
@@ -122,13 +122,7 @@ impl SongFile {
 				let mut stream = stream?;
 				let mut bytes = Vec::new();
 				std::io::copy(&mut stream, &mut bytes)?;
-
-				pipeline::pipe! {
-					bytes
-					=> &glib::Bytes::from_owned
-					=> gdk::Texture::from_bytes(_)
-					=> _.map_err(Into::into)
-				}
+				image_util::load_image_texture(&bytes)
 			})
 			.transpose() /* Result<Option<_>> */
 			.context("Could not load thumbnail")?;

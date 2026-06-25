@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::Context;
-use gtk::{cairo, gdk, gdk_pixbuf, gio, glib, prelude::*};
+use gtk::{cairo, gdk, gio, glib, prelude::*};
 use itertools::Itertools;
 use typed_index_collections::TiVec;
 
@@ -454,22 +454,6 @@ pub fn recognize_staves(
 #[cfg(test)]
 mod test {
 	use super::*;
-
-	// #[tokio::test]
-	// async fn test_inference_api() -> anyhow::Result<()> {
-	// 	let image = gdk_pixbuf::Pixbuf::from_stream(
-	// 		&gio::MemoryInputStream::from_bytes(&glib::Bytes::from(bytes as &[u8])),
-	// 		Option::<&gio::Cancellable>::None,
-	// 	)?;
-	// 	let width = 1800;
-	// 	let image = image.scale_simple(
-	// 		width,
-	// 		(width as f64 * image.get_height() / image.get_width()) as i32,
-	// 		gdk_pixbuf::InterpType::Bilinear,
-	// 	).unwrap();
-	// 	online_inference(&image).await?;
-	// 	Ok(())
-	// }
 
 	#[derive(serde::Deserialize)]
 	struct ReferenceData {

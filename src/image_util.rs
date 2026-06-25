@@ -1,15 +1,31 @@
 //! Everything we need to deal with images.
 //!
-//! Contains helper functions for PDF <-> Pixbuf conversion, and a [`PageImageExt`] trait that
-//! abstracts over them in the case we don't care (most of the time, in fact).
+//! Wraps PDF rendering (via poppler) and raster image loading (via glycin)
+//! behind the [`PageImage`] type so callers don't need to care which they have.
 
 use anyhow::Context;
 
 use adw::prelude::*;
-use gdk::{cairo, gdk_pixbuf};
+use gdk::cairo;
 use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use gtk4 as gtk;
 use libadwaita as adw;
+
+pub fn load_image_frame(raw: &[u8]) -> anyhow::Result<glycin::Frame> {
+	use glycin::MemoryFormatSelection as Sel;
+	futures::executor::block_on(async {
+		let mut loader = glycin::Loader::new_bytes(glib::Bytes::from(raw));
+		loader
+			.sandbox_selector(glycin::SandboxSelector::NotSandboxed)
+			.accepted_memory_formats(Sel::G8 | Sel::G8a8 | Sel::R8g8b8 | Sel::R8g8b8a8);
+		loader.load().await?.next_frame().await
+	})
+	.map_err(Into::into)
+}
+
+pub fn load_image_texture(raw: &[u8]) -> anyhow::Result<gdk::Texture> {
+	Ok(load_image_frame(raw)?.texture())
+}
 
 /// An image file, in memory but compressed
 ///
@@ -46,13 +62,12 @@ impl PageImage {
 	}
 
 	pub fn from_image(raw: Vec<u8>, extension: String) -> anyhow::Result<Self> {
-		let pixbuf =
-			gdk::Texture::from_bytes(&glib::Bytes::from(&raw)).context("Failed to load image")?;
+		let frame = load_image_frame(&raw).context("Failed to load image")?;
 		Ok(Self {
 			raw,
 			extension,
-			width: pixbuf.width() as f64,
-			height: pixbuf.height() as f64,
+			width: frame.width() as f64,
+			height: frame.height() as f64,
 		})
 	}
 
@@ -98,21 +113,12 @@ impl PageImage {
 			let page = pdf.page(0).unwrap();
 			pdf_to_texture(&page, width).expect("Failed to render PDF")
 		} else {
-			// gdk::Texture::from_bytes(&glib::Bytes::from(&self.raw))
-			let pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(self.raw.clone()))
-				.expect("Failed to load image");
-			let pixbuf = if width as f64 >= self.width {
-				pixbuf
+			let frame = load_image_frame(&self.raw).expect("Failed to load image");
+			if width as f64 >= self.width {
+				frame.texture()
 			} else {
-				pixbuf
-					.scale_simple(
-						width,
-						(width as f64 * self.height / self.width).ceil() as i32,
-						gdk_pixbuf::InterpType::Bilinear,
-					)
-					.expect("Failed to scale image")
-			};
-			gdk::Texture::for_pixbuf(&pixbuf)
+				scale_frame(&frame, width)
+			}
 		}
 	}
 
@@ -128,8 +134,7 @@ impl PageImage {
 			page.render(&context);
 			context.status()
 		} else {
-			let texture = gdk::Texture::from_bytes(&glib::Bytes::from(&self.raw))
-				.expect("Failed to load image");
+			let texture = load_image_texture(&self.raw).expect("Failed to load image");
 			context.set_source_surface(&texture_to_surface(&texture), 0.0, 0.0)?;
 			context.paint()
 		}
@@ -302,8 +307,7 @@ pub fn concat_files(pdfs: Vec<(Vec<u8>, bool)>) -> anyhow::Result<Vec<u8>> {
 				if is_pdf {
 					Ok(file)
 				} else {
-					let image = gdk::Texture::from_bytes(&glib::Bytes::from(&file))
-						.expect("Failed to load image");
+					let image = load_image_texture(&file).expect("Failed to load image");
 					image_to_pdf_raw(&image).context("Failed to embed the image in a PDF")
 				}
 			})
@@ -386,6 +390,57 @@ pub fn pdf_to_texture(page: &poppler::Page, width: i32) -> cairo::Result<gdk::Te
 		surface.stride() as usize,
 	);
 	Ok(texture.upcast())
+}
+
+pub fn scale_frame(frame: &glycin::Frame, target_width: i32) -> gdk::Texture {
+	use fast_image_resize as fr;
+	use glycin::MemoryFormat as GF;
+
+	let (gdk_format, pixel_type, bpp) = match frame.memory_format() {
+		GF::G8 => (gdk::MemoryFormat::G8, fr::PixelType::U8, 1),
+		GF::G8a8 => (gdk::MemoryFormat::G8a8, fr::PixelType::U8x2, 2),
+		GF::R8g8b8 => (gdk::MemoryFormat::R8g8b8, fr::PixelType::U8x3, 3),
+		GF::R8g8b8a8 => (gdk::MemoryFormat::R8g8b8a8, fr::PixelType::U8x4, 4),
+		other => unreachable!("glycin returned an unrequested format: {other:?}"),
+	};
+
+	let (src_w, src_h) = (frame.width(), frame.height());
+	let dst_w = target_width as u32;
+	let dst_h = (dst_w as f64 * src_h as f64 / src_w as f64).ceil() as u32;
+
+	// fast_image_resize wants tightly-packed input
+	let row_bytes = src_w as usize * bpp;
+	let stride = frame.stride() as usize;
+	let src_bytes: Vec<u8> = if stride == row_bytes {
+		frame.buf_slice().to_vec()
+	} else {
+		(0..src_h as usize)
+			.flat_map(|y| {
+				frame.buf_slice()[y * stride..y * stride + row_bytes]
+					.iter()
+					.copied()
+			})
+			.collect()
+	};
+
+	let src = fr::images::Image::from_vec_u8(src_w, src_h, src_bytes, pixel_type)
+		.expect("buffer size doesn't match frame dimensions");
+	let mut dst = fr::images::Image::new(dst_w, dst_h, pixel_type);
+	let options =
+		fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(fr::FilterType::Hamming));
+	fr::Resizer::new()
+		.resize(&src, &mut dst, &options)
+		.expect("resize failed");
+
+	let bytes = glib::Bytes::from(dst.buffer());
+	gdk::MemoryTexture::new(
+		dst_w as i32,
+		dst_h as i32,
+		gdk_format,
+		&bytes,
+		dst_w as usize * bpp,
+	)
+	.upcast()
 }
 
 /// Convert a GDK Texture to a Cairo ImageSurface

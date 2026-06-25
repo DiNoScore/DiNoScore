@@ -109,7 +109,7 @@ pub mod prelude {
 	pub use adw::{prelude::*, subclass::prelude::*};
 	pub use glib::subclass::{object::*, prelude::*, types::*};
 	pub use gtk::{
-		gdk, gdk_pixbuf, gio, glib,
+		gdk, gio, glib,
 		glib::{clone, prelude::*},
 		graphene, gsk,
 		prelude::*,

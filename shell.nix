@@ -51,9 +51,12 @@ mkShell rec {
     stdenv.cc.cc.lib
     bzip2
     cairo
+    libseccomp
+    glycin-loaders
   ];
   shellHook = ''
     export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}''${LD_LIBRARY_PATH:+:''${LD_LIBRARY_PATH}}"
+    export XDG_DATA_DIRS="${lib.makeSearchPath "share" buildInputs}''${XDG_DATA_DIRS:+:''${XDG_DATA_DIRS}}"
     export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib"
     export GDK_DPI_SCALE=1.3
     export RUST_BACKTRACE=1
