@@ -57,6 +57,9 @@ rustPlatform.buildRustPackage rec {
     libseccomp
     glycin-loaders
   ];
+  checkInputs = [
+    shared-mime-info # Glycin needs the MIME database to identify image bytes
+  ];
 
   LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
 }

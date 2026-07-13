@@ -57,6 +57,7 @@ mkShell rec {
     cairo
     libseccomp
     glycin-loaders
+    shared-mime-info # Glycin needs the MIME database to identify image bytes
   ];
   shellHook = ''
     ${pre-commit-check.shellHook}
