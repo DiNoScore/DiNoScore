@@ -1,5 +1,18 @@
 {
   "pins": {
+    "git-hooks": {
+      "type": "Git",
+      "repository": {
+        "type": "GitHub",
+        "owner": "cachix",
+        "repo": "git-hooks.nix"
+      },
+      "branch": "master",
+      "submodules": false,
+      "revision": "bca82caa46d5ec0f5d422c61fb1e30bc51313cbe",
+      "url": "https://github.com/cachix/git-hooks.nix/archive/bca82caa46d5ec0f5d422c61fb1e30bc51313cbe.tar.gz",
+      "hash": "sha256-jGiy6+sxjNWXSjp25uoJuNfyH9zBK1PEDY0lVoL4ibQ="
+    },
     "pkgs": {
       "type": "Channel",
       "name": "nixos-26.05",

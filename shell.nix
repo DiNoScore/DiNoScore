@@ -1,6 +1,10 @@
 let
   sources = import ./npins;
   pkgs = import sources.pkgs {};
+  pre-commit-check = (import sources.git-hooks).run {
+    src = ./.;
+    hooks.rustfmt.enable = true;
+  };
 in
 with pkgs;
 mkShell rec {
@@ -55,6 +59,7 @@ mkShell rec {
     glycin-loaders
   ];
   shellHook = ''
+    ${pre-commit-check.shellHook}
     export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}''${LD_LIBRARY_PATH:+:''${LD_LIBRARY_PATH}}"
     export XDG_DATA_DIRS="${lib.makeSearchPath "share" buildInputs}''${XDG_DATA_DIRS:+:''${XDG_DATA_DIRS}}"
     export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib"

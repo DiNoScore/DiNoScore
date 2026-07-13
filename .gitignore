@@ -2,3 +2,4 @@
 \.direnv
 /result
 res/**/*.ui
+/.pre-commit-config.yaml
