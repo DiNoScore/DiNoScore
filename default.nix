@@ -1,6 +1,9 @@
 let
   sources = import ./npins;
   pkgs = import sources.pkgs { };
+  pythonEnv = pkgs.python3.withPackages (pypkgs: [
+    pypkgs.pikepdf
+  ]);
 in
 with pkgs;
 rustPlatform.buildRustPackage rec {
@@ -35,12 +38,11 @@ rustPlatform.buildRustPackage rec {
     adwaita-icon-theme # Icons
     blueprint-compiler # UI compilation
     llvmPackages.clang
+    makeWrapper # Wrap binaries to expose pikepdf at runtime
   ];
   buildInputs = [
     openssl
-    (python3.withPackages (pypkgs: [
-      pypkgs.pikepdf
-    ]))
+    pythonEnv
     bzip2
     glib
     cairo
@@ -62,4 +64,23 @@ rustPlatform.buildRustPackage rec {
   ];
 
   LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
+
+  postInstall = ''
+    mv $out/bin/viewer $out/bin/dinoscore
+    mv $out/bin/editor $out/bin/dinoscore-editor
+    mv $out/bin/cli $out/bin/dinoscore-cli
+
+    install -Dm644 res/viewer/de.piegames.dinoscore.viewer.desktop \
+      $out/share/applications/de.piegames.dinoscore.viewer.desktop
+    install -Dm644 res/editor/de.piegames.dinoscore.editor.desktop \
+      $out/share/applications/de.piegames.dinoscore.editor.desktop
+
+    install -Dm644 res/de.piegames.dinoscore.svg \
+      $out/share/icons/hicolor/scalable/apps/de.piegames.dinoscore.svg
+
+    for prog in dinoscore dinoscore-editor dinoscore-cli; do
+      wrapProgram $out/bin/$prog \
+        --prefix PYTHONPATH : "${pythonEnv}/${pythonEnv.sitePackages}"
+    done
+  '';
 }
