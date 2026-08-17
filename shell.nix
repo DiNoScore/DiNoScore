@@ -1,6 +1,7 @@
 let
   sources = import ./npins;
-  pkgs = import sources.pkgs {};
+  pkgs = import sources.pkgs { };
+  pkgsUnstable = import sources.nixos-unstable { };
   pre-commit-check = (import sources.git-hooks).run {
     src = ./.;
     hooks.rustfmt.enable = true;
@@ -13,7 +14,7 @@ mkShell rec {
     cargo
     curl.out
     lld
-    npins
+    pkgsUnstable.npins
 
     # Compiler
     rustc

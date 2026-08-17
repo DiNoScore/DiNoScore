@@ -39,7 +39,7 @@ glib = { version = "0.22", features = ["log", "v2_74"] }
 gio = { version = "0.22", features = ["v2_74"] }
 cairo-rs = { version = "0.22", features = ["png", "pdf", "svg", "v1_16"]}
 poppler-rs = { version = "0.26", features = ["v20_9"] }
-glycin = { version = "3", features = ["gdk4"] }
+glycin = { version = "4.0.0-alpha.7", features = ["gdk4"] }
 fast_image_resize = "5"
 
 # Utility
@@ -64,7 +64,6 @@ zip = "8"
 xdg = { git = "https://github.com/piegamesde/rust-xdg", branch = "windows" }
 uuid = { version = "1.4", features = [ "v4", "serde" ] }
 walkdir = "2"
-pyo3 = { version = "0.19", features = [ "auto-initialize", "anyhow", "abi3-py37", "generate-import-lib" ] }
 
 # Xournal
 flate2 = "1.0.20"
@@ -99,6 +98,9 @@ clap = { version = "3", features = ["cargo", "derive", "wrap_help"], optional = 
 # Midi
 midi-event = "0.2.0"
 portmidi = "0.3"
+
+# Unix-only
+pyo3 = { version = "0.19", features = [ "auto-initialize", "anyhow", "abi3-py37", "generate-import-lib" ] }
 
 [build-dependencies]
 glib-build-tools = "0.22"

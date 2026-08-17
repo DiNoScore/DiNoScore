@@ -161,7 +161,21 @@ impl PageImage {
 	}
 }
 
+/// The routines below drive pikepdf through an embedded Python interpreter,
+/// which we only have on unix (see the `pyo3` dependency in Cargo.toml).
+#[cfg(not(unix))]
+fn no_python() -> anyhow::Error {
+	anyhow::anyhow!("This build has no Python support, which is required to manipulate PDF files")
+}
+
 /// Split a PDF file into its own pages
+#[cfg(not(unix))]
+pub fn explode_pdf_raw(_pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
+	Err(no_python())
+}
+
+/// Split a PDF file into its own pages
+#[cfg(unix)]
 pub fn explode_pdf_raw(pdf: &[u8]) -> anyhow::Result<Vec<Vec<u8>>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	pyo3::Python::with_gil(|py| {
@@ -210,6 +224,15 @@ pub fn explode_pdf(
 /// Extract all raster images from a PDF
 ///
 /// Return type: `([(format, bytes)], pdf_n_pages)`
+#[cfg(not(unix))]
+pub fn extract_pdf_images_raw(_pdf: &[u8]) -> anyhow::Result<(Vec<(String, Vec<u8>)>, usize)> {
+	Err(no_python())
+}
+
+/// Extract all raster images from a PDF
+///
+/// Return type: `([(format, bytes)], pdf_n_pages)`
+#[cfg(unix)]
 pub fn extract_pdf_images_raw(pdf: &[u8]) -> anyhow::Result<(Vec<(String, Vec<u8>)>, usize)> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	pyo3::Python::with_gil(|py| {
@@ -272,6 +295,12 @@ images = (images, n_pages)
 	})
 }
 
+#[cfg(not(unix))]
+pub fn concat_pdfs(_pdfs: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {
+	Err(no_python())
+}
+
+#[cfg(unix)]
 pub fn concat_pdfs(pdfs: Vec<Vec<u8>>) -> anyhow::Result<Vec<u8>> {
 	use pyo3::{conversion::IntoPy, types::IntoPyDict};
 	pyo3::Python::with_gil(|py| {

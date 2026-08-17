@@ -1,5 +1,5 @@
 /target
 \.direnv
-/result
+/result*
 res/**/*.ui
 /.pre-commit-config.yaml

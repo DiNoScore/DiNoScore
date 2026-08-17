@@ -269,7 +269,7 @@ pub fn show_crash_dialog(args: Vec<std::ffi::OsString>) -> ! {
 	let main_loop = glib::MainLoop::new(None, false);
 
 	#[allow(unused_variables)]
-	dialog.choose(
+	dialog.clone().choose(
 		None::<&gtk::Window>,
 		None::<&gio::Cancellable>,
 		move |response| {

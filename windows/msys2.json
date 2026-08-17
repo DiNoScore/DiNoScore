@@ -1,0 +1,599 @@
+{
+  "pins": {
+    "mingw-w64-ucrt-x86_64-adwaita-icon-theme": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-adwaita-icon-theme-50.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-NXzIFobMeIGNfLkCtiFJqPipTkx0rusapgftIgzlzbE="
+    },
+    "mingw-w64-ucrt-x86_64-adwaita-icon-theme-legacy": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-adwaita-icon-theme-legacy-46.2-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-82XFckp4KeXMUvExzWZPA5H5ls9Fa8faYZbkzFzoKQM="
+    },
+    "mingw-w64-ucrt-x86_64-appstream": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-appstream-1.1.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-fECgAUE/scPP+3RswcGrOGoT5ZRrCRfKLMRNsbtcJe0="
+    },
+    "mingw-w64-ucrt-x86_64-brotli": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-nMiWZUlupQR1FHbq+6FcccVUqvMAS6vCAE98B//WBRQ="
+    },
+    "mingw-w64-ucrt-x86_64-bzip2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-ky2ixjsj5qREh1frNvsZip5REhh0QIJwr+LJG62lE8c="
+    },
+    "mingw-w64-ucrt-x86_64-c-ares": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-c-ares-1.34.8-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-IxPVMbydx6rmvjzg+KzlFrsEGRxPP2LHjH39JG0qm6Y="
+    },
+    "mingw-w64-ucrt-x86_64-ca-certificates": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-ca-certificates-20250419-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-mrtT1dj9xPT7b/NKNvti4cn1KnFNoaEjT6Drx7V1pfE="
+    },
+    "mingw-w64-ucrt-x86_64-cairo": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-BazxGz3LMkZ8pbeaiBqujn2KD7pg3SQxRixGNm1mdQY="
+    },
+    "mingw-w64-ucrt-x86_64-curl": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-curl-8.21.0-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-asFpUImlk3pQga1M8JLX6wYwBrSK8sxVQP/YuKWjWGo="
+    },
+    "mingw-w64-ucrt-x86_64-directx-headers": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-directx-headers-1~1.619.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-MaG5LUnFFpV3BxzqJkb7tEXEq4+cdvZjHzZAj4KTrCY="
+    },
+    "mingw-w64-ucrt-x86_64-directxmath": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-directxmath-3.20.b-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-wBSG6WoCSnNm086t9bi4Jj1Qx9egI0Or3UPEcgDNIj4="
+    },
+    "mingw-w64-ucrt-x86_64-egl-headers": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-egl-headers-1.5.r284.3ae2b7c-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-KXQxWQSM8hb3XQ3D6z4KBKB1FdsX2DmAPlSwYPWusLM="
+    },
+    "mingw-w64-ucrt-x86_64-expat": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-expat-2.8.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-Qt5UeAc8KsPDKT1NFeUTbol42Vjz8r1q5GLoH0reARg="
+    },
+    "mingw-w64-ucrt-x86_64-fontconfig": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-fontconfig-2.18.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-0LNk8+4347b2wTZojOj6kJu22Kad9+CN4apAhw2eHWA="
+    },
+    "mingw-w64-ucrt-x86_64-freetype": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-freetype-2.14.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-9QK9+e0HqpXiI+GroXzoyy2XWqtQZu7Bei19xPuKHCA="
+    },
+    "mingw-w64-ucrt-x86_64-fribidi": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-fribidi-1.0.16-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-x/4IULaN6oDEMN+MLJuqzzYbJWTdnt6hsPE9baItrAg="
+    },
+    "mingw-w64-ucrt-x86_64-gcc-libs": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-V2P6v4b6E6REnudlAG00RjhO1mr3v4J0WXEOt3fgsRw="
+    },
+    "mingw-w64-ucrt-x86_64-gdk-pixbuf2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gdk-pixbuf2-2.44.7-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-+Sc3RmyR0ljR8p4B1nvCeKh5X+2yw2/3YAPWaYLoRVQ="
+    },
+    "mingw-w64-ucrt-x86_64-gettext-runtime": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-umk92krDda92zkgf86bnSBKGVGzH3G1WxwIdrjQIQVc="
+    },
+    "mingw-w64-ucrt-x86_64-giflib": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-nnrI/rDir24PzjyOrRvXvK8BhmHQgDOFjB4mV6BPbxo="
+    },
+    "mingw-w64-ucrt-x86_64-gles-headers": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gles-headers-3.2.r1065.7fc154c-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-BmAHpQvQjwYrVJTyxIEaIZ4aZfTs3OK+tFP22di5IJg="
+    },
+    "mingw-w64-ucrt-x86_64-glib2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-glib2-2.88.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-BzOmdOz1KCCIFYuORYyyrTNZv0L7fb6VYbS8/gJn9b8="
+    },
+    "mingw-w64-ucrt-x86_64-gmp": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-6Cp1lopVZISlAIRXgjioTrYPuT40mG/WaVxTeXW9Oeo="
+    },
+    "mingw-w64-ucrt-x86_64-gnutls": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gnutls-3.8.13-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-MD2jur0R9UX8rGR0OSmOhVmVHOahCGZm+vitKh9wi+Y="
+    },
+    "mingw-w64-ucrt-x86_64-graphene": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-graphene-1.10.8-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-SuSSCKz0nehPKrvpVVwtIvUatSwVCfWsi7XOf8rwfVc="
+    },
+    "mingw-w64-ucrt-x86_64-graphite2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-graphite2-1.3.15-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-NMofiL/xDvGCprHI5WItUCnxOwV0jjYa8TtVK0IuqEk="
+    },
+    "mingw-w64-ucrt-x86_64-gst-plugins-bad-libs": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gst-plugins-bad-libs-1.28.6-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-gT3xYkwUtsUxcjmcPbrWam1in4gzTGzSOdW9iXM4djA="
+    },
+    "mingw-w64-ucrt-x86_64-gst-plugins-base": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gst-plugins-base-1.28.6-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-9BectvMCmUiy1+Capd9Ev2+ZBPqfI4WMRFatgf/xWtw="
+    },
+    "mingw-w64-ucrt-x86_64-gstreamer": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gstreamer-1.28.6-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-ZeT0iAgoDS0a3pr6Mr5KwdZNnhuFXxGWOLqnQovnsWg="
+    },
+    "mingw-w64-ucrt-x86_64-gtk-update-icon-cache": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gtk-update-icon-cache-3.24.52-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-7t/gHSJklmmblbBls+wqT7PFGXmy/WSVQaVg0flJrhg="
+    },
+    "mingw-w64-ucrt-x86_64-gtk4": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gtk4-4.22.4-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-8914upbwH89VKdzgrnoXANTxNOCoTvZknbRBhFBN1co="
+    },
+    "mingw-w64-ucrt-x86_64-harfbuzz": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-harfbuzz-14.3.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-y0dQ8wfY8jpkpA4BFcLdDTLHMSmVkOmD8UbRV8rOaO8="
+    },
+    "mingw-w64-ucrt-x86_64-hicolor-icon-theme": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-hicolor-icon-theme-0.18-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-HvANfANJNaR5+VGjansOF8/cSCdl6GCSQGG5jmlINAw="
+    },
+    "mingw-w64-ucrt-x86_64-iso-codes": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-iso-codes-4.20.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-TlEP2k1kvK3315128C9wgOAWvzd1mwpf5bLmVVPkl4U="
+    },
+    "mingw-w64-ucrt-x86_64-jbigkit": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-jbigkit-2.1-5-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-M04Vav/QBS3orlSexwRNOyzbHwxyVpZZYZ+46CDl2Hg="
+    },
+    "mingw-w64-ucrt-x86_64-json-glib": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-json-glib-1.10.8-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-OwdEO+ebe+gGLwhdRFMWH8cUQXAElKOTgH92wKvaL8Y="
+    },
+    "mingw-w64-ucrt-x86_64-lcms2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lcms2-2.19.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-FEUYzIBnn3vMHTG13X7JLoc3odgWIBTjDIwcGB9HoVY="
+    },
+    "mingw-w64-ucrt-x86_64-lerc": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-wK+/SDJIjWcDDG8xM0nNgUlGyae8Oun9VFJIJcnKBV0="
+    },
+    "mingw-w64-ucrt-x86_64-libadwaita": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libadwaita-1.9.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-WwKqoc4SL7xZBwSfmpPsS1YFxyzR10FSgwtnWLNgG9M="
+    },
+    "mingw-w64-ucrt-x86_64-libb2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-37VUY1EZ08Rq2wDJ0MWJuzjRyweBsQ7PMd4HzjiL0MA="
+    },
+    "mingw-w64-ucrt-x86_64-libdatrie": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdatrie-0.2.14-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-6pJ3eAGtMlJ4GTo2KWdUB1KuNwNQFt8va87i2JkooZU="
+    },
+    "mingw-w64-ucrt-x86_64-libdeflate": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-RxFe3QL2E5oLYuu2pzrsnYk2ZJBfcrmOh69b79t9xp0="
+    },
+    "mingw-w64-ucrt-x86_64-libepoxy": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libepoxy-1.5.10-7-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-xsaZTo7EkHHwbMH65HVAa98XYD1Gh60LysLhEHjP18g="
+    },
+    "mingw-w64-ucrt-x86_64-libffi": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libffi-3.7.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-ots9i7l9SDwsbOEjl8TCIfFKTGhw33qVEapZnHARQ/Y="
+    },
+    "mingw-w64-ucrt-x86_64-libfyaml": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libfyaml-0.9.5-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-pP80F10NwnGmwtBGULRSqBxLWM6z9jNqGKkurhJ4hlg="
+    },
+    "mingw-w64-ucrt-x86_64-libiconv": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-mlAPOMK5GAh0HGL650az6RELM6Hs9cMPoMZtvt3ffhY="
+    },
+    "mingw-w64-ucrt-x86_64-libidn2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-1fS16dmf97KphtHcDHPaK82TumhGK+ex3rvW73Y3H1c="
+    },
+    "mingw-w64-ucrt-x86_64-libjpeg-turbo": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-fAAdAN9VfP7paa1D03ucMa4ihp6KrECRqJ3Drm2V4R0="
+    },
+    "mingw-w64-ucrt-x86_64-libnice": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libnice-0.1.23-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-d2n3Y06c/1EK3VmvMpEQ1xF9WEvDm6D/hUwtBjXb4jc="
+    },
+    "mingw-w64-ucrt-x86_64-libogg": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libogg-1.3.6-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-EQo0I56PEi2hXgQbJgHi88bUyQnXOL35eHAGAeD2REk="
+    },
+    "mingw-w64-ucrt-x86_64-libpng": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpng-1.6.58-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-u/tutiRrAd+Q2C1s/4TwpOmNrQKaSidTiYyW/KrbZsc="
+    },
+    "mingw-w64-ucrt-x86_64-libpsl": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-2W4LtQrD+LbkSjnqjejRhvewj2k4sGdutpp7ofEnvPQ="
+    },
+    "mingw-w64-ucrt-x86_64-librsvg": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-librsvg-2.62.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-7gFWxfvgtOwa83rpNnnFqmwjSAAUUFAP2GfqEt/L4bk="
+    },
+    "mingw-w64-ucrt-x86_64-libssh2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libssh2-1.11.1-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-DpExbfpJedyrv6nnFSjsmILs5hnOVJyyUxIIm0dU+mU="
+    },
+    "mingw-w64-ucrt-x86_64-libsystre": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libsystre-1.0.2-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-9f44p3w6C8zf0zGRdGcCiUvzY5G/DrVbp6jPC3gWk6c="
+    },
+    "mingw-w64-ucrt-x86_64-libtasn1": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-0JiyeDTDslFCtvWqmgylcxqOQzTCMnhkBssUndi94ro="
+    },
+    "mingw-w64-ucrt-x86_64-libthai": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libthai-0.1.30-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-yQ67yj57TDT0s/+lAbqNAM2vY0DP99s8RtedXgHvIHw="
+    },
+    "mingw-w64-ucrt-x86_64-libtheora": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libtheora-1.2.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-fF18qtx9oLKTzLPrjtnQDzNf1iUnoWz9Kk/dykPY3hE="
+    },
+    "mingw-w64-ucrt-x86_64-libtiff": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libtiff-4.7.2-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-dpBLKBM/w8wKDlGIRsmNPSFm+scO2cYYTf5e8UXl8nk="
+    },
+    "mingw-w64-ucrt-x86_64-libtre": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libtre-0.9.0-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-1Q8iVFxQ18DNWER0u6g/DHos2KqxrtGtbB+cZFLzxPw="
+    },
+    "mingw-w64-ucrt-x86_64-libunistring": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-54QnPaGbvcyRy7UQteJ8OsAhsCYUBzTu/M5cy9h4vZc="
+    },
+    "mingw-w64-ucrt-x86_64-libva": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libva-2.24.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-vTwqq+N1NPF6qhGl2EYDS1a2iQdnq8v7Low/2RU6Gm8="
+    },
+    "mingw-w64-ucrt-x86_64-libvorbis": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libvorbis-1.3.7-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-pYXn2uLcqLLrmz6tBMPzXM5wUT2jYBhlA0QC0Y5UCdw="
+    },
+    "mingw-w64-ucrt-x86_64-libwebp": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-NP+DlsQD1ITId3rUmtD8Bt+5T6328UvPhNUMRbxv0X4="
+    },
+    "mingw-w64-ucrt-x86_64-libwinpthread": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r262.g5ea8e9fac-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-MgwgTcfZGYgDfGHKyTtRPOZVBKudb4qEHp+Hgpl6XHo="
+    },
+    "mingw-w64-ucrt-x86_64-libxml2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libxml2-2.15.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-blLi0/iHCY/y+5jTpMqPyPH9CtDWZD92uaXVw+AwGeE="
+    },
+    "mingw-w64-ucrt-x86_64-libxmlb": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libxmlb-0.3.28-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-4ijHCRcdJyOrsbbRFGJRtRnK+W2v5j/J1eADGKs5U8Y="
+    },
+    "mingw-w64-ucrt-x86_64-lzo2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lzo2-2.10-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-cXyAZZlr6lFUNRig06tGg3v5qZDEGIY0i9L6lITqI/M="
+    },
+    "mingw-w64-ucrt-x86_64-mpdecimal": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-mpdecimal-4.0.1-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-q/JcOGm6XlvDtp/ets1JsGD8GmTQ0t4QkYrerpYwpo0="
+    },
+    "mingw-w64-ucrt-x86_64-ncurses": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-ncurses-6.6-4-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-iDMf54Rw7yxeAoBlL+5eELbcqjX4A3clw1lAfycCMJw="
+    },
+    "mingw-w64-ucrt-x86_64-nettle": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nettle-4.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-R7SfFyPvLHX/MEK25GORDEfN/6M0LhdbZAn7nWMOZO0="
+    },
+    "mingw-w64-ucrt-x86_64-nghttp2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nghttp2-1.70.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-Obr3kv84VcHWVlFOrvZI+rIN6AYUUX/BX1elf6EDzCA="
+    },
+    "mingw-w64-ucrt-x86_64-nghttp3": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nghttp3-1.18.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-BuUeoojl/dURx1MDiXl3LsIuxxUE2sYfkSxjpuWGuoA="
+    },
+    "mingw-w64-ucrt-x86_64-ngtcp2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-ngtcp2-1.25.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-zOIw2AoFzQoew4+l12wERcm7clxlwhNr49I+bcIYqJ4="
+    },
+    "mingw-w64-ucrt-x86_64-nspr": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nspr-4.40-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-NfD2ACXLDSADnz0sWd90SpMI/iZMRgbUloXofvzlmEo="
+    },
+    "mingw-w64-ucrt-x86_64-nss": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-nss-3.126-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-iz1Ve6fG4wu8OoRUxoN2Wik+d3M76V3SQQjJJp/sQJU="
+    },
+    "mingw-w64-ucrt-x86_64-openjpeg2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-KkwUgFK2+OR6vl6Ysp/YlC4uPBdyL/APFysWMIl6ELk="
+    },
+    "mingw-w64-ucrt-x86_64-openssl": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-openssl-3.6.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-bKs+NbKwXaOjQSbz/bek0MlChCyM3jVfU6B6cXaEMTo="
+    },
+    "mingw-w64-ucrt-x86_64-opus": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-opus-1.6.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-e48Xb5zAQxtSAGhhwKLgg9c9S0enOrdJdVtTef9nMlI="
+    },
+    "mingw-w64-ucrt-x86_64-orc": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-orc-0.4.42-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-pNhQ6CW86l3gRh6MH2ix0WMcPGzlZxc2CX6pcWxV8mU="
+    },
+    "mingw-w64-ucrt-x86_64-p11-kit": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-p11-kit-0.26.5-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-bhZF8K+mafPjMlq7iR15xY2s8Ltfm7HqcZ0i2h11TmI="
+    },
+    "mingw-w64-ucrt-x86_64-pango": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-pango-1.58.2-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-jYbkoBj/E5sBC/NX+hyfkDD6Mu4ZXFTtfonY6nAYUcg="
+    },
+    "mingw-w64-ucrt-x86_64-pcre2": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-pcre2-10.47-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-g5vEZC+UxE6U4zHJCSxtGGse3FTf32qByyBi9jhBcCM="
+    },
+    "mingw-w64-ucrt-x86_64-pixman": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-pixman-0.46.4-3-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-TAG5hlY9K1961vzsLQ7JkV0vJC3axerN3BmXGWQkHMU="
+    },
+    "mingw-w64-ucrt-x86_64-pkgconf": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-pkgconf-1~3.0.5-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-efVZ+ukoPnk0uVgQsYGF5G+6Q+RVvZ75NnKJB8x8pKc="
+    },
+    "mingw-w64-ucrt-x86_64-poppler": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-poppler-26.07.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-pGOUt4Nbx9v36bK9GQbI1iuk6D9RQhcZTk1MBzBf9kw="
+    },
+    "mingw-w64-ucrt-x86_64-poppler-data": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-poppler-data-0.4.12-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-/F+RfoCy3lKzNbbumcPgR68Itl6EyUzbHsIuf0HZORE="
+    },
+    "mingw-w64-ucrt-x86_64-python": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-3.14.7-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-9AlnYhSqPWUmB2GCbhzEvDVvBb0tHMq8hJfVE/+GxCU="
+    },
+    "mingw-w64-ucrt-x86_64-python-packaging": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-python-packaging-26.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-uQ0UUc+/AVpTNECb2e35xhvA97eMrBlACw+SySefuqc="
+    },
+    "mingw-w64-ucrt-x86_64-shared-mime-info": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-shared-mime-info-2.5.1-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-cdoeQDI3T4niyfz9j2JrW2Tm01nlMjXNllNGXojUNdY="
+    },
+    "mingw-w64-ucrt-x86_64-sqlite3": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-sqlite3-3.53.4-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-qPkErLE2Y0tPcI6KD58wH3ajxC7qOHpRMAr5YdAGYFE="
+    },
+    "mingw-w64-ucrt-x86_64-tcl": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tcl-8.6.18-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-DDpQ6lvoxRkOWKH9xGwJ+BE60bhVdFh1ZGt6eKAiFd8="
+    },
+    "mingw-w64-ucrt-x86_64-tk": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tk-8.6.18-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-v6ARiGAyligz3ck66bUIeY7FZiW5CTzG0P9clVB8ecY="
+    },
+    "mingw-w64-ucrt-x86_64-tzdata": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tzdata-2026c-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-tq9v1qy2drm7B2G3Wx2DMLiavUyNRn/aNc7oklsXDbk="
+    },
+    "mingw-w64-ucrt-x86_64-vulkan-loader": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-vulkan-loader-1~1.4.357.0-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-TTSYOuo0EWWCcAsoUnnfIc0O6FGQJTMOesBlC7AvE48="
+    },
+    "mingw-w64-ucrt-x86_64-wineditline": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-wineditline-2.208-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-sHs03hZp4Wz9Z0NpGRT1pmrUATUAu/Dkx6dkQEauexw="
+    },
+    "mingw-w64-ucrt-x86_64-xz": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-hArwGS9LZ74JI454MknHjMFnKYHn0KzFxnpr0LS8oMs="
+    },
+    "mingw-w64-ucrt-x86_64-zlib": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-hBQBGCl20vnhflwOuqxR8qgBQUDqU9Z2Jekcj7PIXqA="
+    },
+    "mingw-w64-ucrt-x86_64-zstd": {
+      "type": "Url",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "unpack": false,
+      "hash": "sha256-29uEJygARqK0Fpd4CqTFKYO3CAgrDaR1WVHcO+qWyok="
+    }
+  },
+  "version": 8
+}
