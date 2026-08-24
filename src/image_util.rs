@@ -13,9 +13,13 @@ use libadwaita as adw;
 
 pub fn load_image_frame(raw: &[u8]) -> anyhow::Result<glycin::Frame> {
 	use glycin::MemoryFormatSelection as Sel;
-	futures::executor::block_on(async {
+	// Use futures_lite's block_on, which has different reentrancy semantics than futures'
+	// TODO make this entire function async to make this less ugly
+	futures_lite::future::block_on(async {
 		let mut loader = glycin::Loader::new_bytes(glib::Bytes::from(raw));
 		loader
+			// Tell glycin to use its own thread
+			.main_context_selector(glycin::MainContextSelector::Managed)
 			.sandbox_selector(glycin::SandboxSelector::NotSandboxed)
 			.accepted_memory_formats(Sel::G8 | Sel::G8a8 | Sel::R8g8b8 | Sel::R8g8b8a8);
 		loader.load().await?.next_frame().await

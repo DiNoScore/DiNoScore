@@ -943,6 +943,7 @@ dependencies = [
  "flate2",
  "fragile",
  "futures",
+ "futures-lite",
  "gio",
  "git-version",
  "glib",
