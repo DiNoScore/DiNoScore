@@ -166,7 +166,7 @@ mod imp {
 		pub(super) offset: Cell<f64>,
 		#[property(get, set =  |obj: &&SongWidget, val| obj.set_zoom(val), construct, default = 1.0)]
 		zoom: Cell<f64>,
-		/* Backup for when a gesture starts. Always Some during a gesture */
+		/* Backup for when a gesture starts. *Should* always be some during a gesture, but sometimes isn't */
 		zoom_before_gesture: Cell<Option<f64>>,
 		/* Automatically hide the cursor after some seconds of inactivity */
 		hide_cursor: RefCell<Option<glib::source::SourceId>>,
@@ -816,23 +816,24 @@ mod imp {
 		#[template_callback]
 		fn zoom_gesture_cancel(&self) {
 			log::debug!("Zoom cancel");
-			self.obj().set_zoom(
-				self.zoom_before_gesture
-					.take()
-					.expect("Should always be Some within after gesture started"),
-			);
+			if let Some(zoom) = self.zoom_before_gesture.take() {
+				self.obj().set_zoom(zoom);
+			}
 		}
 
 		#[template_callback]
 		fn zoom_gesture_update(&self, scale: f64) {
-			self.obj().set_zoom(
-				(scale
-					* self
-						.zoom_before_gesture
-						.get()
-						.expect("Should always be Some within after gesture started"))
-				.clamp(0.6, 3.0),
-			);
+			let zoom_before_gesture = match self.zoom_before_gesture.get() {
+				Some(zoom) => zoom,
+				None => {
+					log::warn!("Zoom gesture updated without having started");
+					let zoom = self.zoom.get();
+					self.zoom_before_gesture.set(Some(zoom));
+					zoom
+				},
+			};
+			self.obj()
+				.set_zoom((scale * zoom_before_gesture).clamp(0.6, 3.0));
 		}
 
 		#[template_callback]
