@@ -1,5 +1,24 @@
 # Changelog
 
+## Version 5
+
+General:
+
+- Windows support is back!
+- Reduced amount of panics, improved error handling in multiple places
+- Replaced deprecated Gtk4 widgets with newer alternatives
+- More async code, less foreground loading and hanging
+
+Viewer:
+
+- Rewrote song view using a custom widget instead of AdwCarousel
+- Rewrote library view
+  - Tag filtering system
+  - Favorites
+  - Better song preview
+
+Editor:
+
 ## Version 0.4.0
 
 General:

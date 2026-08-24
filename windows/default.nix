@@ -134,7 +134,7 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "DiNoScore-windows";
-  version = "0.4.0";
+  version = "5";
   src = (lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

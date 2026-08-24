@@ -8,7 +8,7 @@ in
 with pkgs;
 rustPlatform.buildRustPackage rec {
   pname = "DiNoScore";
-  version = "0.4.0";
+  version = "5";
   src = lib.fileset.toSource {
     root = ./.;
     fileset = lib.fileset.unions [
