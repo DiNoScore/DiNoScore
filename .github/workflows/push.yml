@@ -108,25 +108,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # cache-nix-action needs this to delete the previous run's cache
-      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: NixOS/nix-installer-action@v1
         with:
           extra-conf: |
-            keep-outputs = true
-            keep-derivations = true
-      - name: Restore and save the Nix store
-        uses: nix-community/cache-nix-action@v7
+            extra-experimental-features = nix-command
+            require-sigs = false
+            # Cache parts of the store across runs
+            extra-substituters = file:///home/runner/nix-cache
+      - name: Restore the binary cache
+        uses: actions/cache/restore@v4
         with:
-          primary-key: nix-windows-${{ hashFiles('windows/**', 'npins/sources.json', 'Cargo.lock') }}
-          restore-prefixes-first-match: nix-windows-
-          gc-max-store-size-linux: 6G
-          purge: true
-          purge-prefixes: nix-windows-
-          purge-created: 0
-          purge-primary-key: never
+          path: ~/nix-cache
+          key: nix-windows-cache-${{ github.run_id }}
+          restore-keys: nix-windows-cache-
+      - name: Initialise the binary cache if it is missing
+        run: |
+          mkdir -p ~/nix-cache
+          if [ ! -e ~/nix-cache/nix-cache-info ]; then
+            echo "StoreDir: /nix/store" > ~/nix-cache/nix-cache-info
+          fi
       - name: nix-build
         run: nix-build windows/default.nix
       - name: Assemble the package
@@ -140,3 +142,22 @@ jobs:
           name: DiNoScore-windows-${{ github.sha }}
           path: ./package
           if-no-files-found: error
+      - name: Repopulate the binary cache
+        if: always()
+        continue-on-error: true
+        run: |
+          sudo rm -rf ~/nix-cache
+          nix-build --no-out-link windows/default.nix \
+            -A msys2 -A rust-windows -A mingw -A peldd > paths.txt || true
+          if [ -e result ]; then readlink -f result >> paths.txt; fi
+          sudo mkdir -p ~/nix-cache/nar
+          sudo chown -R "$(id -u):$(id -g)" ~/nix-cache
+          if [ -s paths.txt ]; then
+            nix copy --to "file://$HOME/nix-cache" $(cat paths.txt)
+          fi
+      - name: Save the binary cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/nix-cache
+          key: nix-windows-cache-${{ github.run_id }}
