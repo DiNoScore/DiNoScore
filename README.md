@@ -30,16 +30,21 @@ A digital music stand written in Rust with Gtk 4 and Libadwaita. It is comparabl
 
 Song library:
 ![Screenshot of the song collection view of the application.](gallery/01-overview.png "Song library")
+Song library, with tag-based filtering:
+![The song collection but with a filter set to only show songs by Chopin](gallery/02-tags.png "Filter the library by tags")
 A loaded song:
-![A waltz from Chopin is loaded for playing, there are two columns with four staves each on display](gallery/02-song.png "A loaded song")
+![A waltz from Chopin is loaded for playing, there are two columns with four staves each on display](gallery/03-song.png "A loaded song")
 Jump between movements/sections/songs:
-![The drop down for selecting a section is opened, showing that there are two more waltzes in that document](gallery/03-parts.png "Quickly jump between sections")
+![The drop down for selecting a section is opened, showing that there are two more waltzes in that document](gallery/04-parts.png "Quickly jump between sections")
 Layout with larger zoom factor for smaller devices:
-![The zoom menu is opened. As per the setting, only the first three staves of the song are shown, which corresponds to a zoom factor of 134%](gallery/04-zoom.png "Powerful zoom settings")
+![The zoom menu is opened. As per the setting, only the first three staves of the song are shown, which corresponds to a zoom factor of 134%](gallery/05-zoom.png "Powerful zoom settings")
 Dark mode:
-![The previous screenshot but in dark mode with inverted colors](gallery/05-dark.png "Dark mode")
+![The previous screenshot but in dark mode with inverted colors](gallery/06-dark.png "Dark mode")
 Import your scores using the editor:
-![Screenshot of the editor, showing the first with staff annotations](gallery/06-editor.png "Editor")
+![Screenshot of the editor, showing the first page with staff annotations](gallery/07-editor.png "Editor")
+Mark up repetitions so that the pages turn the way you play:
+![The editor with a staff selected that is marked as the start of a repetition section](gallery/08-editor-repetition.png "Annotate repetitions")
+![The editor further down the same score, with a staff selected marked as the end of the repetition](gallery/09-editor-repetition.png "Annotate repetitions")
 
 
 ## How it works
