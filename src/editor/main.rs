@@ -213,6 +213,7 @@ mod imp {
 			self.song_instruments.set_text("");
 			self.add_button.add_css_class("suggested-action");
 			self.autodetect.remove_css_class("suggested-action");
+			self.page_changed();
 		}
 
 		fn load_with_dialog(&self) {
