@@ -11,18 +11,29 @@ use gtk::{gdk, gio, glib, glib::clone, prelude::*};
 use gtk4 as gtk;
 use libadwaita as adw;
 
-pub fn load_image_frame(raw: &[u8]) -> anyhow::Result<glycin::Frame> {
+async fn load_image(raw: &[u8]) -> Result<glycin::Image, glycin::Error> {
 	use glycin::MemoryFormatSelection as Sel;
+	let mut loader = glycin::Loader::new_bytes(glib::Bytes::from(raw));
+	loader
+		// Tell glycin to use its own thread
+		.main_context_selector(glycin::MainContextSelector::Managed)
+		.sandbox_selector(glycin::SandboxSelector::NotSandboxed)
+		.accepted_memory_formats(Sel::G8 | Sel::G8a8 | Sel::R8g8b8 | Sel::R8g8b8a8);
+	loader.load().await
+}
+
+pub fn load_image_frame(raw: &[u8]) -> anyhow::Result<glycin::Frame> {
 	// Use futures_lite's block_on, which has different reentrancy semantics than futures'
 	// TODO make this entire function async to make this less ugly
+	futures_lite::future::block_on(async { load_image(raw).await?.next_frame().await })
+		.map_err(Into::into)
+}
+
+pub fn load_image_size(raw: &[u8]) -> anyhow::Result<(u32, u32)> {
+	// See `load_image_frame` on the choice of `block_on`
 	futures_lite::future::block_on(async {
-		let mut loader = glycin::Loader::new_bytes(glib::Bytes::from(raw));
-		loader
-			// Tell glycin to use its own thread
-			.main_context_selector(glycin::MainContextSelector::Managed)
-			.sandbox_selector(glycin::SandboxSelector::NotSandboxed)
-			.accepted_memory_formats(Sel::G8 | Sel::G8a8 | Sel::R8g8b8 | Sel::R8g8b8a8);
-		loader.load().await?.next_frame().await
+		let details = load_image(raw).await?.details();
+		Ok::<_, glycin::Error>((details.width(), details.height()))
 	})
 	.map_err(Into::into)
 }
@@ -66,12 +77,12 @@ impl PageImage {
 	}
 
 	pub fn from_image(raw: Vec<u8>, extension: String) -> anyhow::Result<Self> {
-		let frame = load_image_frame(&raw).context("Failed to load image")?;
+		let (width, height) = load_image_size(&raw).context("Failed to load image")?;
 		Ok(Self {
 			raw,
 			extension,
-			width: frame.width() as f64,
-			height: frame.height() as f64,
+			width: width as f64,
+			height: height as f64,
 		})
 	}
 
