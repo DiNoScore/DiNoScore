@@ -2,9 +2,13 @@ let
   sources = import ./npins;
   pkgs = import sources.pkgs { };
   pkgsUnstable = import sources.nixos-unstable { };
+  rustfmt-nightly = pkgs.rustfmt.override { asNightly = true; };
   pre-commit-check = (import sources.git-hooks).run {
     src = ./.;
-    hooks.rustfmt.enable = true;
+    hooks.rustfmt = {
+      enable = true;
+      packageOverrides.rustfmt = rustfmt-nightly;
+    };
   };
 in
 with pkgs;
@@ -18,6 +22,7 @@ mkShell rec {
 
     # Compiler
     rustc
+    rustfmt-nightly
     pkg-config
     llvmPackages.clang
     llvmPackages.libclang

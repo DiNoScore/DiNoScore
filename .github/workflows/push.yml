@@ -11,15 +11,10 @@ jobs:
     name: cargo fmt (nightly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-          components: rustfmt
-          profile: minimal
+      - uses: actions/checkout@v4
+      - uses: NixOS/nix-installer-action@v1
       - name: Format
-        run: cargo fmt -- --check
+        run: nix-shell --pure --run "cargo fmt --all -- --check"
 
   test-shell:
     runs-on: ubuntu-latest
